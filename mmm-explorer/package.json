@@ -14,7 +14,8 @@
     "papaparse": "^5.5.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "recharts": "^3.5.1"
+    "scichart": "^4.0.923",
+    "scichart-react": "^1.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

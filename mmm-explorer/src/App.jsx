@@ -1,7 +1,37 @@
 import { Filter } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  DateTimeNumericAxis,
+  EHorizontalAnchorPoint,
+  ELegendPlacement,
+  EVerticalAnchorPoint,
+  LegendModifier,
+  LogarithmicAxis,
+  LogarithmicLabelProvider,
+  MouseWheelZoomModifier,
+  NumberRange,
+  RolloverModifier,
+  SciChartSurface,
+  SplineMountainRenderableSeries,
+  XyDataSeries,
+  ZoomExtentsModifier,
+  ZoomPanModifier
+} from "scichart";
+import { SciChartReact } from "scichart-react";
 import { loadData } from './utils/dataLoader';
+import { initSciChart } from './utils/scichartConfig';
+
+// Initialize WASM paths
+initSciChart();
+
+class SmartTickLabelProvider extends LogarithmicLabelProvider {
+  formatLabel(dataValue) {
+    if (dataValue < 1000) return dataValue.toString();
+    if (dataValue < 1000000) return (dataValue / 1000) + "k";
+    if (dataValue < 1000000000) return (dataValue / 1000000) + "M";
+    return (dataValue / 1000000000) + "B";
+  }
+}
 
 function App() {
   const [data, setData] = useState([]);
@@ -11,6 +41,9 @@ function App() {
   // Filters state
   const [selectedVertical, setSelectedVertical] = useState('All');
   const [selectedTerritory, setSelectedTerritory] = useState('All Territories');
+
+  // Chart References for updating data
+  const trendChartRef = useRef(null);
 
   useEffect(() => {
     loadData()
@@ -48,7 +81,6 @@ function App() {
   }, [data, selectedVertical, selectedTerritory]);
 
   // Aggregations for Charts
-  // We need to aggregate by Date for the timeline
   const timelineData = useMemo(() => {
     if (!filteredData.length) return [];
     
@@ -62,26 +94,12 @@ function App() {
             grouped[date] = { 
                 date, 
                 spend: 0, 
-                revenue: 0,
-                // Channels
-                google: 0,
-                meta: 0,
-                tiktok: 0
+                revenue: 0
             };
         }
         
-        // Sum Spend
         grouped[date].spend += (row.GOOGLE_PAID_SEARCH_SPEND || 0) + (row.GOOGLE_SHOPPING_SPEND || 0) + (row.GOOGLE_PMAX_SPEND || 0) + (row.GOOGLE_DISPLAY_SPEND || 0) + (row.GOOGLE_VIDEO_SPEND || 0) + (row.META_FACEBOOK_SPEND || 0) + (row.META_INSTAGRAM_SPEND || 0) + (row.META_OTHER_SPEND || 0) + (row.TIKTOK_SPEND || 0);
-        
-        // Sum Revenue (ALL_PURCHASES_ORIGINAL_PRICE - DISCOUNT? Or just ORIGINAL_PRICE? Dictionary says "total value... before discount")
-        // Getting actual revenue usually implies Price - Discount. But Gross Revenue is Price.
-        // Let's use ALL_PURCHASES_ORIGINAL_PRICE for now as "Gross Revenue"
         grouped[date].revenue += (row.ALL_PURCHASES_ORIGINAL_PRICE || 0);
-
-        // Channel Breakdown
-        grouped[date].google += (row.GOOGLE_PAID_SEARCH_SPEND || 0) + (row.GOOGLE_SHOPPING_SPEND || 0) + (row.GOOGLE_PMAX_SPEND || 0) + (row.GOOGLE_DISPLAY_SPEND || 0) + (row.GOOGLE_VIDEO_SPEND || 0);
-        grouped[date].meta += (row.META_FACEBOOK_SPEND || 0) + (row.META_INSTAGRAM_SPEND || 0) + (row.META_OTHER_SPEND || 0);
-        grouped[date].tiktok += (row.TIKTOK_SPEND || 0);
     });
 
     return Object.values(grouped).sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -93,6 +111,95 @@ function App() {
       const totalRevenue = timelineData.reduce((acc, curr) => acc + curr.revenue, 0);
       const roas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
       return { totalSpend, totalRevenue, roas };
+  }, [timelineData]);
+
+  // Init Spend vs Revenue Chart
+  const initTrendChart = async (divElement) => {
+    const { sciChartSurface, wasmContext } = await SciChartSurface.create(divElement, {
+      theme: { type: "Dark" }
+    });
+
+    const xAxis = new DateTimeNumericAxis(wasmContext);
+    const yAxis = new LogarithmicAxis(wasmContext, {
+      axisTitle: "Amount ($)",
+      textStyle: { fontSize: 12 },
+      logBase: 10,
+      visibleRange: new NumberRange(1, 10000000000),
+      growBy: new NumberRange(0.1, 0.1),
+      labelProvider: new SmartTickLabelProvider()
+    });
+
+    sciChartSurface.xAxes.add(xAxis);
+    sciChartSurface.yAxes.add(yAxis);
+
+    // Data Series
+    const revenueSeries = new XyDataSeries(wasmContext, { dataSeriesName: "Revenue" });
+    const spendSeries = new XyDataSeries(wasmContext, { dataSeriesName: "Spend" });
+
+    // Renderable Series
+    const revenueRenderableSeries = new SplineMountainRenderableSeries(wasmContext, {
+      dataSeries: revenueSeries,
+      stroke: "#10b981",
+      strokeThickness: 2,
+      fill: "#10b98133", // hex with opacity
+      opacity: 0.7
+    });
+
+    const spendRenderableSeries = new SplineMountainRenderableSeries(wasmContext, {
+      dataSeries: spendSeries,
+      stroke: "#ef4444",
+      strokeThickness: 2,
+      fill: "#ef444433",
+      opacity: 0.7
+    });
+
+    sciChartSurface.renderableSeries.add(revenueRenderableSeries);
+    sciChartSurface.renderableSeries.add(spendRenderableSeries);
+
+    // Modifiers
+    sciChartSurface.chartModifiers.add(
+      new ZoomPanModifier(),
+      new ZoomExtentsModifier(),
+      new MouseWheelZoomModifier(),
+      new RolloverModifier({
+          modifierGroup: "trendGroup",
+          showTooltip: true,
+      }),
+      new LegendModifier({ 
+        placement: ELegendPlacement.TopLeft,
+        verticalAnchorPoint: EVerticalAnchorPoint.Top,
+        horizontalAnchorPoint: EHorizontalAnchorPoint.Left,
+      })
+    );
+
+    trendChartRef.current = { sciChartSurface, revenueSeries, spendSeries };
+    return { sciChartSurface };
+  };
+
+  // Update Data Effect
+  useEffect(() => {
+    console.log("Timeline Data:", timelineData);
+
+    // Helper to clamp log values
+    const clamp = (v) => Math.max(v, 1);
+
+    // Trend Chart Update
+    if (trendChartRef.current) {
+        const { sciChartSurface, revenueSeries, spendSeries } = trendChartRef.current;
+        const xValues = timelineData.map(d => new Date(d.date).getTime() / 1000); // Unix Timestamp
+        const revenueValues = timelineData.map(d => clamp(d.revenue));
+        const spendValues = timelineData.map(d => clamp(d.spend));
+
+        console.log("Trend Chart Update:", { xValues, revenueValues, spendValues });
+
+        revenueSeries.clear();
+        revenueSeries.appendRange(xValues, revenueValues);
+        
+        spendSeries.clear();
+        spendSeries.appendRange(xValues, spendValues);
+
+        sciChartSurface.zoomExtents();
+    }
   }, [timelineData]);
 
   if (loading) {
@@ -154,48 +261,11 @@ function App() {
       <div className="dashboard-grid" style={{ gridTemplateColumns: '1fr' }}>
         <div className="card" style={{ height: '400px' }}>
             <h2>Spend vs Revenue (Trend)</h2>
-            <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
-              <ResponsiveContainer width="100%" height="100%" debounce={1}>
-                  <AreaChart data={timelineData}>
-                      <defs>
-                          <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
-                          <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                          </linearGradient>
-                          <linearGradient id="colorSpend" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8}/>
-                          <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
-                          </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#373a40" />
-                      <XAxis dataKey="date" stroke="#9ca3af" />
-                      <YAxis stroke="#9ca3af" scale="log" domain={[1, 'auto']} allowDataOverflow />
-                      <Tooltip 
-                          contentStyle={{ backgroundColor: '#25262b', border: '1px solid #373a40' }}
-                      />
-                      <Legend />
-                      <Area type="monotone" dataKey="revenue" stroke="#10b981" fillOpacity={1} fill="url(#colorRevenue)" name="Revenue" />
-                      <Area type="monotone" dataKey="spend" stroke="#ef4444" fillOpacity={1} fill="url(#colorSpend)" name="Spend" />
-                  </AreaChart>
-              </ResponsiveContainer>
-            </div>
-        </div>
-
-        <div className="card" style={{ height: '400px' }}>
-            <h2>Channel Spend Mix</h2>
-            <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
-              <ResponsiveContainer width="100%" height="100%" debounce={1}>
-                  <BarChart data={timelineData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#373a40" />
-                      <XAxis dataKey="date" stroke="#9ca3af" />
-                      <YAxis stroke="#9ca3af" scale="log" domain={[1, 'auto']} allowDataOverflow />
-                      <Tooltip contentStyle={{ backgroundColor: '#25262b', border: '1px solid #373a40' }} />
-                      <Legend />
-                      <Bar dataKey="google" stackId="a" fill="#4285F4" name="Google" />
-                      <Bar dataKey="meta" stackId="a" fill="#1877F2" name="Meta" />
-                      <Bar dataKey="tiktok" stackId="a" fill="#000000" stroke="#333" name="TikTok" />
-                  </BarChart>
-              </ResponsiveContainer>
+            <div style={{ flex: 1, height: '100%', position: 'relative' }}>
+              <SciChartReact 
+                initChart={initTrendChart} 
+                style={{ width: '100%', height: '100%' }}
+              />
             </div>
         </div>
       </div>

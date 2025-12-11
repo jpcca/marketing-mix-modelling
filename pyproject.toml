@@ -1,0 +1,9 @@
+[project]
+name = "marketing-mix-modelling"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "google-meridian[and-cuda,colab,schema]>=1.4.0",
+]
