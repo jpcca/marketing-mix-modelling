@@ -221,6 +221,19 @@ wheels = [
 ]
 
 [[package]]
+name = "daft-pgm"
+version = "0.1.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "matplotlib" },
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9c/2a/be7d7c85d6b711ee1927e13cbccdf5ebe5e614d1e1e6e56c4558be430419/daft_pgm-0.1.4.tar.gz", hash = "sha256:ae44e58cbaa5714347a0f5e72bf96c25dfdee2f190f2ce165c494500c7f3e9ce", size = 374592, upload-time = "2025-02-22T01:03:07.499Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6a/10/8177be1c256b10b5a7b22efad96d74568ab4f4cdac22056e742f5284a409/daft_pgm-0.1.4-py3-none-any.whl", hash = "sha256:3fc02c05762dfada26727b2fa6ae3c0b6d96fc2f960c761a5fa8eb775ca3691d", size = 13316, upload-time = "2025-02-22T01:03:04.987Z" },
+]
+
+[[package]]
 name = "fonttools"
 version = "4.61.0"
 source = { registry = "https://pypi.org/simple" }
@@ -331,6 +344,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "arviz" },
+    { name = "daft-pgm" },
     { name = "jax" },
     { name = "matplotlib" },
     { name = "numpy" },
@@ -349,6 +363,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "arviz", specifier = ">=0.18.0" },
+    { name = "daft-pgm", specifier = ">=0.1.4" },
     { name = "jax", specifier = ">=0.4.30" },
     { name = "matplotlib", specifier = ">=3.8.0" },
     { name = "numpy", specifier = ">=1.26.0" },

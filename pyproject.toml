@@ -12,6 +12,7 @@ dependencies = [
     "numpy>=1.26.0",
     "matplotlib>=3.8.0",
     "pytest>=9.0.2",
+    "daft-pgm>=0.1.4",
 ]
 
 [project.optional-dependencies]
