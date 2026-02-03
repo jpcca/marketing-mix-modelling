@@ -560,9 +560,21 @@ def test_response_curves_comparison(output_dir: Path) -> None:
             linewidth=2.5,
             label=f"True K={j + 1} (π={meta['pi_true'][j]:.2f})",
         )
-    ax.scatter(meta["s"], y, alpha=0.3, s=15, color="gray")
+    # Plot effect only (subtract baseline) and color by true component assignment
+    y_effect = y - meta["baseline"]
+    z_true = meta["z_true"]
+    for j in range(meta["K_true"]):
+        mask = z_true == j
+        ax.scatter(
+            meta["s"][mask],
+            y_effect[mask],
+            alpha=0.4,
+            s=20,
+            color=COLORS_LIST[j],
+            edgecolors="none",
+        )
     ax.set_xlabel("Adstocked Spend (s)")
-    ax.set_ylabel("Response")
+    ax.set_ylabel("Hill Effect")
     ax.set_title("(a) True Response Curves")
     ax.legend(loc="lower right", fontsize=9)
     ax.grid(True, alpha=0.3)
@@ -604,9 +616,11 @@ def test_response_curves_comparison(output_dir: Path) -> None:
                     label=f"Estimated K={j + 1}",
                 )
 
-    ax.scatter(meta["s"], y, alpha=0.3, s=15, color="gray")
+    # Plot effect only (subtract baseline) - same scale as curves
+    y_effect = y - meta["baseline"]
+    ax.scatter(meta["s"], y_effect, alpha=0.3, s=15, color="gray")
     ax.set_xlabel("Adstocked Spend (s)")
-    ax.set_ylabel("Response")
+    ax.set_ylabel("Hill Effect")
     ax.set_title("(b) Estimated Response Curves (with 90% CI)")
     ax.legend(loc="lower right", fontsize=9)
     ax.grid(True, alpha=0.3)
