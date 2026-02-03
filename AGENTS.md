@@ -102,6 +102,27 @@ git push
 4. **Generate paper figures:** `pytest tests/test_visualization.py`
 5. **Update paper submodule:** After generating figures, commit in `paper/` then update submodule reference
 
+### Git Workflow
+
+**Push directly to main:** This project uses a direct-to-main workflow. Push changes directly to the main branch without creating PRs.
+
+**Commit one change at a time:** Make incremental commits, pushing each change separately rather than batching multiple unrelated changes. This keeps the commit history clean and makes it easier to revert specific changes if needed.
+
+```bash
+# Example: Good workflow
+git add file1.py
+git commit -m "feat: Add feature A"
+git push origin main
+
+git add file2.py
+git commit -m "fix: Fix bug B"
+git push origin main
+
+# Avoid: Batching unrelated changes
+git add file1.py file2.py
+git commit -m "Various changes"  # Don't do this
+```
+
 ## Agent Guidance
 
 ### When modifying models
