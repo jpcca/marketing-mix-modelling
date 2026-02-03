@@ -31,6 +31,13 @@ markers = [
 ]
 testpaths = ["tests"]
 
+[tool.hatch.build.targets.wheel]
+packages = ["hill_mmm"]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
