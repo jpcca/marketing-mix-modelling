@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Literal
 
 import arviz as az
+import daft
 import jax.numpy as jnp
 import matplotlib
 import numpy as np
@@ -21,7 +22,6 @@ import pytest
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
 
 from hill_mmm import (
     DGPConfig,
@@ -33,7 +33,6 @@ from hill_mmm import (
     model_single_hill,
 )
 from hill_mmm.inference import run_inference
-from hill_mmm.transforms import adstock_geometric
 
 # =============================================================================
 # Configuration
@@ -101,6 +100,102 @@ def load_results_summary() -> pd.DataFrame:
 def load_results() -> pd.DataFrame:
     """Load raw results CSV."""
     return pd.read_csv(RESULTS_CSV)
+
+
+# =============================================================================
+# Figure 0: Graphical Model (Plate Notation)
+# =============================================================================
+
+
+def test_graphical_model(output_dir: Path) -> None:
+    """Figure 0: Bayesian graphical model with plate notation.
+
+    Creates a publication-quality graphical model showing the hierarchical
+    structure of the Hill Mixture Model using standard plate notation.
+    """
+    # Create PGM with appropriate aspect ratio - wider spacing
+    pgm = daft.PGM(dpi=150)
+
+    # Spacing constants for better layout
+    # Y levels: priors=5, segment=3, time=1.5, outcome=0
+    # X spacing: increased from 1 to 1.5 between nodes
+    Y_PRIOR = 5
+    Y_SEGMENT = 3
+    Y_TIME = 1.5
+    Y_OUTCOME = 0
+
+    # --- Top level priors (shared parameters) - wider spacing ---
+    pgm.add_node("alpha", r"$\alpha$", 1, Y_PRIOR)
+    pgm.add_node("mu0", r"$\mu_0$", 2.5, Y_PRIOR)  # type: ignore[arg-type]
+    pgm.add_node("beta", r"$\beta$", 4, Y_PRIOR)
+    pgm.add_node("sigma", r"$\sigma$", 5.5, Y_PRIOR)  # type: ignore[arg-type]
+    pgm.add_node("pi", r"$\boldsymbol{\pi}$", 7, Y_PRIOR)
+
+    # --- Segment-specific parameters (Plate K) - wider spacing ---
+    # Note: daft's type stubs incorrectly declare x/y as int, but float works at runtime
+    pgm.add_node("A_k", r"$A_k$", 7, Y_SEGMENT)  # type: ignore[arg-type]
+    pgm.add_node("lambda_k", r"$\lambda_k$", 8.5, Y_SEGMENT)  # type: ignore[arg-type]
+    pgm.add_node("n_k", r"$n_k$", 10, Y_SEGMENT)  # type: ignore[arg-type]
+
+    # --- Time-varying nodes (Plate T) - wider spacing ---
+    pgm.add_node("x_t", r"$x_t$", 1, Y_TIME, observed=True)  # type: ignore[arg-type]
+    pgm.add_node("s_t", r"$s_t$", 2.5, Y_TIME)  # type: ignore[arg-type]
+    pgm.add_node("f_k_t", r"$f_k(s_t)$", 5.5, Y_TIME)  # type: ignore[arg-type]
+    pgm.add_node("y_t", r"$y_t$", 5.5, Y_OUTCOME, observed=True)  # type: ignore[arg-type]
+
+    # --- Edges ---
+    # Adstock transformation
+    pgm.add_edge("x_t", "s_t")
+    pgm.add_edge("alpha", "s_t")
+
+    # Hill function
+    pgm.add_edge("s_t", "f_k_t")
+    pgm.add_edge("A_k", "f_k_t")
+    pgm.add_edge("lambda_k", "f_k_t")
+    pgm.add_edge("n_k", "f_k_t")
+
+    # Observation model
+    pgm.add_edge("f_k_t", "y_t")
+    pgm.add_edge("mu0", "y_t")
+    pgm.add_edge("beta", "y_t")
+    pgm.add_edge("sigma", "y_t")
+    pgm.add_edge("pi", "y_t")
+
+    # --- Plates - adjusted for new coordinates ---
+    pgm.add_plate(
+        [6.3, 2.4, 4.4, 1.2],
+        label=r"$k = 1, \ldots, K$" + "\n(Latent Segments)",
+        shift=-0.1,  # type: ignore[arg-type]
+    )
+    pgm.add_plate(
+        [0.3, -0.6, 6.0, 2.8],
+        label=r"$t = 1, \ldots, T$" + "\n(Time Periods)",
+        shift=-0.1,  # type: ignore[arg-type]
+    )
+
+    # --- Text annotations for nodes - positioned to avoid overlaps ---
+    # Top-level priors (above nodes)
+    pgm.add_text(1, Y_PRIOR + 0.7, "Adstock\nDecay", fontsize=8)  # type: ignore[arg-type]
+    pgm.add_text(2.5, Y_PRIOR + 0.7, "Baseline", fontsize=8)  # type: ignore[arg-type]
+    pgm.add_text(4, Y_PRIOR + 0.7, "Trend", fontsize=8)  # type: ignore[arg-type]
+    pgm.add_text(5.5, Y_PRIOR + 0.7, "Noise", fontsize=8)  # type: ignore[arg-type]
+    pgm.add_text(7, Y_PRIOR + 0.7, "Mixture\nWeights", fontsize=8)  # type: ignore[arg-type]
+
+    # Segment-specific parameters (above nodes)
+    pgm.add_text(7, Y_SEGMENT + 0.7, "Max\nEffect", fontsize=7)  # type: ignore[arg-type]
+    pgm.add_text(8.5, Y_SEGMENT + 0.7, "Half-\nSaturation", fontsize=7)  # type: ignore[arg-type]
+    pgm.add_text(10, Y_SEGMENT + 0.7, "Steepness", fontsize=7)  # type: ignore[arg-type]
+
+    # Time-varying nodes (below nodes to avoid edges)
+    pgm.add_text(1, Y_TIME - 0.7, "Spend", fontsize=8)  # type: ignore[arg-type]
+    pgm.add_text(2.5, Y_TIME - 0.7, "Adstocked\nSpend", fontsize=7)  # type: ignore[arg-type]
+    pgm.add_text(6.5, Y_TIME, "Hill\nResponse", fontsize=7)  # type: ignore[arg-type]
+    pgm.add_text(5.5, Y_OUTCOME - 0.7, "Observed\nOutcome", fontsize=8)  # type: ignore[arg-type]
+
+    # Render and save
+    pgm.render()
+    plt.savefig(output_dir / "fig0_graphical_model.png", dpi=300, bbox_inches="tight")
+    plt.close("all")
 
 
 # =============================================================================
