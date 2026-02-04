@@ -151,7 +151,10 @@ def list_timeseries(
             }
         )
 
-    return pd.DataFrame(results).sort_values("n_days", ascending=False).reset_index(drop=True)
+    result_df = pd.DataFrame(results)
+    if len(result_df) == 0:
+        return result_df
+    return result_df.sort_values(by="n_days", ascending=False).reset_index(drop=True)
 
 
 def get_active_channels(
