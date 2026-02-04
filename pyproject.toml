@@ -39,6 +39,13 @@ packages = ["hill_mmm"]
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
+# NumPyro/pandas don't have complete type stubs
+# These errors are false positives for valid code
+reportArgumentType = "warning"
+reportIndexIssue = "warning"
+reportAttributeAccessIssue = "warning"
+reportGeneralTypeIssues = "warning"
+reportReturnType = "warning"
 
 [tool.ruff]
 line-length = 100

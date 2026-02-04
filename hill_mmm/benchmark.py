@@ -27,7 +27,12 @@ from .inference import (
     run_inference,
 )
 from .metrics import compute_delta_loo, compute_effective_k, compute_parameter_recovery
-from .models import model_hill_mixture, model_hill_mixture_sparse, model_single_hill
+from .models import (
+    model_hill_mixture,
+    model_hill_mixture_reparam,
+    model_hill_mixture_sparse,
+    model_single_hill,
+)
 
 
 @dataclass
@@ -44,6 +49,7 @@ MODEL_SPECS = [
     ModelSpec("single_hill", model_single_hill, {}),
     ModelSpec("mixture_k3", model_hill_mixture, {"K": 3}),
     ModelSpec("sparse_k5", model_hill_mixture_sparse, {"K": 5}),
+    ModelSpec("reparam_k3", model_hill_mixture_reparam, {"K": 3}),
 ]
 
 
