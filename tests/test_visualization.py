@@ -368,6 +368,35 @@ def test_convergence_heatmap(output_dir: Path) -> None:
     plt.close("all")
 
 
+def test_convergence_rate_threshold() -> None:
+    """Test that all DGP-model combinations meet minimum convergence threshold.
+
+    Asserts that every cell in the convergence heatmap has at least 80%
+    convergence rate. Fails if any DGP-model combination falls below this.
+    """
+    MIN_CONVERGENCE_RATE = 0.80
+
+    df = load_results()
+
+    # Calculate convergence rate per DGP-model combination
+    conv_rates = df.groupby(["dgp", "model"])["converged"].mean().unstack(fill_value=0)
+    conv_rates = conv_rates.reindex(index=DGP_ORDER, columns=MODEL_ORDER)  # type: ignore[call-arg]
+
+    # Check each cell
+    failures = []
+    for dgp in DGP_ORDER:
+        for model in MODEL_ORDER:
+            rate = conv_rates.loc[dgp, model]
+            if rate < MIN_CONVERGENCE_RATE:
+                failures.append(
+                    f"  {DGP_LABELS[dgp]} + {MODEL_LABELS[model]}: {rate:.1%} < {MIN_CONVERGENCE_RATE:.0%}"
+                )
+
+    if failures:
+        failure_msg = "\n".join(failures)
+        pytest.fail(f"Convergence rate below {MIN_CONVERGENCE_RATE:.0%} threshold:\n{failure_msg}")
+
+
 # =============================================================================
 # Figure 4: Effective K Recovery
 # =============================================================================
