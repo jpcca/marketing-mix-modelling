@@ -125,6 +125,14 @@ git commit -m "Various changes"  # Don't do this
 
 ## Agent Guidance
 
+### Documentation Language
+
+**All documentation must be written in English.** This includes:
+- README files
+- Code comments and docstrings
+- Commit messages
+- AGENTS.md updates
+
 ### When modifying models
 - Models are in `hill_mmm/models.py` using NumPyro syntax
 - Each model follows pattern: priors → transforms → likelihood
