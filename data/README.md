@@ -1,91 +1,91 @@
 # Conjura MMM Dataset
 
-このディレクトリには、eコマースブランドのマーケティング・ミックス・モデリング（MMM）用データセットが含まれています。
+This directory contains a Marketing Mix Modeling (MMM) dataset from eCommerce brands.
 
-## ファイル一覧
+## Files
 
-| ファイル | 説明 |
-|---------|------|
-| `conjura_mmm_data.csv` | メインデータセット（132,760行） |
-| `conjura_mmm_data_dictionary.tsv` | フィールド定義辞書 |
+| File | Description |
+|------|-------------|
+| `conjura_mmm_data.csv` | Main dataset (132,760 rows) |
+| `conjura_mmm_data_dictionary.tsv` | Field definitions dictionary |
 
-## データ構造
+## Data Structure
 
-### 識別子・メタデータ
+### Identifiers & Metadata
 
-| カラム | 型 | 説明 |
-|--------|-----|------|
-| `mmm_timeseries_id` | string | 時系列の一意識別子 |
-| `organisation_id` | string | eコマースブランドの匿名ID |
-| `organisation_vertical` | string | 商品カテゴリ（Google eCommerce taxonomy準拠） |
-| `organisation_subvertical` | string | 商品サブカテゴリ |
-| `organisation_marketing_sources` | string | 使用広告プラットフォーム（Google, Meta, TikTok） |
-| `organisation_primary_territory_name` | string | 主要販売地域 |
-| `territory_name` | string | 地域（"All Territories" または国別） |
-| `date_day` | date | 観測日（各時系列は最低449日連続） |
-| `currency_code` | string | 通貨コード |
+| Column | Type | Description |
+|--------|------|-------------|
+| `mmm_timeseries_id` | string | Unique identifier for each timeseries |
+| `organisation_id` | string | Anonymous ID for eCommerce brand |
+| `organisation_vertical` | string | Product category (follows Google eCommerce taxonomy) |
+| `organisation_subvertical` | string | Product subcategory |
+| `organisation_marketing_sources` | string | Ad platforms used (Google, Meta, TikTok) |
+| `organisation_primary_territory_name` | string | Primary sales territory |
+| `territory_name` | string | Territory ("All Territories" or country-level) |
+| `date_day` | date | Observation date (minimum 449 consecutive days per timeseries) |
+| `currency_code` | string | Currency code |
 
-### ターゲット変数（購入指標）
+### Target Variables (Purchase Metrics)
 
-| カラム | 説明 |
-|--------|------|
-| `first_purchases` | 新規顧客の購入数（アクイジション） |
-| `first_purchases_units` | 新規顧客の購入ユニット数 |
-| `first_purchases_original_price` | 新規顧客の割引前売上 |
-| `first_purchases_gross_discount` | 新規顧客への割引額 |
-| `all_purchases` | 全顧客の購入数 |
-| `all_purchases_units` | 全顧客の購入ユニット数 |
-| `all_purchases_original_price` | 全顧客の割引前売上 |
-| `all_purchases_gross_discount` | 全顧客への割引額 |
+| Column | Description |
+|--------|-------------|
+| `first_purchases` | Number of new customer purchases (acquisitions) |
+| `first_purchases_units` | Units purchased by new customers |
+| `first_purchases_original_price` | New customer revenue before discount |
+| `first_purchases_gross_discount` | Discount amount for new customers |
+| `all_purchases` | Number of all customer purchases |
+| `all_purchases_units` | Units purchased by all customers |
+| `all_purchases_original_price` | Total revenue before discount |
+| `all_purchases_gross_discount` | Total discount amount |
 
-**注意**: `gross_discount` は購入完了後のみ取得可能。制御変数として使用する際はデータリーケージに注意。
+**Note**: `gross_discount` is only available for completed purchases. Use caution with data leakage when using as a control variable.
 
-### 広告費（説明変数）
+### Ad Spend (Explanatory Variables)
 
-| プラットフォーム | チャネル | カラム |
-|-----------------|---------|--------|
-| **Google** | 検索広告（非ブランド） | `google_paid_search_spend` |
-| | ショッピング広告 | `google_shopping_spend` |
+| Platform | Channel | Column |
+|----------|---------|--------|
+| **Google** | Paid Search (non-branded) | `google_paid_search_spend` |
+| | Shopping Ads | `google_shopping_spend` |
 | | Performance Max | `google_pmax_spend` |
-| | ディスプレイ広告 | `google_display_spend` |
-| | 動画広告 | `google_video_spend` |
-| **Meta** | Facebook広告 | `meta_facebook_spend` |
-| | Instagram広告 | `meta_instagram_spend` |
-| | その他 | `meta_other_spend` |
-| **TikTok** | TikTok広告 | `tiktok_spend` |
+| | Display Ads | `google_display_spend` |
+| | Video Ads | `google_video_spend` |
+| **Meta** | Facebook Ads | `meta_facebook_spend` |
+| | Instagram Ads | `meta_instagram_spend` |
+| | Other | `meta_other_spend` |
+| **TikTok** | TikTok Ads | `tiktok_spend` |
 
-### エンゲージメント指標
+### Engagement Metrics
 
-各有料チャネルに対応：
-- `<platform>_<channel>_clicks` - 広告クリック数
-- `<platform>_<channel>_impressions` - 広告インプレッション数
+For each paid channel:
+- `<platform>_<channel>_clicks` - Ad clicks
+- `<platform>_<channel>_impressions` - Ad impressions
 
-### オーガニックトラフィック
+### Organic Traffic
 
-| カラム | 説明 |
-|--------|------|
-| `direct_clicks` | 直接流入 |
-| `branded_search_clicks` | ブランド検索からの流入 |
-| `organic_search_clicks` | オーガニック検索からの流入 |
-| `email_clicks` | メールからの流入 |
-| `referral_clicks` | 参照元からの流入 |
-| `all_other_clicks` | その他の流入 |
+| Column | Description |
+|--------|-------------|
+| `direct_clicks` | Direct traffic |
+| `branded_search_clicks` | Traffic from branded search |
+| `organic_search_clicks` | Traffic from organic search |
+| `email_clicks` | Traffic from email |
+| `referral_clicks` | Traffic from referrals |
+| `all_other_clicks` | Other traffic sources |
 
-## データの特徴
+## Data Characteristics
 
-1. **マルチブランド・マルチ地域**: 異なる`organisation_id`と`territory_name`の組み合わせで複数の時系列
-2. **スパースなチャネル**: 未使用チャネルは空欄（すべてのブランドが全チャネルを使用するわけではない）
-3. **時系列の長さ**: 各時系列は最低449日の連続データ
-4. **通貨**: `territory_name = "All Territories"` の場合は主要地域の通貨を使用
+1. **Multi-brand, multi-territory**: Multiple timeseries from different `organisation_id` and `territory_name` combinations
+2. **Sparse channels**: Unused channels are empty (not all brands use all channels)
+3. **Timeseries length**: Each timeseries has minimum 449 consecutive days
+4. **Currency**: When `territory_name = "All Territories"`, primary territory currency is used
 
-## 用途
+## Use Cases
 
-このデータセットはHill mixture MMMモデルの検証に適しています：
-- 複数の広告チャネルの効果測定
-- 飽和効果（saturation）のモデリング
-- 残存効果（adstock/carryover）の推定
-- 新規顧客獲得 vs 全体売上の分析
+This dataset is suitable for validating Hill mixture MMM models:
+- Measuring effectiveness of multiple ad channels
+- Modeling saturation effects
+- Estimating adstock/carryover effects
+- Analyzing new customer acquisition vs total revenue
 
-## 出典
+## Source
 
 Conjura eCommerce Analytics Platform
