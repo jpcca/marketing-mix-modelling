@@ -493,30 +493,67 @@ def _compute_rhat(values: np.ndarray, method: str = "rank") -> float:
                 'split' for split R-hat
 
     Returns:
-        R-hat value
+        R-hat value (returns np.nan if computation fails)
     """
     import xarray as xr
 
     n_chains, n_samples = values.shape
 
-    # Create xarray DataArray in ArviZ format
-    da = xr.DataArray(
-        values,
-        dims=["chain", "draw"],
-        coords={"chain": np.arange(n_chains), "draw": np.arange(n_samples)},
-    )
+    # Check for degenerate cases
+    if n_chains < 2:
+        return np.nan  # Need at least 2 chains for R-hat
 
-    # Compute R-hat
-    if method == "rank":
-        rhat = az.rhat(da, method="rank")
-    else:
-        rhat = az.rhat(da, method="split")
+    if np.any(~np.isfinite(values)):
+        return np.nan  # Can't compute R-hat with inf/nan values
 
-    # az.rhat returns float for single variable, DataArray for multiple
-    # Use hasattr to handle both cases safely
-    if hasattr(rhat, "values"):
-        return float(rhat.values)  # type: ignore[union-attr]
-    return float(rhat)
+    # Check for zero variance (all identical values)
+    if np.allclose(values, values[0, 0]):
+        return 1.0  # Perfect convergence (trivially)
+
+    try:
+        # Create xarray DataArray in ArviZ format
+        da = xr.DataArray(
+            values,
+            dims=["chain", "draw"],
+            coords={"chain": np.arange(n_chains), "draw": np.arange(n_samples)},
+        )
+
+        # Compute R-hat
+        if method == "rank":
+            rhat = az.rhat(da, method="rank")
+        else:
+            rhat = az.rhat(da, method="split")
+
+        # Extract float value from ArviZ result
+        # az.rhat can return: float, DataArray, or Dataset depending on input
+        if isinstance(rhat, (int, float)):
+            result = float(rhat)
+        elif hasattr(rhat, "item"):
+            # numpy scalar or 0-d array
+            result = float(rhat.item())
+        elif hasattr(rhat, "values"):
+            # xarray DataArray
+            val = rhat.values
+            if hasattr(val, "item"):
+                result = float(val.item())
+            else:
+                result = float(val)
+        else:
+            # Fallback
+            result = float(rhat)
+
+        # Check for invalid result
+        if not np.isfinite(result):
+            return np.nan
+
+        return result
+
+    except (ValueError, TypeError, RuntimeWarning) as e:
+        # If computation fails, return nan
+        import warnings
+
+        warnings.warn(f"R-hat computation failed: {e}")
+        return np.nan
 
 
 def compute_comprehensive_mixture_diagnostics(
