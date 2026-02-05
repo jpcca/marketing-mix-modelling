@@ -10,7 +10,10 @@ import pytest
 from hill_mmm.data import DGPConfig, compute_prior_config, generate_data
 from hill_mmm.inference import run_inference
 from hill_mmm.metrics import compute_effective_k, compute_parameter_recovery
-from hill_mmm.models import model_hill_mixture_sparse, model_single_hill
+from hill_mmm.models import model_hill_mixture_hierarchical_reparam, model_single_hill
+
+# Alias for tests that used old model names
+model_hill_mixture_sparse = model_hill_mixture_hierarchical_reparam
 
 # Use fewer samples for testing
 TEST_WARMUP = 200

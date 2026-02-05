@@ -28,10 +28,13 @@ from hill_mmm import (
     compute_prior_config,
     generate_data,
     hill,
-    model_hill_mixture,
-    model_hill_mixture_sparse,
+    model_hill_mixture_hierarchical_reparam,
     model_single_hill,
 )
+
+# Aliases for tests that used old model names
+model_hill_mixture = model_hill_mixture_hierarchical_reparam
+model_hill_mixture_sparse = model_hill_mixture_hierarchical_reparam
 from hill_mmm.inference import run_inference
 
 # =============================================================================

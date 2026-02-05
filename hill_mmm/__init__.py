@@ -19,7 +19,7 @@ from .benchmark import (
     summarize_benchmark,
 )
 from .data import DGP_CONFIGS, DGPConfig, compute_prior_config, generate_data
-from .models import model_hill_mixture, model_hill_mixture_sparse, model_single_hill
+from .models import model_hill_mixture_hierarchical_reparam, model_single_hill
 from .transforms import adstock_geometric, hill, hill_matrix
 
 __version__ = "0.1.0"
@@ -37,8 +37,7 @@ __all__ = [
     "compute_prior_config",
     # Models
     "model_single_hill",
-    "model_hill_mixture",
-    "model_hill_mixture_sparse",
+    "model_hill_mixture_hierarchical_reparam",
     # Transforms
     "adstock_geometric",
     "hill",

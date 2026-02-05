@@ -129,11 +129,15 @@ def _model_hill_mixture_hierarchical_reparam_inner(x, y=None, K=3, prior_config=
     # ========== HIERARCHICAL PRIORS ==========
     # Hyperpriors for amplitude A (shared across components)
     mu_log_A = numpyro.sample("mu_log_A", dist.Normal(prior_config["A_loc"], 0.5))
-    sigma_log_A = numpyro.sample("sigma_log_A", dist.HalfNormal(0.5))
+    sigma_log_A = numpyro.sample(
+        "sigma_log_A", dist.LogNormal(-1.0, 0.5)
+    )  # median ≈ 0.37, rarely < 0.1
 
     # Hyperpriors for Hill exponent n (shared across components)
     mu_log_n = numpyro.sample("mu_log_n", dist.Normal(jnp.log(1.5), 0.3))
-    sigma_log_n = numpyro.sample("sigma_log_n", dist.HalfNormal(0.3))
+    sigma_log_n = numpyro.sample(
+        "sigma_log_n", dist.LogNormal(-1.5, 0.5)
+    )  # median ≈ 0.22, tighter for Hill exponent
 
     # ========== NON-CENTERED COMPONENT PARAMETERS ==========
     # A: amplitude per component (hierarchical, non-centered)
