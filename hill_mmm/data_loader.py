@@ -268,62 +268,80 @@ def load_timeseries(
     return LoadedData(x=x, y=y, dates=np.asarray(dates), meta=meta)
 
 
-def select_representative_timeseries(
-    csv_path: str | Path,
-    n: int,
-    seed: int = 42,
-    min_length: int = 200,
-    min_channels: int = 2,
-) -> list[str]:
-    """Select diverse representative time series for benchmarking.
+def load_real_data(csv_path: str | Path) -> pd.DataFrame:
+    """Load real data in experiment-ready format.
 
-    Stratifies by organisation_vertical to ensure diversity.
+    Returns a DataFrame with standardized columns for paper experiments:
+    - organization_id: Organization identifier
+    - spend: Aggregated daily ad spend
+    - revenue: Target metric (all_purchases)
+    - date: Date of observation
 
     Args:
-        csv_path: Path to dataset
-        n: Number of time series to select
-        seed: Random seed for reproducibility
-        min_length: Minimum series length
-        min_channels: Minimum active channels
+        csv_path: Path to conjura_mmm_data.csv
 
     Returns:
-        List of organisation_ids
+        DataFrame with columns [organization_id, date, spend, revenue]
     """
-    ts_info = list_timeseries(csv_path, min_length=min_length)
+    df = pd.read_csv(csv_path, parse_dates=["date_day"])
 
-    # Filter by minimum channels
-    ts_info = ts_info[ts_info["n_active_channels"] >= min_channels]
+    # Use "All Territories" for aggregated view
+    df = df[df["territory_name"] == "All Territories"].copy()
 
-    if len(ts_info) == 0:
-        raise ValueError("No time series meet the criteria")
+    # Aggregate spend across all channels
+    spend_cols = [c for c in SPEND_COLUMNS if c in df.columns]
+    df["spend"] = df[spend_cols].fillna(0).sum(axis=1)  # type: ignore[union-attr]
 
-    if len(ts_info) <= n:
-        return ts_info["organisation_id"].tolist()
+    # Use all_purchases as target
+    df["revenue"] = df["all_purchases"].fillna(0)  # type: ignore[union-attr]
 
-    # Stratified sampling by vertical
-    rng = np.random.default_rng(seed)
+    # Rename and select columns
+    result = df[["organisation_id", "date_day", "spend", "revenue"]].copy()
+    result = result.rename(  # type: ignore[union-attr]
+        columns={
+            "organisation_id": "organization_id",
+            "date_day": "date",
+        }
+    )
 
-    selected: list[str] = []
-    verticals = ts_info["organisation_vertical"].unique()  # type: ignore[union-attr]
+    # Sort by org and date
+    result = result.sort_values(["organization_id", "date"]).reset_index(drop=True)
 
-    # Calculate per-vertical quota
-    per_vertical = max(1, n // len(verticals))
+    return result
 
-    for vertical in verticals:
-        vertical_df = ts_info[ts_info["organisation_vertical"] == vertical]
-        sample_n = min(per_vertical, len(vertical_df))
-        indices = rng.choice(len(vertical_df), size=sample_n, replace=False)
-        selected.extend(vertical_df.iloc[indices]["organisation_id"].tolist())  # type: ignore[union-attr]
 
-        if len(selected) >= n:
-            break
+def select_representative_timeseries(
+    df: pd.DataFrame,
+    n_timeseries: int = 5,
+    selection_criteria: str = "most_data",
+    min_length: int = 200,
+) -> pd.DataFrame:
+    """Select representative time series from loaded data.
 
-    # If we need more, sample from remaining
-    if len(selected) < n:
-        remaining = ts_info[~ts_info["organisation_id"].isin(selected)]  # type: ignore[union-attr]
-        if len(remaining) > 0:
-            extra_n = min(n - len(selected), len(remaining))
-            indices = rng.choice(len(remaining), size=extra_n, replace=False)
-            selected.extend(remaining.iloc[indices]["organisation_id"].tolist())  # type: ignore[union-attr]
+    Args:
+        df: DataFrame from load_real_data()
+        n_timeseries: Number of organizations to select
+        selection_criteria: "most_data" or "stratified"
+        min_length: Minimum observations required
 
-    return selected[:n]
+    Returns:
+        DataFrame filtered to selected organizations
+    """
+    # Count observations per organization
+    org_counts = df.groupby("organization_id").size().reset_index(name="n_obs")  # type: ignore[call-overload]
+    org_counts = org_counts[org_counts["n_obs"] >= min_length]
+
+    if len(org_counts) == 0:
+        raise ValueError(f"No organizations with >= {min_length} observations")
+
+    if selection_criteria == "most_data":
+        # Select top N by observation count
+        selected_orgs = org_counts.nlargest(n_timeseries, "n_obs")["organization_id"].tolist()  # type: ignore[call-overload]
+    else:
+        # Random selection
+        selected_orgs = org_counts.sample(min(n_timeseries, len(org_counts)))[
+            "organization_id"
+        ].tolist()
+
+    result_df: pd.DataFrame = df[df["organization_id"].isin(selected_orgs)].copy()  # type: ignore[assignment]
+    return result_df
