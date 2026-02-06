@@ -99,33 +99,147 @@ Data:
 
 ### 2.2 Real Data Validation (NEW)
 
-**Objective**: Demonstrate practical applicability on real marketing data.
+**Objective**: Demonstrate practical applicability on real marketing data across multiple organizations.
 
-#### Data Specification
+#### Experiment Configuration
 
 ```yaml
-Organisation: ab0b8d655e7140272cab371a515e009a
-Vertical: Food & Drink
-T: 1180 observations
-Channels: 8 (Google + Meta)
-Date range: 2020-08-29 to 2023-11-21
+# Organization Selection
+organizations:
+  count: 5
+  selection_criteria: "Top 5 by data quantity (T)"
+  
+# Models to Compare
+models:
+  - single_hill
+  - mixture_k2
+  - mixture_k3
+
+# Replication
+seeds: [0, 1, 2]  # 3 seeds per configuration
+
+# Total Configurations: 5 orgs × 3 models × 3 seeds = 45
+
+# Train/Test Split
+split:
+  train_ratio: 0.80
+  test_ratio: 0.20
+  method: "time_series_order"  # Later observations for test
+
+# MCMC Settings (Real Data)
+mcmc:
+  warmup: 2000
+  samples: 2000
+  chains: 4
+  # Note: No in-MCMC ordering constraints
+  # Post-hoc relabeling applied after sampling
+
+# Ordering Strategy
+ordering:
+  during_mcmc: false  # Unconstrained sampling
+  post_hoc: true      # Sort by k values after sampling
 ```
 
-#### Experiment Design
+#### Metrics to Record
 
-| Experiment | Models | MCMC Config | Purpose |
-|------------|--------|-------------|---------|
-| Baseline | Single Hill, K=2, K=3 | Standard (1k/2k/4) | Primary comparison |
-| Extended | K=3 | Extended (2k/4k/6) | Convergence rescue |
-| Cross-validation | K=2 | Standard | Holdout validation |
+**Convergence Diagnostics**:
+| Metric | Description |
+|--------|-------------|
+| R-hat (standard) | Gelman-Rubin statistic (reference only) |
+| R-hat (rank-normalized) | More robust variant |
+| R-hat (relabeled) | After post-hoc ordering (primary) |
+| ESS bulk | Effective sample size for posterior bulk |
+| ESS tail | Effective sample size for posterior tails |
+| Divergences | Number of divergent transitions |
 
-#### Expected Results
+**Predictive Accuracy**:
+| Metric | Description |
+|--------|-------------|
+| ELPD-LOO | Expected log pointwise predictive density |
+| Pareto-k (bad) | Count of observations with k > 0.7 |
+| Pareto-k (very bad) | Count of observations with k > 1.0 |
+| Test RMSE | Root mean squared error on holdout data |
 
-| Model | ELPD-LOO | Converged | Note |
-|-------|----------|-----------|------|
-| Single Hill | ~-5126 | Yes | Baseline |
-| **Mixture K=2** | ~-4981 | **Yes** | Recommended |
-| Mixture K=3 | ~-4954 | No | Not usable |
+**Computation**:
+| Metric | Description |
+|--------|-------------|
+| Time (seconds) | Total inference time |
+
+**Parameter Posteriors** (for each parameter: α, σ, and per-component A, k, n, π):
+| Metric | Description |
+|--------|-------------|
+| Mean | Posterior mean |
+| Std | Posterior standard deviation |
+| 2.5%, 97.5% | 95% credible interval |
+
+#### Output Structure
+
+```
+results/paper_experiments/real_data/
+├── config.yaml                          # Experiment configuration
+├── summary.csv                          # All results (45 rows)
+├── org_{id}/
+│   ├── model_{name}_seed_{n}.json       # Full results per run
+│   └── ...
+└── figures/
+    ├── convergence_heatmap.png
+    └── elpd_comparison.png
+```
+
+#### JSON Schema (per run)
+
+```json
+{
+  "meta": {
+    "org_id": "...",
+    "model": "mixture_k2",
+    "seed": 0,
+    "timestamp": "20260206_..."
+  },
+  "data": {
+    "T": 1180,
+    "T_train": 944,
+    "T_test": 236,
+    "n_channels": 8
+  },
+  "mcmc": {
+    "warmup": 2000,
+    "samples": 2000,
+    "chains": 4,
+    "time_seconds": 850.5
+  },
+  "convergence": {
+    "rhat_standard": {"max": 1.85, "params": {...}},
+    "rhat_relabeled": {"max": 1.002, "params": {...}},
+    "ess_bulk": {"min": 450, "params": {...}},
+    "ess_tail": {"min": 380, "params": {...}},
+    "divergences": 0
+  },
+  "predictive": {
+    "elpd_loo": -4981.5,
+    "elpd_loo_se": 42.1,
+    "pareto_k_bad": 3,
+    "pareto_k_very_bad": 0,
+    "test_rmse": 15.2
+  },
+  "params": {
+    "alpha": {"mean": 0.58, "std": 0.03, "q025": 0.52, "q975": 0.64},
+    "sigma": {...},
+    "A": [{...}, {...}],
+    "k": [{...}, {...}],
+    "n": [{...}, {...}],
+    "pi": [{...}, {...}]
+  }
+}
+```
+
+#### Expected Results Summary
+
+| Model | Expected Convergence | Expected ΔELPD vs Single |
+|-------|---------------------|-------------------------|
+| Single Hill | Yes (all orgs) | Baseline |
+| Mixture K=2 | Yes (most orgs) | +100 to +200 |
+| Mixture K=3 | Partial | +150 to +250 (if converged) |
 
 ### 2.3 Convergence Diagnostic Comparison (NEW)
 
