@@ -29,13 +29,15 @@ from hill_mmm import (
     generate_data,
     hill,
     model_hill_mixture_hierarchical_reparam,
+    model_hill_mixture_k2,
+    model_hill_mixture_unconstrained,
     model_single_hill,
 )
+from hill_mmm.inference import run_inference
 
 # Aliases for tests that used old model names
 model_hill_mixture = model_hill_mixture_hierarchical_reparam
-model_hill_mixture_sparse = model_hill_mixture_hierarchical_reparam
-from hill_mmm.inference import run_inference
+model_hill_mixture_sparse = model_hill_mixture_unconstrained
 
 # =============================================================================
 # Configuration
@@ -55,9 +57,10 @@ DGP_LABELS = {
     "mixture_k3": "Mixture (K=3)",
     "mixture_k5": "Mixture (K=5)",
 }
-MODEL_ORDER = ["single_hill", "mixture_k3", "sparse_k5"]
+MODEL_ORDER = ["single_hill", "mixture_k2", "mixture_k3", "sparse_k5"]
 MODEL_LABELS = {
     "single_hill": "Single Hill",
+    "mixture_k2": "Mixture (K=2)",
     "mixture_k3": "Mixture (K=3)",
     "sparse_k5": "Sparse (K=5)",
 }
@@ -65,6 +68,7 @@ MODEL_LABELS = {
 # Color schemes for consistent styling
 COLORS = {
     "single_hill": "#1f77b4",
+    "mixture_k2": "#9467bd",  # Purple for K=2
     "mixture_k3": "#ff7f0e",
     "sparse_k5": "#2ca02c",
 }

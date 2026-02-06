@@ -13,6 +13,7 @@ Usage:
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpyro
 import pandas as pd
@@ -28,8 +29,9 @@ from .inference import (
 )
 from .metrics import compute_delta_loo, compute_effective_k, compute_parameter_recovery
 from .models import (
-    model_hill_mixture_k2,
     model_hill_mixture_hierarchical_reparam,
+    model_hill_mixture_k2,
+    model_hill_mixture_unconstrained,
     model_single_hill,
 )
 
@@ -44,10 +46,12 @@ class ModelSpec:
 
 
 # Default model configurations
+# Note: sparse_k5 uses unconstrained model for post-hoc relabeling
 MODEL_SPECS = [
     ModelSpec("single_hill", model_single_hill, {}),
     ModelSpec("mixture_k2", model_hill_mixture_k2, {}),
-    ModelSpec("hierarchical_reparam_k3", model_hill_mixture_hierarchical_reparam, {"K": 3}),
+    ModelSpec("mixture_k3", model_hill_mixture_hierarchical_reparam, {"K": 3}),
+    ModelSpec("sparse_k5", model_hill_mixture_unconstrained, {"K": 5}),
 ]
 
 
@@ -320,3 +324,60 @@ def print_benchmark_table(df: pd.DataFrame) -> None:
                 f"{model:<15} {loo:>10.1f} {test_rmse:>12.3f} "
                 f"{cov:>10.1%} {eff_k:>8.2f} {delta_str:>10}"
             )
+
+
+def export_results_csv(df: pd.DataFrame, path: str | Path, include_summary: bool = True) -> None:
+    """Export benchmark results to CSV.
+
+    Args:
+        df: Raw results DataFrame from run_benchmark_suite
+        path: Output file path (without extension)
+        include_summary: Also export summary statistics
+    """
+    from pathlib import Path as _Path
+
+    output_path = _Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Export raw results
+    raw_path = output_path.with_suffix(".csv")
+    df.to_csv(raw_path, index=False)
+    print(f"Raw results exported to {raw_path}")
+
+    # Export summary if requested
+    if include_summary:
+        summary = summarize_benchmark(df)
+        summary_path = output_path.with_name(f"{output_path.stem}_summary.csv")
+        summary.to_csv(summary_path)
+        print(f"Summary exported to {summary_path}")
+
+
+def export_results_json(df: pd.DataFrame, path: str | Path, include_summary: bool = True) -> None:
+    """Export benchmark results to JSON.
+
+    Args:
+        df: Raw results DataFrame from run_benchmark_suite
+        path: Output file path (without extension)
+        include_summary: Also export summary statistics
+    """
+    from pathlib import Path as _Path
+
+    output_path = _Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Export raw results
+    raw_path = output_path.with_suffix(".json")
+    df.to_json(raw_path, orient="records", indent=2)
+    print(f"Raw results exported to {raw_path}")
+
+    # Export summary if requested
+    if include_summary:
+        summary = summarize_benchmark(df)
+        # Convert multi-index summary to JSON-friendly format
+        summary_reset = summary.reset_index()
+        summary_reset.columns = [
+            f"{col[0]}_{col[1]}" if isinstance(col, tuple) else col for col in summary_reset.columns
+        ]
+        summary_path = output_path.with_name(f"{output_path.stem}_summary.json")
+        summary_reset.to_json(summary_path, orient="records", indent=2)
+        print(f"Summary exported to {summary_path}")

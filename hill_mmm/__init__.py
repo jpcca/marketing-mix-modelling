@@ -13,13 +13,20 @@ Key modules:
 """
 
 from .benchmark import (
+    export_results_csv,
+    export_results_json,
     print_benchmark_table,
     run_benchmark_suite,
     run_single_experiment,
     summarize_benchmark,
 )
 from .data import DGP_CONFIGS, DGPConfig, compute_prior_config, generate_data
-from .models import model_hill_mixture_hierarchical_reparam, model_single_hill
+from .models import (
+    model_hill_mixture_hierarchical_reparam,
+    model_hill_mixture_k2,
+    model_hill_mixture_unconstrained,
+    model_single_hill,
+)
 from .transforms import adstock_geometric, hill, hill_matrix
 
 __version__ = "0.1.0"
@@ -30,6 +37,8 @@ __all__ = [
     "run_single_experiment",
     "summarize_benchmark",
     "print_benchmark_table",
+    "export_results_csv",
+    "export_results_json",
     # Data
     "DGPConfig",
     "DGP_CONFIGS",
@@ -37,7 +46,9 @@ __all__ = [
     "compute_prior_config",
     # Models
     "model_single_hill",
+    "model_hill_mixture_k2",
     "model_hill_mixture_hierarchical_reparam",
+    "model_hill_mixture_unconstrained",
     # Transforms
     "adstock_geometric",
     "hill",
