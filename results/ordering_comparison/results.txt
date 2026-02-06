@@ -1,0 +1,48 @@
+================================================================================
+ORDERING CONSTRAINT COMPARISON EXPERIMENT
+================================================================================
+
+CONFIGURATION:
+  Timestamp:   20260205_232823
+  Data:        synthetic_mixture_k3_T200
+  T:           200
+  K:           3
+  Warmup:      1000
+  Samples:     2000
+  Chains:      4
+  Seed:        42
+
+================================================================================
+RESULTS COMPARISON
+================================================================================
+
+Metric                    |     Constrained |   Unconstrained |       Winner
+--------------------------------------------------------------------------------
+Max R-hat                 |          1.8200 |          2.1200 |  Constrained
+Min ESS (bulk)            |               6 |               5 |  Constrained
+RMSE                      |            7.45 |            7.44 | Unconstrained
+90% Coverage              |         92.50% |         92.00% | Unconstrained
+Time (sec)                |           108.4 |            94.5 | Unconstrained
+Converged (R-hat<1.05)    |              No |              No |            -
+--------------------------------------------------------------------------------
+
+K VALUES ANALYSIS:
+  Constrained k means:   [7.792347431182861, 11.755034446716309, 18.996431350708008]
+  Constrained k std:     [3.0090627670288086, 5.8920817375183105, 12.440963745117188]
+  Relabeled k means:     [6.828291416168213, 10.14835262298584, 15.832426071166992]
+  Relabeled k std:       [2.4686808586120605, 3.692805290222168, 6.802101135253906]
+  Raw k means (before relabeling): [12.064929962158203, 11.300297737121582, 9.443855285644531]
+
+  Constrained k properly ordered: True
+  Relabeled k properly ordered:   True
+
+================================================================================
+CONCLUSION
+================================================================================
+  Constrained wins: 2/5
+  Unconstrained wins: 3/5
+
+RECOMMENDATION: Post-hoc relabeling (unconstrained) performs better.
+  Consider switching to model_hill_mixture_unconstrained + relabel_samples_by_k()
+
+================================================================================

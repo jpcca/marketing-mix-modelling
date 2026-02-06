@@ -117,7 +117,7 @@ def run_diagnostics_comparison(
         "comprehensive_diagnostics": {
             "label_invariant": comp_diag_constrained["label_invariant"],
             "relabeled": comp_diag_constrained["relabeled"],
-            "switching": comp_diag_constrained["switching"],
+            "switching": comp_diag_constrained["label_switching"],
             "status": comp_diag_constrained["status"],
             "recommendation": comp_diag_constrained["recommendation"],
         },
@@ -197,7 +197,7 @@ def run_diagnostics_comparison(
         "comprehensive_diagnostics": {
             "label_invariant": comp_diag_unconstrained["label_invariant"],
             "relabeled": comp_diag_unconstrained["relabeled"],
-            "switching": comp_diag_unconstrained["switching"],
+            "switching": comp_diag_unconstrained["label_switching"],
             "status": comp_diag_unconstrained["status"],
             "recommendation": comp_diag_unconstrained["recommendation"],
         },

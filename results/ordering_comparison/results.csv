@@ -1,0 +1,7 @@
+metric,constrained,unconstrained,winner
+max_rhat,1.8200,2.1200,constrained
+min_ess,6,5,constrained
+rmse,7.4482,7.4363,unconstrained
+coverage_90,0.9250,0.9200,unconstrained
+time_sec,108.4,94.5,unconstrained
+converged,False,False,-

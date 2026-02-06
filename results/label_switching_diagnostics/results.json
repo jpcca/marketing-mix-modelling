@@ -1,0 +1,233 @@
+{
+  "data": {
+    "T": 200,
+    "dgp": "mixture_k3",
+    "seed": 42
+  },
+  "constrained": {
+    "time_sec": 21.83486795425415,
+    "standard_diagnostics": {
+      "max_rhat": 1.82,
+      "min_ess_bulk": 3.0,
+      "converged": false
+    },
+    "comprehensive_diagnostics": {
+      "label_invariant": {
+        "rhat_log_lik": 1.0003758484909815,
+        "rhat_scalars": {
+          "intercept": 1.0116213649718873,
+          "slope": 1.0083864949513879,
+          "sigma": 1.0044837404898548,
+          "alpha": 1.0007397539396006
+        },
+        "max_rhat": 1.0116213649718873,
+        "converged": false,
+        "method": "rank",
+        "threshold": 1.01
+      },
+      "relabeled": {
+        "component_rhats": {
+          "A": {
+            "per_component": [
+              1.037914128466351,
+              1.433699950016782,
+              1.6445302265019408
+            ],
+            "max": 1.6445302265019408
+          },
+          "k": {
+            "per_component": [
+              1.0564318091328375,
+              1.0693117944406207,
+              1.0296972769531698
+            ],
+            "max": 1.0693117944406207
+          },
+          "n": {
+            "per_component": [
+              1.0171534086351914,
+              1.0673728747970972,
+              1.1940008941991151
+            ],
+            "max": 1.1940008941991151
+          },
+          "pis": {
+            "per_component": [
+              1.014788614305995,
+              1.296365626043098,
+              1.1961852858421844
+            ],
+            "max": 1.296365626043098
+          }
+        },
+        "max_rhat": 1.6445302265019408,
+        "converged": false,
+        "method": "rank",
+        "threshold": 1.01
+      },
+      "switching": {
+        "switching_rate": 0.0,
+        "n_unique_orderings": 1,
+        "mode_ordering": [
+          "0",
+          "1",
+          "2"
+        ],
+        "mode_count": 800,
+        "n_samples": 800,
+        "top_orderings": [
+          [
+            [
+              "0",
+              "1",
+              "2"
+            ],
+            800
+          ]
+        ]
+      },
+      "status": "not_converged",
+      "recommendation": "Log-likelihood R-hat is high, indicating true non-convergence. Consider: (1) longer warmup/sampling, (2) stronger priors, (3) reparameterization, or (4) simpler model."
+    },
+    "predictive": {
+      "rmse": 7.427862060729475,
+      "coverage_90": 0.925
+    }
+  },
+  "unconstrained": {
+    "time_sec": 11.768643856048584,
+    "standard_diagnostics": {
+      "max_rhat": 1.7,
+      "min_ess_bulk": 3.0,
+      "converged": false
+    },
+    "label_switching": {
+      "switching_rate": 0.7324999999999999,
+      "n_unique_orderings": 6,
+      "k_raw_mean": [
+        11.506696877081644,
+        10.52520181203133,
+        11.271439584865371
+      ],
+      "k_relabeled_mean": [
+        7.826464783871696,
+        10.5707301164646,
+        14.90614337364205
+      ]
+    },
+    "comprehensive_diagnostics": {
+      "label_invariant": {
+        "rhat_log_lik": 1.0130678607169485,
+        "rhat_scalars": {
+          "intercept": 1.0024676007839033,
+          "slope": 1.0057832126098658,
+          "sigma": 1.0006709516676293,
+          "alpha": 1.0140361481987124
+        },
+        "max_rhat": 1.0140361481987124,
+        "converged": false,
+        "method": "rank",
+        "threshold": 1.01
+      },
+      "relabeled": {
+        "component_rhats": {
+          "A": {
+            "per_component": [
+              1.0012174670775775,
+              1.0008288130404226,
+              1.0014354778162837
+            ],
+            "max": 1.0014354778162837
+          },
+          "k": {
+            "per_component": [
+              1.0101319117284706,
+              1.0057956405988437,
+              1.0039474478746075
+            ],
+            "max": 1.0101319117284706
+          },
+          "n": {
+            "per_component": [
+              1.0028982641825315,
+              1.0000823787767028,
+              1.003946938101169
+            ],
+            "max": 1.003946938101169
+          },
+          "pis": {
+            "per_component": [
+              0.999192904953312,
+              1.001061019327547,
+              1.0012742173633817
+            ],
+            "max": 1.0012742173633817
+          }
+        },
+        "max_rhat": 1.0101319117284706,
+        "converged": false,
+        "method": "rank",
+        "threshold": 1.01
+      },
+      "switching": {
+        "switching_rate": 0.7324999999999999,
+        "n_unique_orderings": 6,
+        "mode_ordering": [
+          "1",
+          "2",
+          "0"
+        ],
+        "mode_count": 214,
+        "n_samples": 800,
+        "top_orderings": [
+          [
+            [
+              "1",
+              "2",
+              "0"
+            ],
+            214
+          ],
+          [
+            [
+              "1",
+              "0",
+              "2"
+            ],
+            212
+          ],
+          [
+            [
+              "0",
+              "1",
+              "2"
+            ],
+            109
+          ],
+          [
+            [
+              "2",
+              "1",
+              "0"
+            ],
+            105
+          ],
+          [
+            [
+              "2",
+              "0",
+              "1"
+            ],
+            83
+          ]
+        ]
+      },
+      "status": "not_converged",
+      "recommendation": "Log-likelihood R-hat is high, indicating true non-convergence. Consider: (1) longer warmup/sampling, (2) stronger priors, (3) reparameterization, or (4) simpler model."
+    },
+    "predictive": {
+      "rmse": 7.428720146073471,
+      "coverage_90": 0.93
+    }
+  }
+}

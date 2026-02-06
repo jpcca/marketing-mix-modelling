@@ -230,3 +230,148 @@ def model_hill_mixture_hierarchical_reparam(x, y=None, K=3, prior_config=None):
 
     with reparam(config=reparam_config):
         _model_hill_mixture_hierarchical_reparam_inner(x, y, K, prior_config)
+
+
+# =============================================================================
+# UNCONSTRAINED MODEL (for post-hoc relabeling experiment)
+# =============================================================================
+
+
+def _model_hill_mixture_unconstrained_inner(x, y=None, K=3, prior_config=None):
+    """Inner model for unconstrained Hill Mixture (no ordering constraint).
+
+    This model samples k values independently without ordering constraints.
+    Label switching is handled post-hoc by sorting samples by k values.
+
+    Key differences from ordered model:
+    1. k values are sampled i.i.d. from hierarchical prior
+    2. No cumsum transformation for ordering
+    3. Better HMC geometry (no abs() or constrained transformations)
+    """
+    T = x.shape[0]
+    t = jnp.arange(T, dtype=jnp.float32)
+    t_std = (t - jnp.mean(t)) / (jnp.std(t) + 1e-6)
+
+    if prior_config is None:
+        prior_config = {
+            "intercept_loc": 50.0,
+            "intercept_scale": 20.0,
+            "slope_scale": 5.0,
+            "A_loc": np.log(30.0),
+            "A_scale": 0.8,
+            "k_scale": 0.7,
+            "n_scale": 0.4,
+            "sigma_scale": 10.0,
+        }
+
+    # Adstock parameter
+    alpha = numpyro.sample("alpha", dist.Beta(2, 2))
+    s = adstock_geometric(x, alpha)
+    numpyro.deterministic("s", s)
+
+    # Baseline
+    intercept = numpyro.sample(
+        "intercept",
+        dist.Normal(prior_config["intercept_loc"], prior_config["intercept_scale"]),
+    )
+    slope = numpyro.sample("slope", dist.Normal(0.0, prior_config["slope_scale"]))
+    baseline = intercept + slope * t_std
+
+    # Mixture weights - stick-breaking
+    stick_proportions = numpyro.sample("stick_proportions", dist.Beta(1.0, 1.0).expand([K - 1]))
+    remaining = jnp.ones(())
+    pis_list = []
+    for i in range(K - 1):
+        pi_i = stick_proportions[i] * remaining
+        pis_list.append(pi_i)
+        remaining = remaining * (1.0 - stick_proportions[i])
+    pis_list.append(remaining)
+    pis = jnp.stack(pis_list)
+    numpyro.deterministic("pis", pis)
+
+    # ========== HIERARCHICAL PRIORS ==========
+    # Hyperpriors for amplitude A
+    mu_log_A = numpyro.sample("mu_log_A", dist.Normal(prior_config["A_loc"], 0.5))
+    sigma_log_A = numpyro.sample("sigma_log_A", dist.LogNormal(-1.0, 0.5))
+
+    # Hyperpriors for Hill exponent n
+    mu_log_n = numpyro.sample("mu_log_n", dist.Normal(jnp.log(1.5), 0.3))
+    sigma_log_n = numpyro.sample("sigma_log_n", dist.LogNormal(-1.5, 0.5))
+
+    # Hyperpriors for half-saturation k (NEW: hierarchical for k too)
+    s_median = jnp.median(s)
+    mu_log_k = numpyro.sample("mu_log_k", dist.Normal(jnp.log(s_median + 1e-6), 0.5))
+    sigma_log_k = numpyro.sample("sigma_log_k", dist.LogNormal(-1.0, 0.5))
+
+    # ========== NON-CENTERED COMPONENT PARAMETERS ==========
+    # A: amplitude per component (hierarchical, non-centered)
+    log_A_raw = numpyro.sample("log_A_raw", dist.Normal(0, 1).expand([K]))
+    log_A = mu_log_A + sigma_log_A * log_A_raw
+    A = jnp.exp(log_A)
+    numpyro.deterministic("log_A", log_A)
+    numpyro.deterministic("A", A)
+
+    # n: Hill exponent per component (hierarchical, non-centered)
+    log_n_raw = numpyro.sample("log_n_raw", dist.Normal(0, 1).expand([K]))
+    log_n = mu_log_n + sigma_log_n * log_n_raw
+    n = jnp.exp(log_n)
+    numpyro.deterministic("log_n", log_n)
+    numpyro.deterministic("n", n)
+
+    # k: half-saturation (hierarchical, non-centered, NO ORDERING)
+    log_k_raw = numpyro.sample("log_k_raw", dist.Normal(0, 1).expand([K]))
+    log_k = mu_log_k + sigma_log_k * log_k_raw
+    k = jnp.exp(log_k)
+    numpyro.deterministic("log_k", log_k)
+    numpyro.deterministic("k", k)
+
+    # Observation noise
+    sigma = numpyro.sample("sigma", dist.HalfNormal(prior_config["sigma_scale"]))
+
+    # Hill transformation for each component
+    hill_mat = hill_matrix(s, A, k, n)  # (T, K)
+    mu_components = baseline[:, None] + hill_mat  # (T, K)
+
+    # GMM likelihood
+    with numpyro.plate("time", T):
+        numpyro.sample(
+            "y",
+            dist.MixtureSameFamily(dist.Categorical(pis), dist.Normal(mu_components, sigma)),
+            obs=y,
+        )
+
+    # Deterministic quantities
+    mu_expected = baseline + jnp.sum(pis * hill_mat, axis=1)
+    numpyro.deterministic("mu_expected", mu_expected)
+    numpyro.deterministic("hill_components", hill_mat)
+
+
+def model_hill_mixture_unconstrained(x, y=None, K=3, prior_config=None):
+    """Unconstrained Hill Mixture Model (for post-hoc relabeling).
+
+    This model does NOT enforce ordering on k during MCMC.
+    Label switching should be handled post-hoc by sorting samples.
+
+    Advantages:
+    - Cleaner HMC geometry (no non-smooth transformations)
+    - Preserves detailed balance trivially
+    - Theoretically cleaner approach to identifiability
+
+    Use with relabel_samples_by_k() after inference.
+
+    Args:
+        x: (T,) raw spend
+        y: (T,) observed response
+        K: Number of mixture components
+        prior_config: Dict with prior hyperparameters
+    """
+    reparam_config = {
+        "intercept": LocScaleReparam(centered=0),
+        "slope": LocScaleReparam(centered=0),
+        "mu_log_A": LocScaleReparam(centered=0),
+        "mu_log_n": LocScaleReparam(centered=0),
+        "mu_log_k": LocScaleReparam(centered=0),
+    }
+
+    with reparam(config=reparam_config):
+        _model_hill_mixture_unconstrained_inner(x, y, K, prior_config)

@@ -525,19 +525,18 @@ def _compute_rhat(values: np.ndarray, method: str = "rank") -> float:
             rhat = az.rhat(da, method="split")
 
         # Extract float value from ArviZ result
-        # az.rhat can return: float, DataArray, or Dataset depending on input
-        if isinstance(rhat, (int, float)):
+        # az.rhat returns an xarray.Dataset with a single data variable
+        if isinstance(rhat, xr.Dataset):
+            # Get the first (and only) data variable from the Dataset
+            var_name = list(rhat.data_vars)[0]
+            result = float(rhat[var_name].values.item())
+        elif isinstance(rhat, xr.DataArray):
+            result = float(rhat.values.item())
+        elif isinstance(rhat, (int, float)):
             result = float(rhat)
         elif hasattr(rhat, "item"):
             # numpy scalar or 0-d array
             result = float(rhat.item())
-        elif hasattr(rhat, "values"):
-            # xarray DataArray
-            val = rhat.values
-            if hasattr(val, "item"):
-                result = float(val.item())
-            else:
-                result = float(val)
         else:
             # Fallback
             result = float(rhat)
