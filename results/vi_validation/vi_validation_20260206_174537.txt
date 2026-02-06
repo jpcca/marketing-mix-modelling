@@ -1,0 +1,43 @@
+VI Validation Results
+Timestamp: 20260206_174537
+Organisation: ab0b8d655e7140272cab371a515e009a
+Data: T=1180
+
+======================================================================
+COMPARISON SUMMARY: VI vs MCMC
+======================================================================
+
+### VI Results (ELBO)
+--------------------------------------------------
+Model                               Final ELBO    Converged
+---------------------------------------------------------
+Single Hill (VI)                       -5208.5           No
+mixture_k2_vi                          -5031.2           No
+
+### MCMC Results (ELPD-LOO)
+--------------------------------------------------
+Single Hill (MCMC)                     -5126.1          Yes
+
+### Computation Time
+--------------------------------------------------
+Single Hill (VI):       6.5 seconds
+Mixture K=2 (VI):         8.2 seconds
+Single Hill (MCMC):    129.6 seconds
+
+VI Speedup: 20.0x faster than MCMC
+
+### Parameter Estimates
+--------------------------------------------------
+Single Hill (VI):
+  A = 345.6 ± 3.1
+  k = 28606.0 ± 561.5
+  n = 0.61 ± 0.00
+
+Single Hill (MCMC):
+  A = 298.2 ± 69.9
+  k = 23277.0 ± 7145.9
+  n = 1.54 ± 0.15
+
+Mixture K=2 (VI):
+  Component 1: A=nan, k=nan, n=nan, pi=nan
+  Component 2: A=nan, k=nan, n=nan, pi=nan

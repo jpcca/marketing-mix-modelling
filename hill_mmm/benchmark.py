@@ -28,6 +28,7 @@ from .inference import (
 )
 from .metrics import compute_delta_loo, compute_effective_k, compute_parameter_recovery
 from .models import (
+    model_hill_mixture_k2,
     model_hill_mixture_hierarchical_reparam,
     model_single_hill,
 )
@@ -45,6 +46,7 @@ class ModelSpec:
 # Default model configurations
 MODEL_SPECS = [
     ModelSpec("single_hill", model_single_hill, {}),
+    ModelSpec("mixture_k2", model_hill_mixture_k2, {}),
     ModelSpec("hierarchical_reparam_k3", model_hill_mixture_hierarchical_reparam, {"K": 3}),
 ]
 

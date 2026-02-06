@@ -1,0 +1,32 @@
+Real Data Validation Results
+Timestamp: 20260206_160724
+Organisation: ab0b8d655e7140272cab371a515e009a
+Data: T=1180
+
+======================================================================
+COMPARISON SUMMARY
+======================================================================
+
+### Model Comparison (ELPD-LOO)
+--------------------------------------------------
+Model                         ELPD-LOO         SE      p_loo
+---------------------------------------------------------
+Single Hill                    -5126.1       63.7       15.7
+mixture_k3                     -4953.5       43.9       73.1
+
+Delta (Mixture - Single): +172.6 (SE: 77.3)
+  → Mixture model has BETTER predictive performance
+
+### Convergence Diagnostics (R-hat)
+--------------------------------------------------
+Model                        Max R-hat    Converged
+-------------------------------------------------
+Single Hill                     1.0000          Yes
+Mixture (standard)              2.9700 (unreliable)
+Mixture (relabeled)             2.0769           No
+Mixture (log-lik)               1.6333
+
+### Computation Time
+--------------------------------------------------
+Single Hill: 129.8 seconds
+Mixture:     907.9 seconds

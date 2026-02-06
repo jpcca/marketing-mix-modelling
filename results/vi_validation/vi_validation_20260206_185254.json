@@ -1,0 +1,99 @@
+{
+  "timestamp": "20260206_185254",
+  "vi_config": {
+    "num_steps": 2000,
+    "learning_rate": 0.01,
+    "guide_type": "autonormal"
+  },
+  "mcmc_config": null,
+  "organisation_id": "ab0b8d655e7140272cab371a515e009a",
+  "data_meta": {
+    "organisation_id": "ab0b8d655e7140272cab371a515e009a",
+    "territory": "All Territories",
+    "organisation_vertical": "Food & Drink",
+    "currency_code": "USD",
+    "target_col": "all_purchases",
+    "spend_cols": [
+      "google_paid_search_spend",
+      "google_shopping_spend",
+      "google_pmax_spend",
+      "google_display_spend",
+      "google_video_spend",
+      "meta_facebook_spend",
+      "meta_instagram_spend",
+      "meta_other_spend"
+    ],
+    "n_channels": 8,
+    "aggregated": true,
+    "T": 1180,
+    "date_min": "2020-08-29",
+    "date_max": "2023-11-21",
+    "total_spend": 1424598.759191873,
+    "total_target": 72187.0,
+    "spend_nonzero_ratio": 1.0
+  },
+  "vi_single": {
+    "model": "single_hill_vi",
+    "method": "svi",
+    "guide_type": "autonormal",
+    "elapsed_seconds": 2.4067089557647705,
+    "elbo": {
+      "final_elbo": -44216.69140625,
+      "min_loss": 31982.53125,
+      "final_loss": 44216.69140625,
+      "converged": false,
+      "coefficient_of_variation": 0.14188894629478455,
+      "final_std": 7454.0751953125,
+      "loss_reduction": 32564274.0
+    },
+    "params": {
+      "A_mean": 136.69700622558594,
+      "A_std": 2.527630090713501,
+      "k_mean": 1380.34765625,
+      "k_std": 25.319944381713867,
+      "n_mean": 0.511585533618927,
+      "n_std": 0.008542380295693874,
+      "alpha_mean": 0.017828213050961494,
+      "sigma_mean": 2.357949733734131
+    },
+    "num_steps": 2000
+  },
+  "vi_mixture": {
+    "model": "mixture_k2_vi",
+    "method": "svi",
+    "guide_type": "autonormal",
+    "K": 2,
+    "elapsed_seconds": 3.123810052871704,
+    "elbo": {
+      "final_elbo": -5101.189453125,
+      "min_loss": 5061.76708984375,
+      "final_loss": 5101.189453125,
+      "converged": true,
+      "coefficient_of_variation": 0.003983863163739443,
+      "final_std": 20.294645309448242,
+      "loss_reduction": 84101.1328125
+    },
+    "params": {
+      "A_means": [
+        NaN,
+        NaN
+      ],
+      "k_means": [
+        NaN,
+        NaN
+      ],
+      "n_means": [
+        NaN,
+        NaN
+      ],
+      "pis_means": [
+        0.9557483586370945,
+        0.044251641362905506
+      ],
+      "alpha_mean": 0.3573097884654999,
+      "sigma_mean": 14.804420471191406
+    },
+    "num_steps": 2000
+  },
+  "mcmc_single": null
+}
