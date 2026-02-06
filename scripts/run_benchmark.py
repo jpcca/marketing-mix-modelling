@@ -1,22 +1,27 @@
 #!/usr/bin/env python
-"""Run paper experiments for Hill Mixture MMM.
+"""Run Hill Mixture MMM benchmarks (synthetic and/or real data).
 
-This script runs the full experiment suite for the paper:
-1. Synthetic data experiments: 4 DGPs × 4 models × 5 seeds
-2. Real data experiments: 5 orgs × 3 models × 3 seeds
+Unified benchmark runner for paper experiments. By default runs both
+synthetic and real data experiments. Use flags to run specific subsets.
 
 Usage:
-    # Run all experiments
-    python scripts/run_paper_experiments.py
+    # Run all experiments (synthetic + real data)
+    python scripts/run_benchmark.py
 
     # Run only synthetic experiments
-    python scripts/run_paper_experiments.py --synthetic-only
+    python scripts/run_benchmark.py --synthetic-only
 
     # Run only real data experiments
-    python scripts/run_paper_experiments.py --real-only
+    python scripts/run_benchmark.py --real-only
 
-    # Quick test mode
-    python scripts/run_paper_experiments.py --quick
+    # Quick test mode (reduced samples/seeds)
+    python scripts/run_benchmark.py --quick
+
+    # Specific DGPs or models
+    python scripts/run_benchmark.py --dgp single mixture_k2 --model single_hill mixture_k2
+
+    # Custom output directory
+    python scripts/run_benchmark.py --output results/my_experiment
 """
 
 import argparse
@@ -36,8 +41,8 @@ import pandas as pd
 
 
 @dataclass
-class ExperimentConfig:
-    """Configuration for paper experiments."""
+class BenchmarkConfig:
+    """Configuration for benchmark experiments."""
 
     # Synthetic experiments
     synthetic_dgps: list[str]
@@ -50,10 +55,8 @@ class ExperimentConfig:
     real_seeds: list[int]
 
     # MCMC settings
-    synthetic_warmup: int
-    synthetic_samples: int
-    real_warmup: int
-    real_samples: int
+    num_warmup: int
+    num_samples: int
     num_chains: int
 
     # Data settings
@@ -63,70 +66,57 @@ class ExperimentConfig:
     output_dir: str
 
 
-def get_default_config() -> ExperimentConfig:
-    """Get default experiment configuration for paper."""
-    return ExperimentConfig(
+def get_default_config() -> BenchmarkConfig:
+    """Get default full experiment configuration."""
+    return BenchmarkConfig(
         # Synthetic: 4 DGPs × 4 models × 5 seeds = 80 experiments
         synthetic_dgps=["single", "mixture_k2", "mixture_k3", "mixture_k5"],
-        synthetic_models=["single_hill", "mixture_k2", "hierarchical_reparam_k3"],
+        synthetic_models=["single_hill", "mixture_k2", "mixture_k3", "sparse_k5"],
         synthetic_seeds=[0, 1, 2, 3, 4],
         # Real: 5 orgs × 3 models × 3 seeds = 45 experiments
         real_n_orgs=5,
-        real_models=["single_hill", "mixture_k2", "hierarchical_reparam_k3"],
+        real_models=["single_hill", "mixture_k2", "mixture_k3"],
         real_seeds=[0, 1, 2],
-        # MCMC (synthetic - faster)
-        synthetic_warmup=1000,
-        synthetic_samples=2000,
-        # MCMC (real - more robust)
-        real_warmup=2000,
-        real_samples=2000,
+        # MCMC
+        num_warmup=1000,
+        num_samples=2000,
         num_chains=4,
         # Data
         train_ratio=0.75,
         # Output
-        output_dir="results/paper_experiments",
+        output_dir="results/benchmark",
     )
 
 
-def get_quick_config() -> ExperimentConfig:
+def get_quick_config() -> BenchmarkConfig:
     """Get quick test configuration."""
-    return ExperimentConfig(
+    return BenchmarkConfig(
         synthetic_dgps=["single", "mixture_k2"],
         synthetic_models=["single_hill", "mixture_k2"],
         synthetic_seeds=[0],
         real_n_orgs=1,
         real_models=["single_hill", "mixture_k2"],
         real_seeds=[0],
-        synthetic_warmup=200,
-        synthetic_samples=200,
-        real_warmup=500,
-        real_samples=500,
+        num_warmup=200,
+        num_samples=200,
         num_chains=2,
         train_ratio=0.75,
-        output_dir="results/paper_experiments_quick",
+        output_dir="results/benchmark_quick",
     )
 
 
-def run_synthetic_experiments(config: ExperimentConfig) -> pd.DataFrame:
-    """Run synthetic data experiments.
-
-    Args:
-        config: Experiment configuration
-
-    Returns:
-        DataFrame with all synthetic experiment results
-    """
+def run_synthetic_experiments(config: BenchmarkConfig) -> pd.DataFrame:
+    """Run synthetic data experiments."""
     from hill_mmm.benchmark import run_benchmark_suite
 
     print("=" * 60)
     print("SYNTHETIC DATA EXPERIMENTS")
     print("=" * 60)
+    n_exp = len(config.synthetic_dgps) * len(config.synthetic_models) * len(config.synthetic_seeds)
     print(f"DGPs: {config.synthetic_dgps}")
     print(f"Models: {config.synthetic_models}")
     print(f"Seeds: {config.synthetic_seeds}")
-    print(
-        f"Total: {len(config.synthetic_dgps) * len(config.synthetic_models) * len(config.synthetic_seeds)} experiments"
-    )
+    print(f"Total: {n_exp} experiments")
     print()
 
     start_time = time.time()
@@ -136,8 +126,8 @@ def run_synthetic_experiments(config: ExperimentConfig) -> pd.DataFrame:
         model_names=config.synthetic_models,
         seeds=config.synthetic_seeds,
         train_ratio=config.train_ratio,
-        num_warmup=config.synthetic_warmup,
-        num_samples=config.synthetic_samples,
+        num_warmup=config.num_warmup,
+        num_samples=config.num_samples,
         num_chains=config.num_chains,
         verbose=True,
     )
@@ -148,15 +138,8 @@ def run_synthetic_experiments(config: ExperimentConfig) -> pd.DataFrame:
     return results
 
 
-def run_real_data_experiments(config: ExperimentConfig) -> pd.DataFrame:
-    """Run real data experiments.
-
-    Args:
-        config: Experiment configuration
-
-    Returns:
-        DataFrame with all real data experiment results
-    """
+def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
+    """Run real data experiments."""
     from hill_mmm.benchmark import MODEL_SPECS
     from hill_mmm.data import compute_prior_config
     from hill_mmm.data_loader import load_real_data, select_representative_timeseries
@@ -172,12 +155,11 @@ def run_real_data_experiments(config: ExperimentConfig) -> pd.DataFrame:
     print("=" * 60)
     print("REAL DATA EXPERIMENTS")
     print("=" * 60)
+    n_exp = config.real_n_orgs * len(config.real_models) * len(config.real_seeds)
     print(f"Organizations: {config.real_n_orgs}")
     print(f"Models: {config.real_models}")
     print(f"Seeds: {config.real_seeds}")
-    print(
-        f"Total: {config.real_n_orgs * len(config.real_models) * len(config.real_seeds)} experiments"
-    )
+    print(f"Total: {n_exp} experiments")
     print()
 
     # Load real data
@@ -200,7 +182,7 @@ def run_real_data_experiments(config: ExperimentConfig) -> pd.DataFrame:
     model_lookup = {m.name: m for m in MODEL_SPECS}
 
     results = []
-    total = config.real_n_orgs * len(config.real_models) * len(config.real_seeds)
+    total = n_exp
     current = 0
     start_time = time.time()
 
@@ -235,8 +217,8 @@ def run_real_data_experiments(config: ExperimentConfig) -> pd.DataFrame:
                         x_train,
                         y_train,
                         seed=seed,
-                        num_warmup=config.real_warmup,
-                        num_samples=config.real_samples,
+                        num_warmup=config.num_warmup,
+                        num_samples=config.num_samples,
                         num_chains=config.num_chains,
                         prior_config=prior_config,
                         **model_spec.kwargs,
@@ -314,15 +296,11 @@ def run_real_data_experiments(config: ExperimentConfig) -> pd.DataFrame:
 def save_results(
     synthetic_results: pd.DataFrame | None,
     real_results: pd.DataFrame | None,
-    config: ExperimentConfig,
+    config: BenchmarkConfig,
 ) -> None:
-    """Save experiment results.
+    """Save experiment results to CSV and JSON."""
+    from hill_mmm.benchmark import summarize_benchmark
 
-    Args:
-        synthetic_results: Synthetic experiment results
-        real_results: Real data experiment results
-        config: Experiment configuration
-    """
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -336,20 +314,25 @@ def save_results(
 
     # Save synthetic results
     if synthetic_results is not None and len(synthetic_results) > 0:
-        csv_path = output_dir / f"synthetic_results_{timestamp}.csv"
+        csv_path = output_dir / f"synthetic_{timestamp}.csv"
         synthetic_results.to_csv(csv_path, index=False)
         print(f"Synthetic results saved to {csv_path}")
 
-        json_path = output_dir / f"synthetic_results_{timestamp}.json"
+        json_path = output_dir / f"synthetic_{timestamp}.json"
         synthetic_results.to_json(json_path, orient="records", indent=2)
+
+        # Summary
+        summary = summarize_benchmark(synthetic_results)
+        summary_path = output_dir / f"synthetic_{timestamp}_summary.csv"
+        summary.to_csv(summary_path)
 
     # Save real results
     if real_results is not None and len(real_results) > 0:
-        csv_path = output_dir / f"real_results_{timestamp}.csv"
+        csv_path = output_dir / f"real_{timestamp}.csv"
         real_results.to_csv(csv_path, index=False)
         print(f"Real results saved to {csv_path}")
 
-        json_path = output_dir / f"real_results_{timestamp}.json"
+        json_path = output_dir / f"real_{timestamp}.json"
         real_results.to_json(json_path, orient="records", indent=2)
 
     # Print summary
@@ -374,7 +357,18 @@ def save_results(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run paper experiments for Hill Mixture MMM")
+    parser = argparse.ArgumentParser(
+        description="Run Hill Mixture MMM benchmarks (synthetic and/or real data)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python scripts/run_benchmark.py                    # Full suite (synthetic + real)
+  python scripts/run_benchmark.py --synthetic-only   # Synthetic only
+  python scripts/run_benchmark.py --real-only        # Real data only
+  python scripts/run_benchmark.py --quick            # Quick test mode
+  python scripts/run_benchmark.py --dgp single mixture_k2 --synthetic-only
+""",
+    )
     parser.add_argument(
         "--quick",
         action="store_true",
@@ -391,6 +385,31 @@ def main():
         help="Run only real data experiments",
     )
     parser.add_argument(
+        "--dgp",
+        nargs="+",
+        default=None,
+        help="DGP scenarios to run (default: all)",
+    )
+    parser.add_argument(
+        "--model",
+        nargs="+",
+        default=None,
+        help="Models to run (default: all)",
+    )
+    parser.add_argument(
+        "--seeds",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Random seeds (default: [0,1,2,3,4] for synthetic, [0,1,2] for real)",
+    )
+    parser.add_argument(
+        "--chains",
+        type=int,
+        default=None,
+        help="Number of MCMC chains (default: 4, quick: 2)",
+    )
+    parser.add_argument(
         "--output",
         type=str,
         default=None,
@@ -402,6 +421,19 @@ def main():
     # Get config
     config = get_quick_config() if args.quick else get_default_config()
 
+    # Override config with CLI args
+    if args.dgp:
+        config.synthetic_dgps = args.dgp
+    if args.model:
+        config.synthetic_models = args.model
+        config.real_models = [
+            m for m in args.model if m in ["single_hill", "mixture_k2", "mixture_k3"]
+        ]
+    if args.seeds:
+        config.synthetic_seeds = args.seeds
+        config.real_seeds = args.seeds
+    if args.chains:
+        config.num_chains = args.chains
     if args.output:
         config.output_dir = args.output
 
@@ -409,7 +441,7 @@ def main():
     numpyro.set_host_device_count(config.num_chains)
 
     print("\n" + "#" * 60)
-    print("# HILL MIXTURE MMM PAPER EXPERIMENTS")
+    print("# HILL MIXTURE MMM BENCHMARK")
     print("#" * 60)
     print(f"\nConfiguration: {'QUICK' if args.quick else 'FULL'}")
     print(f"Output directory: {config.output_dir}")

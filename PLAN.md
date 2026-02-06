@@ -307,7 +307,7 @@ Diagnostics:
 
 | Task | File | Priority | Status |
 |------|------|----------|--------|
-| Create paper benchmark script | `scripts/run_paper_experiments.py` | High | Done |
+| Create paper benchmark script | `scripts/run_benchmark.py` | High | Done |
 | Add real data loader | `hill_mmm/data_loader.py` | High | Done |
 | Create figure generation script | `tests/test_visualization.py` | Medium | Done |
 | Add results export (CSV/JSON) | `hill_mmm/benchmark.py` | Medium | Done |
@@ -331,7 +331,7 @@ Diagnostics:
 
 - [ ] Implement `model_hill_mixture_k2`
 - [ ] Update hyperpriors to LogNormal
-- [ ] Create `scripts/run_paper_benchmarks.py`
+- [x] Create unified benchmark script (`scripts/run_benchmark.py`)
 - [ ] Add real data loader
 
 ### Phase 2: Synthetic Experiments (2-3 days)
@@ -402,7 +402,7 @@ hill_mmm/
 └── benchmark.py      # Update for paper experiments
 
 scripts/
-├── run_paper_benchmarks.py   # NEW: Main experiment runner
+├── run_benchmark.py          # Unified benchmark runner (synthetic + real data)
 ├── run_real_data_validation.py  # Update for K=2
 └── test_ordering_comparison.py  # Already done
 
