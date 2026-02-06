@@ -289,10 +289,10 @@ Diagnostics:
 
 | Task | File | Priority | Status |
 |------|------|----------|--------|
-| Add `model_hill_mixture_k2` | `hill_mmm/models.py` | High | TODO |
-| Switch to LogNormal hyperpriors | `hill_mmm/models.py` | High | TODO |
+| Add `model_hill_mixture_k2` | `hill_mmm/models.py` | High | Done |
+| Switch to LogNormal hyperpriors | `hill_mmm/models.py` | High | Partial (sigma hyperpriors use LogNormal) |
 | Add unconstrained model as default | `hill_mmm/models.py` | High | Done |
-| Update `compute_prior_config()` | `hill_mmm/data.py` | Medium | Review |
+| Update `compute_prior_config()` | `hill_mmm/data.py` | Medium | Done |
 
 ### 3.2 Diagnostic Updates
 
@@ -307,8 +307,8 @@ Diagnostics:
 
 | Task | File | Priority | Status |
 |------|------|----------|--------|
-| Create paper benchmark script | `scripts/run_paper_benchmarks.py` | High | TODO |
-| Add real data loader | `hill_mmm/data.py` | High | TODO |
+| Create paper benchmark script | `scripts/run_paper_experiments.py` | High | Done |
+| Add real data loader | `hill_mmm/data_loader.py` | High | Done |
 | Create figure generation script | `tests/test_visualization.py` | Medium | Partial |
 | Add results export (CSV/JSON) | `hill_mmm/benchmark.py` | Medium | Partial |
 
