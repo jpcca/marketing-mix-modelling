@@ -122,8 +122,8 @@ seeds: [0, 1, 2]  # 3 seeds per configuration
 
 # Train/Test Split
 split:
-  train_ratio: 0.80
-  test_ratio: 0.20
+  train_ratio: 0.75
+  test_ratio: 0.25
   method: "time_series_order"  # Later observations for test
 
 # MCMC Settings (Real Data)
