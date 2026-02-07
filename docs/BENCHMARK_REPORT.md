@@ -1,59 +1,83 @@
-# Benchmark Report: Hill Mixture MMM
+# Benchmark Evaluation for Hill Mixture MMM
 
 ## Abstract
-This report documents a full benchmark run of the Hill Mixture MMM framework executed on **February 7, 2026** (timestamp: `20260207_061725`). The benchmark covers both synthetic and real-data settings under a unified protocol. Overall, synthetic experiments achieved moderate convergence (66.2%), while real-data experiments showed low convergence (17.8%). Despite low convergence in mixture models, non-converged runs frequently produced competitive test RMSE, indicating that strict convergence filtering can discard potentially useful predictive runs. However, non-converged runs also introduced substantial tail risk, especially in real data, with extreme outliers in ELPD-LOO and RMSE. Consequently, this report distinguishes between (i) reliability-oriented diagnostics and (ii) accuracy-oriented model comparison based on robust statistics.
+This document provides a paper-style summary of the benchmark run executed on **February 7, 2026** (timestamp: `20260207_061725`) for the Hill Mixture MMM framework. We evaluate synthetic and real-data experiments under a common protocol and separate two analytical lenses: (i) reliability-oriented inference diagnostics and (ii) accuracy-oriented predictive comparison. Synthetic experiments reached moderate convergence (66.2%), while real-data experiments showed low convergence (17.8%). Importantly, non-converged runs were often competitive in test RMSE, but they also introduced heavy-tailed risk, including extreme ELPD-LOO and RMSE failures in real data. The main manuscript narrative should therefore focus on robust predictive summaries (median/trimmed mean) and explicitly distinguish predictive utility from parameter-level interpretability.
 
-## 1. Experimental Setup
+## 1. Introduction
+The benchmark was designed to assess whether mixture-based Hill models provide practical predictive value over a single-Hill baseline when MCMC convergence is challenging. This is particularly relevant for MMM settings where latent heterogeneity and label switching can destabilize posterior sampling, while forecast-level aggregates may still remain useful.
 
-### 1.1 Artifacts Analyzed
-- `results/benchmark/config.json`
-- `results/benchmark/synthetic_20260207_061725.csv`
-- `results/benchmark/synthetic_20260207_061725.json`
-- `results/benchmark/synthetic_20260207_061725_summary.csv`
-- `results/benchmark/real_20260207_061725.csv`
-- `results/benchmark/real_20260207_061725.json`
+The central question for paper writing is not only whether models converge in the strict MCMC sense, but also whether non-converged runs can still deliver acceptable out-of-sample accuracy, and under what risk profile.
 
-### 1.2 Configuration
-- Synthetic DGPs: `single`, `mixture_k2`, `mixture_k3`, `mixture_k5`
-- Synthetic models: `single_hill`, `mixture_k2`, `mixture_k3`, `sparse_k5`
-- Synthetic seeds: `0,1,2,3,4`
-- Real organizations: `5`
-- Real models: `single_hill`, `mixture_k2`, `mixture_k3`
-- Real seeds: `0,1,2`
-- MCMC: `num_warmup=1000`, `num_samples=2000`, `num_chains=4`
-- Train/test split ratio: `0.75/0.25`
+## 2. Experimental Design
 
-### 1.3 Experimental Matrix
-- Synthetic: `4 DGP × 4 model × 5 seed = 80` runs
-- Real: `5 org × 3 model × 3 seed = 45` runs
+### 2.1 Data and Model Grid
+- Synthetic: 4 DGPs (`single`, `mixture_k2`, `mixture_k3`, `mixture_k5`) × 4 models (`single_hill`, `mixture_k2`, `mixture_k3`, `sparse_k5`) × 5 seeds = 80 runs.
+- Real: 5 organizations × 3 models (`single_hill`, `mixture_k2`, `mixture_k3`) × 3 seeds = 45 runs.
 
-## 2. Evaluation Protocol
+### 2.2 Inference Configuration
+- `num_warmup=1000`, `num_samples=2000`, `num_chains=4`
+- Train/test split ratio: `0.75 / 0.25`
 
-### 2.1 Primary Metrics
-- Predictive: `train_rmse`, `test_rmse`, `train_coverage_90`, `test_coverage_90`
-- Model comparison: `elpd_loo`, `p_loo`, `delta_loo`
+### 2.3 Metrics and Conventions
+- Predictive: `test_rmse`, `coverage_90`
+- Model comparison: `elpd_loo`, `delta_loo`
 - Mixture complexity: `effective_k_mean`
+- Convergence flag: `max_rhat < 1.05` (`hill_mmm/inference.py`)
+- Delta significance: `|delta_loo| > 2 * se` (`hill_mmm/metrics.py`)
 
-### 2.2 Diagnostic Conventions
-- `converged` is defined as `max_rhat < 1.05` (`hill_mmm/inference.py`).
-- `delta_loo_significant` is defined as `|delta_loo| > 2 * se` (`hill_mmm/metrics.py`).
-- Synthetic summary CSV is aggregated over all runs (no convergence filtering).
+## 3. Main Results (Manuscript-Oriented Summary)
 
-### 2.3 Accuracy-Centric View
-Because MMM and mixture models can be affected by label switching and slow mixing, this report includes robust predictive comparisons using:
-- medians,
-- 10% trimmed means,
-- seed-wise winner counts.
+### 3.1 High-Level Outcome
 
-## 3. Results: Synthetic Benchmarks
+| Domain | Runs | Converged | Non-converged RMSE winners | Main Risk Signal |
+| --- | --- | --- | --- | --- |
+| Synthetic | 80 | 53 (66.2%) | 7 / 20 seed-cells | 16 catastrophic LOO outliers (`elpd_loo < -2000`) |
+| Real | 45 | 8 (17.8%) | 11 / 15 seed-cells | Extreme heavy tail (`max RMSE = 110293.055`) |
 
-### 3.1 Convergence and Stability
-Synthetic summary:
-- Runs: `80`
-- Converged: `53/80 (66.2%)`
-- Catastrophic runs (`elpd_loo < -2000`): `16/80`
+Interpretation:
+- Predictive winners are not restricted to converged runs.
+- However, real-data non-converged runs carry severe tail risk and can distort mean-based conclusions.
 
-**Table 1. Convergence rate by model (synthetic)**
+### 3.2 Synthetic Findings
+Synthetic results indicate that mixture models can be competitive in predictive terms, but summary means are sensitive to unstable runs (especially for `mixture_k2` and `sparse_k5` in LOO-based metrics). For synthetic evaluation, a robust interpretation is:
+- non-converged runs are not systematically useless,
+- but convergence remains a meaningful reliability indicator,
+- and robustness checks (median or filtered summaries) are necessary for fair comparison.
+
+### 3.3 Real-Data Findings
+Real-data results show the strongest tension between predictive utility and inferential reliability:
+- Convergence rates are low for mixture models (`mixture_k2`: 13.3%, `mixture_k3`: 6.7%).
+- Nevertheless, non-converged runs frequently win at the `(org, seed)` level in test RMSE.
+- Robust aggregates tell a more stable story than means:
+  - Median test RMSE: `mixture_k2` (100.912), `mixture_k3` (101.000), `single_hill` (126.527)
+  - 10% trimmed mean test RMSE: `single_hill` (127.767), `mixture_k3` (143.558), `mixture_k2` (167.161)
+
+This gap between median and trimmed-mean rankings indicates that model preference depends on tolerance for tail failures.
+
+### 3.4 Recommended Narrative for the Paper
+A manuscript-friendly framing is:
+1. Mixture models show predictive promise, including in settings where strict MCMC convergence is difficult.
+2. Predictive utility and inferential trustworthiness should be explicitly separated.
+3. Claims about forecast performance should rely on robust summaries, while parameter interpretation should require stronger convergence evidence.
+
+## 4. Discussion
+The benchmark supports a pragmatic but rigorous position: non-convergence is not a binary rejection criterion for prediction, but it is a major warning for risk management and interpretability. This distinction is especially important in MMM, where business decisions may prioritize forecast quality, while scientific claims require stable posteriors.
+
+## 5. Limitations
+- Single benchmark timestamp (`20260207_061725`).
+- Limited real-data breadth (5 organizations, 3 seeds).
+- No hierarchical pooling across organizations in this report-level summary.
+
+## 6. Reproducibility
+- Script: `python scripts/run_benchmark.py`
+- Outputs: `results/benchmark/`
+- Config used: `results/benchmark/config.json`
+
+---
+
+## Appendix A. Detailed Quantitative Tables
+
+### Table A1. Synthetic convergence rate by model
 
 | model | convergence_rate |
 | --- | --- |
@@ -62,7 +86,7 @@ Synthetic summary:
 | single_hill | 100.0% |
 | sparse_k5 | 55.0% |
 
-**Table 2. Catastrophic run counts by DGP and model (`elpd_loo < -2000`)**
+### Table A2. Synthetic catastrophic run counts by DGP and model (`elpd_loo < -2000`)
 
 | dgp | model | catastrophic_count |
 | --- | --- | --- |
@@ -83,9 +107,7 @@ Synthetic summary:
 | single | single_hill | 0 |
 | single | sparse_k5 | 2 |
 
-### 3.2 Predictive and LOO Metrics
-
-**Table 3. Means across all synthetic runs (includes non-converged runs)**
+### Table A3. Synthetic means across all runs (including non-converged runs)
 
 | dgp | model | elpd_loo | test_rmse | train_rmse | test_coverage_90 | effective_k_mean | delta_loo |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -106,7 +128,7 @@ Synthetic summary:
 | single | single_hill | -382.353 | 5.139 | 2.982 | 66.0% | 1.000 | 0.000 |
 | single | sparse_k5 | -4295.580 | 4.728 | 3.196 | 71.6% | 2.249 | -3913.227 |
 
-**Table 4. Means across converged synthetic runs only**
+### Table A4. Synthetic means across converged runs only
 
 | dgp | model | elpd_loo | test_rmse | train_rmse | test_coverage_90 | effective_k_mean | delta_loo |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -126,54 +148,7 @@ Synthetic summary:
 | single | single_hill | -382.353 | 5.139 | 2.982 | 66.0% | 1.000 | 0.000 |
 | single | sparse_k5 | -384.492 | 4.841 | 3.022 | 70.7% | 2.176 | -0.593 |
 
-### 3.3 Accuracy-Centric Comparison (Converged vs Non-Converged)
-
-**Table 5. Overall synthetic RMSE distribution by convergence status**
-
-| group | n | mean_test_rmse | median_test_rmse | p90_test_rmse | max_test_rmse |
-| --- | --- | --- | --- | --- | --- |
-| converged | 53 | 6.234 | 5.566 | 8.557 | 9.595 |
-| non_converged | 27 | 7.035 | 7.444 | 8.834 | 9.819 |
-
-Seed-wise RMSE winners:
-- Non-converged winners: **7 / 20** `(dgp, seed)` cells.
-
-### 3.4 Effective-K Recovery
-
-**Table 6. Effective-K recovery (`|effective_k_mean - K_true|`)**
-
-| dgp | model | effective_k_mean | k_abs_err |
-| --- | --- | --- | --- |
-| mixture_k2 | mixture_k2 | 1.993 | 0.007 |
-| mixture_k2 | mixture_k3 | 2.513 | 0.513 |
-| mixture_k2 | single_hill | 1.000 | 1.000 |
-| mixture_k2 | sparse_k5 | 3.013 | 1.014 |
-| mixture_k3 | mixture_k2 | 2.000 | 1.000 |
-| mixture_k3 | mixture_k3 | 2.925 | 0.075 |
-| mixture_k3 | single_hill | 1.000 | 2.000 |
-| mixture_k3 | sparse_k5 | 3.815 | 0.815 |
-| mixture_k5 | mixture_k2 | 1.999 | 3.001 |
-| mixture_k5 | mixture_k3 | 2.829 | 2.171 |
-| mixture_k5 | single_hill | 1.000 | 4.000 |
-| mixture_k5 | sparse_k5 | 3.686 | 1.314 |
-| single | mixture_k2 | 1.958 | 0.958 |
-| single | mixture_k3 | 1.952 | 0.952 |
-| single | single_hill | 1.000 | 0.000 |
-| single | sparse_k5 | 2.249 | 1.249 |
-
-## 4. Results: Real-Data Benchmarks
-
-### 4.1 Convergence and Diagnostic Summary
-Real summary:
-- Runs: `45`
-- Converged: `8/45 (17.8%)`
-- `status=success`: `45/45`
-- `pareto_k_bad` total: `0`
-- `min_ess_bulk <= 10`: `36/45`
-- `max_rhat >= 2.0`: `17/45`
-- `elpd_loo < -1e6`: `15/45`
-
-**Table 7. Convergence rate by model (real)**
+### Table A5. Real convergence rate by model
 
 | model | convergence_rate |
 | --- | --- |
@@ -181,9 +156,7 @@ Real summary:
 | mixture_k3 | 6.7% |
 | single_hill | 33.3% |
 
-### 4.2 Predictive Performance (All Runs)
-
-**Table 8. Mean metrics by model (real, all runs)**
+### Table A6. Real mean metrics by model (all runs)
 
 | model | elpd_loo | test_rmse | train_rmse | test_coverage_90 | time_seconds |
 | --- | --- | --- | --- | --- | --- |
@@ -191,7 +164,7 @@ Real summary:
 | mixture_k3 | -2.585e+06 | 7478.114 | 8293.108 | 87.0% | 2.188 |
 | single_hill | -4.719e+07 | 141.050 | 118.684 | 89.4% | 1.132 |
 
-**Table 9. Median metrics by model (real, all runs)**
+### Table A7. Real median metrics by model (all runs)
 
 | model | elpd_loo | test_rmse | train_rmse | test_coverage_90 | time_seconds |
 | --- | --- | --- | --- | --- | --- |
@@ -199,7 +172,7 @@ Real summary:
 | mixture_k3 | -7262.585 | 101.000 | 95.296 | 91.7% | 1.911 |
 | single_hill | -1.559e+06 | 126.527 | 122.308 | 90.8% | 1.122 |
 
-**Table 10. 10% trimmed mean of test RMSE (real)**
+### Table A8. Real 10% trimmed mean of test RMSE
 
 | model | test_rmse_trim10 |
 | --- | --- |
@@ -207,9 +180,7 @@ Real summary:
 | mixture_k3 | 143.558 |
 | single_hill | 127.767 |
 
-### 4.3 Converged vs Non-Converged Accuracy
-
-**Table 11. RMSE by convergence status and model (real)**
+### Table A9. Real RMSE by convergence status and model
 
 | model | conv_n | conv_mean_rmse | conv_median_rmse | nonconv_n | nonconv_mean_rmse | nonconv_median_rmse |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -217,19 +188,7 @@ Real summary:
 | mixture_k3 | 1 | 12.407 | 12.407 | 14 | 8011.379 | 101.028 |
 | single_hill | 5 | 170.353 | 98.386 | 10 | 126.398 | 126.792 |
 
-**Table 12. Overall RMSE distribution by convergence status (real)**
-
-| group | n | mean_test_rmse | median_test_rmse | p90_test_rmse | max_test_rmse |
-| --- | --- | --- | --- | --- | --- |
-| converged | 8 | 118.173 | 59.090 | 307.628 | 444.095 |
-| non_converged | 37 | 3141.497 | 126.527 | 426.747 | 110293.055 |
-
-Seed-wise RMSE winners:
-- Non-converged winners: **11 / 15** `(org, seed)` cells.
-
-### 4.4 Organization-Level Comparison
-
-**Table 13. Best model per organization (seed-mean, all runs)**
+### Table A10. Best model by organization (seed-mean, all runs)
 
 | org_id | best_by_loo | best_loo | best_by_test_rmse | best_test_rmse |
 | --- | --- | --- | --- | --- |
@@ -239,9 +198,7 @@ Seed-wise RMSE winners:
 | ba773ebd7ec0a08f1d042187d086ccb4 | mixture_k3 | -2.034e+06 | single_hill | 340.703 |
 | bfb6f6a326141ed6a751fc83ba836984 | mixture_k3 | -7262.358 | mixture_k3 | 101.018 |
 
-## 5. Failure-Mode Characterization
-
-### 5.1 Synthetic Failures (Top by R-hat)
+### Table A11. Synthetic failures (top by R-hat)
 
 | dgp | model | seed | max_rhat | min_ess_bulk | elpd_loo | test_rmse |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -254,7 +211,7 @@ Seed-wise RMSE winners:
 | mixture_k2 | mixture_k2 | 1 | 1.600 | 7 | -1723.045 | 3.831 |
 | mixture_k2 | sparse_k5 | 3 | 1.600 | 7 | -20239.214 | 5.422 |
 
-### 5.2 Real-Data Failures (Top by R-hat)
+### Table A12. Real-data failures (top by R-hat)
 
 | org_id | model | seed | max_rhat | min_ess_bulk | elpd_loo | test_rmse |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -268,20 +225,3 @@ Seed-wise RMSE winners:
 | bfb6f6a326141ed6a751fc83ba836984 | mixture_k2 | 1 | 2.720 | 5 | -1.407e+07 | 140.303 |
 | ba773ebd7ec0a08f1d042187d086ccb4 | mixture_k3 | 2 | 2.670 | 5 | -7989.905 | 433.545 |
 | ba773ebd7ec0a08f1d042187d086ccb4 | mixture_k2 | 2 | 2.660 | 5 | -8261.100 | 419.039 |
-
-## 6. Discussion
-1. Mixture models can outperform baseline in specific predictive cells, including non-converged runs, which supports an accuracy-oriented evaluation track.
-2. Nevertheless, the real-data benchmark exhibits heavy-tailed failure behavior under non-convergence; raw means are therefore misleading.
-3. For paper-quality reporting, predictive claims should be based on robust summaries (median/trimmed mean) and complemented by dispersion and failure-rate statistics.
-4. Convergence flags should remain mandatory for parameter-level interpretation and causal narratives, but not necessarily for pure forecasting comparison.
-
-## 7. Limitations
-- This report is based on a single benchmark timestamp (`20260207_061725`).
-- Real-data sample size is limited to five organizations and three seeds per model.
-- No hierarchical uncertainty pooling across organizations was applied in this summary.
-
-## 8. Reproducibility
-- Regenerate benchmark: `python scripts/run_benchmark.py`
-- Output directory: `results/benchmark/`
-- This report file: `docs/BENCHMARK_REPORT.md`
-
