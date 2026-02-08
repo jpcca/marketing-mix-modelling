@@ -329,10 +329,10 @@ Diagnostics:
 
 ### Phase 1: Infrastructure (1-2 days)
 
-- [ ] Implement `model_hill_mixture_k2`
-- [ ] Update hyperpriors to LogNormal
+- [x] Implement `model_hill_mixture_k2`
+- [x] Update hyperpriors to LogNormal
 - [x] Create unified benchmark script (`scripts/run_benchmark.py`)
-- [ ] Add real data loader
+- [x] Add real data loader
 
 ### Phase 2: Synthetic Experiments (2-3 days)
 

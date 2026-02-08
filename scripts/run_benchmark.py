@@ -73,11 +73,11 @@ def get_default_config() -> BenchmarkConfig:
         synthetic_dgps=["single", "mixture_k2", "mixture_k3", "mixture_k5"],
         synthetic_models=["single_hill", "mixture_k2", "mixture_k3", "sparse_k5"],
         synthetic_seeds=[0, 1, 2, 3, 4],
-        # Real: 5 orgs × 3 models × 3 seeds = 45 experiments
-        real_n_orgs=5,
+        # Real: 10 orgs × 3 models × 3 seeds = 90 experiments
+        real_n_orgs=10,
         real_models=["single_hill", "mixture_k2", "mixture_k3"],
         real_seeds=[0, 1, 2],
-        # MCMC
+        # MCMC - NOTE: real data uses num_warmup=2000 (see run_real_data_experiments)
         num_warmup=1000,
         num_samples=2000,
         num_chains=4,
@@ -144,10 +144,12 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
     from hill_mmm.data import compute_prior_config
     from hill_mmm.data_loader import load_real_data, select_representative_timeseries
     from hill_mmm.inference import (
+        compute_comprehensive_mixture_diagnostics,
         compute_convergence_diagnostics,
         compute_loo,
         compute_predictions,
         compute_predictive_metrics,
+        compute_waic,
         relabel_samples_by_k,
         run_inference,
     )
@@ -211,13 +213,14 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
                 exp_start = time.time()
 
                 try:
-                    # Run inference
+                    # Run inference (real data uses 2000 warmup per PLAN.md)
+                    real_warmup = 2000
                     mcmc = run_inference(
                         model_spec.fn,
                         x_train,
                         y_train,
                         seed=seed,
-                        num_warmup=config.num_warmup,
+                        num_warmup=real_warmup,
                         num_samples=config.num_samples,
                         num_chains=config.num_chains,
                         prior_config=prior_config,
@@ -236,6 +239,17 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
                     # Compute diagnostics
                     convergence = compute_convergence_diagnostics(mcmc)
                     loo = compute_loo(mcmc)
+                    waic = compute_waic(mcmc)
+
+                    # Compute mixture diagnostics for mixture models
+                    mixture_diag = None
+                    if is_mixture:
+                        try:
+                            mixture_diag = compute_comprehensive_mixture_diagnostics(
+                                mcmc, x_train, y_train
+                            )
+                        except Exception as e:
+                            print(f"  WARNING: Mixture diagnostics failed: {e}")
 
                     # Compute predictions
                     pred_train = compute_predictions(
@@ -255,7 +269,7 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
                         "T": T,
                         "T_train": T_train,
                         "T_test": T - T_train,
-                        # Convergence
+                        # Convergence (standard)
                         "max_rhat": convergence["max_rhat"],
                         "min_ess_bulk": convergence["min_ess_bulk"],
                         "converged": convergence["converged"],
@@ -263,7 +277,26 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
                         "elpd_loo": loo.get("elpd_loo"),
                         "loo_se": loo.get("se"),
                         "p_loo": loo.get("p_loo"),
-                        "pareto_k_bad": loo.get("n_pareto_k_bad", 0),
+                        "pareto_k_bad": loo.get("pareto_k_bad", 0),
+                        "pareto_k_very_bad": loo.get("pareto_k_very_bad", 0),
+                        # WAIC
+                        "elpd_waic": waic.get("elpd_waic"),
+                        "waic_se": waic.get("se"),
+                        "p_waic": waic.get("p_waic"),
+                        # Mixture diagnostics (label-invariant)
+                        "rhat_log_lik": (
+                            mixture_diag["label_invariant"]["rhat_log_lik"]
+                            if mixture_diag
+                            else None
+                        ),
+                        "rhat_relabeled_max": (
+                            mixture_diag["relabeled"]["max_rhat"] if mixture_diag else None
+                        ),
+                        "switching_rate": (
+                            mixture_diag["label_switching"]["switching_rate"]
+                            if mixture_diag
+                            else None
+                        ),
                         # Predictions
                         "train_rmse": train_metrics["rmse"],
                         "test_rmse": test_metrics["rmse"],
@@ -352,8 +385,27 @@ def save_results(
         print(f"  Successful: {len(success)} / {len(real_results)}")
         if len(success) > 0:
             print(f"  Converged: {success['converged'].sum()} / {len(success)}")
-            print(f"  Mean ELPD-LOO: {success['elpd_loo'].mean():.1f}")
-            print(f"  Mean test RMSE: {success['test_rmse'].mean():.3f}")
+            # Robust summaries: median and mean for key metrics
+            elpd_arr = np.array(success["elpd_loo"])
+            rmse_arr = np.array(success["test_rmse"])
+            print(
+                f"  ELPD-LOO - Mean: {np.nanmean(elpd_arr):.1f}, Median: {np.nanmedian(elpd_arr):.1f}"
+            )
+            print(
+                f"  Test RMSE - Mean: {np.nanmean(rmse_arr):.3f}, Median: {np.nanmedian(rmse_arr):.3f}"
+            )
+            # WAIC if available
+            if "elpd_waic" in success.columns:
+                waic_arr = np.array(success["elpd_waic"])
+                valid_waic = waic_arr[~np.isnan(waic_arr)]
+                if len(valid_waic) > 0:
+                    print(
+                        f"  ELPD-WAIC - Mean: {np.mean(valid_waic):.1f}, Median: {np.median(valid_waic):.1f}"
+                    )
+            # Pareto-k summary for LOO quality
+            if "pareto_k_bad" in success.columns:
+                total_bad = success["pareto_k_bad"].sum()
+                print(f"  Total Pareto-k > 0.7: {total_bad}")
 
 
 def main():
