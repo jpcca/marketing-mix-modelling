@@ -94,6 +94,34 @@ git push
 
 **Common mistake**: Only pushing the main repo without pushing the paper submodule. This causes GitHub to show a 404 error when clicking the `paper/` link, because the referenced commit doesn't exist on the remote paper repository.
 
+### Troubleshooting: GitHub Shows Old Submodule Reference
+
+If GitHub displays an outdated commit hash (e.g., `paper @ 314b5e1`) even after pushing, follow these steps:
+
+```bash
+# 1. Verify local state - check that submodule is on correct commit
+cd paper
+git log --oneline -1  # Should show your latest commit
+cd ..
+
+# 2. Verify main repo references correct submodule commit
+git ls-tree HEAD paper  # Should show the same commit hash
+
+# 3. Check what origin/main has
+git fetch origin
+git ls-tree origin/main paper  # Should match local
+
+# 4. If origin shows old reference, force push main repo
+git push origin main --force-with-lease
+
+# 5. If still showing old reference, it's GitHub caching
+#    - Hard refresh browser (Cmd+Shift+R / Ctrl+Shift+R)
+#    - Open in incognito window
+#    - Wait a few minutes for GitHub cache to clear
+```
+
+**Key insight**: The submodule reference is stored as a commit hash in the main repo. Both the paper submodule AND the main repo must be pushed for GitHub to display the correct reference.
+
 ## Development Workflow
 
 1. **Install dependencies:** `uv sync` or `pip install -e .`
