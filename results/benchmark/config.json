@@ -1,0 +1,37 @@
+{
+  "synthetic_dgps": [
+    "single",
+    "mixture_k2",
+    "mixture_k3",
+    "mixture_k5"
+  ],
+  "synthetic_models": [
+    "single_hill",
+    "mixture_k2",
+    "mixture_k3",
+    "sparse_k5"
+  ],
+  "synthetic_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "real_n_orgs": 10,
+  "real_models": [
+    "single_hill",
+    "mixture_k2",
+    "mixture_k3"
+  ],
+  "real_seeds": [
+    0,
+    1,
+    2
+  ],
+  "num_warmup": 1000,
+  "num_samples": 2000,
+  "num_chains": 4,
+  "train_ratio": 0.75,
+  "output_dir": "results/benchmark"
+}
