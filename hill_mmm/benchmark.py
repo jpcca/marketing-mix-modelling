@@ -30,8 +30,6 @@ from .inference import (
 from .metrics import compute_delta_loo, compute_effective_k, compute_parameter_recovery
 from .models import (
     model_hill_mixture_hierarchical_reparam,
-    model_hill_mixture_k2,
-    model_hill_mixture_unconstrained,
     model_single_hill,
 )
 
@@ -46,12 +44,12 @@ class ModelSpec:
 
 
 # Default model configurations
-# Note: sparse_k5 uses unconstrained model for post-hoc relabeling
+# All mixture models use the same hierarchical reparameterized structure with K as parameter
 MODEL_SPECS = [
     ModelSpec("single_hill", model_single_hill, {}),
-    ModelSpec("mixture_k2", model_hill_mixture_k2, {}),
+    ModelSpec("mixture_k2", model_hill_mixture_hierarchical_reparam, {"K": 2}),
     ModelSpec("mixture_k3", model_hill_mixture_hierarchical_reparam, {"K": 3}),
-    ModelSpec("sparse_k5", model_hill_mixture_unconstrained, {"K": 5}),
+    ModelSpec("mixture_k5", model_hill_mixture_hierarchical_reparam, {"K": 5}),
 ]
 
 
