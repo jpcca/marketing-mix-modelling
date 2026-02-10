@@ -126,7 +126,7 @@ git push origin main --force-with-lease
 
 1. **Install dependencies:** `uv sync` or `pip install -e .`
 2. **Run tests:** `pytest tests/`
-3. **Run benchmarks:** `python scripts/run_benchmarks.py [--quick] [--dgp DGP_NAME]`
+3. **Run benchmarks:** `python scripts/run_benchmark.py [--quick] [--dgp DGP_NAME]`
 4. **Generate paper figures:** `pytest tests/test_visualization.py`
 5. **Update paper submodule:** After generating figures, commit in `paper/` then update submodule reference
 
@@ -178,6 +178,6 @@ git commit -m "Various changes"  # Don't do this
 - Remember: Push BOTH the paper submodule AND the main repo to avoid 404 errors
 
 ### Running experiments
-- Full benchmark suite: `python scripts/run_benchmarks.py`
+- Full benchmark suite: `python scripts/run_benchmark.py`
 - Quick mode for testing: `--quick` flag
 - Results saved to `results/` directory
