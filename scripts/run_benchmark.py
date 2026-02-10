@@ -71,7 +71,7 @@ def get_default_config() -> BenchmarkConfig:
     return BenchmarkConfig(
         # Synthetic: 4 DGPs × 4 models × 5 seeds = 80 experiments
         synthetic_dgps=["single", "mixture_k2", "mixture_k3", "mixture_k5"],
-        synthetic_models=["single_hill", "mixture_k2", "mixture_k3", "sparse_k5"],
+        synthetic_models=["single_hill", "mixture_k2", "mixture_k3", "mixture_k5"],
         synthetic_seeds=[0, 1, 2, 3, 4],
         # Real: 10 orgs × 3 models × 3 seeds = 90 experiments
         real_n_orgs=10,
