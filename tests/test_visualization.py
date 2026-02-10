@@ -12,7 +12,6 @@ Figure categories:
 from pathlib import Path
 from typing import Literal
 
-import arviz as az
 import daft
 import jax.numpy as jnp
 import matplotlib
@@ -29,7 +28,6 @@ from hill_mmm import (
     generate_data,
     hill,
     model_hill_mixture_hierarchical_reparam,
-    model_single_hill,
 )
 from hill_mmm.inference import run_inference
 
@@ -44,8 +42,8 @@ model_hill_mixture_sparse = model_hill_mixture_hierarchical_reparam  # K=5 passe
 
 # Paths
 RESULTS_DIR = Path(__file__).parent.parent / "results" / "benchmark"
-RESULTS_SUMMARY_CSV = RESULTS_DIR / "synthetic_20260209_160628_summary.csv"
-RESULTS_CSV = RESULTS_DIR / "synthetic_20260209_160628.csv"
+RESULTS_SUMMARY_CSV = RESULTS_DIR / "synthetic_20260210_152336_summary.csv"
+RESULTS_CSV = RESULTS_DIR / "synthetic_20260210_152336.csv"
 
 # DGP ordering for plots
 DGP_ORDER = ["single", "mixture_k2", "mixture_k3", "mixture_k5"]
@@ -56,12 +54,12 @@ DGP_LABELS = {
     "mixture_k3": "Mixture (K=3)",
     "mixture_k5": "Mixture (K=5)",
 }
-MODEL_ORDER = ["single_hill", "mixture_k2", "mixture_k3", "sparse_k5"]
+MODEL_ORDER = ["single_hill", "mixture_k2", "mixture_k3", "mixture_k5"]
 MODEL_LABELS = {
     "single_hill": "Single Hill",
     "mixture_k2": "Mixture (K=2)",
     "mixture_k3": "Mixture (K=3)",
-    "sparse_k5": "Sparse (K=5)",
+    "mixture_k5": "Mixture (K=5)",
 }
 
 # Color schemes for consistent styling
@@ -69,7 +67,7 @@ COLORS = {
     "single_hill": "#1f77b4",
     "mixture_k2": "#9467bd",  # Purple for K=2
     "mixture_k3": "#ff7f0e",
-    "sparse_k5": "#2ca02c",
+    "mixture_k5": "#2ca02c",
 }
 COLORS_LIST = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
 
@@ -822,80 +820,6 @@ def test_prediction_vs_actual(output_dir: Path) -> None:
 
     plt.tight_layout()
     fig.savefig(output_dir / "fig8_prediction_vs_actual.png")
-    plt.close("all")
-
-
-# =============================================================================
-# MCMC Trace Plots (Slow - requires full MCMC)
-# =============================================================================
-
-# Trace plot configurations: (dgp_type, model_fn, model_kwargs, filename)
-# Full matrix: 4 DGPs × 3 models = 12 combinations
-TRACE_CONFIGS = [
-    # DGP: single (K=1) - 4 models
-    ("single", model_single_hill, {}, "single_single_hill"),
-    ("single", model_hill_mixture, {"K": 2}, "single_mixture_k2"),
-    ("single", model_hill_mixture, {"K": 3}, "single_mixture_k3"),
-    ("single", model_hill_mixture, {"K": 5}, "single_mixture_k5"),
-    # DGP: mixture_k2 - 4 models
-    ("mixture_k2", model_single_hill, {}, "mixture_k2_single_hill"),
-    ("mixture_k2", model_hill_mixture, {"K": 2}, "mixture_k2_mixture_k2"),
-    ("mixture_k2", model_hill_mixture, {"K": 3}, "mixture_k2_mixture_k3"),
-    ("mixture_k2", model_hill_mixture, {"K": 5}, "mixture_k2_mixture_k5"),
-    # DGP: mixture_k3 - 4 models
-    ("mixture_k3", model_single_hill, {}, "mixture_k3_single_hill"),
-    ("mixture_k3", model_hill_mixture, {"K": 2}, "mixture_k3_mixture_k2"),
-    ("mixture_k3", model_hill_mixture, {"K": 3}, "mixture_k3_mixture_k3"),
-    ("mixture_k3", model_hill_mixture, {"K": 5}, "mixture_k3_mixture_k5"),
-    # DGP: mixture_k5 - 4 models
-    ("mixture_k5", model_single_hill, {}, "mixture_k5_single_hill"),
-    ("mixture_k5", model_hill_mixture, {"K": 2}, "mixture_k5_mixture_k2"),
-    ("mixture_k5", model_hill_mixture, {"K": 3}, "mixture_k5_mixture_k3"),
-    ("mixture_k5", model_hill_mixture, {"K": 5}, "mixture_k5_mixture_k5"),
-]
-
-
-@pytest.mark.parametrize("dgp_type,model_fn,model_kwargs,filename", TRACE_CONFIGS)
-def test_trace_plot(
-    output_dir: Path, dgp_type: DGPType, model_fn, model_kwargs: dict, filename: str
-) -> None:
-    """MCMC trace plots for each DGP-model combination.
-
-    Generates data, runs MCMC, and creates trace plots to verify
-    convergence and mixing of chains.
-    """
-    # Create mcmc_trace subdirectory
-    trace_dir = output_dir / "mcmc_trace"
-    trace_dir.mkdir(parents=True, exist_ok=True)
-
-    # Generate data
-    config = DGPConfig(dgp_type=dgp_type, T=100, seed=42)
-    x, y, _meta = generate_data(config)
-
-    # Get prior config
-    prior_config = compute_prior_config(x, y)
-
-    # Run MCMC (matching run_benchmark.py defaults)
-    mcmc = run_inference(
-        model_fn=model_fn,
-        x=x,
-        y=y,
-        seed=42,
-        num_warmup=1000,
-        num_samples=2000,
-        num_chains=4,
-        prior_config=prior_config,
-        **model_kwargs,
-    )
-
-    # Create InferenceData and trace plot
-    idata = az.from_numpyro(mcmc)
-
-    az.plot_trace(idata, figsize=(12, 10))
-
-    plt.suptitle(f"Trace: {dgp_type} DGP × {filename.split('_')[-1]} model", y=1.02)
-    plt.tight_layout()
-    plt.savefig(trace_dir / f"{filename}.png", dpi=150)
     plt.close("all")
 
 
