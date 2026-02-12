@@ -16,10 +16,12 @@ In reality, different consumer segments respond differently. Some convert quickl
 Our approach addresses this by fitting a mixture of response curves—multiple curves per channel, each capturing a distinct consumer segment. The model automatically learns how many segments exist and their relative sizes, using Bayesian inference to quantify uncertainty. Technical innovations (stick-breaking priors, ordering constraints, hierarchical structure) ensure the model remains identifiable and samples efficiently.
 
 ### Validation Results
-We validate the approach on synthetic datasets that simulate audiences with varying degrees of heterogeneity—from uniform response (one segment) to highly diverse (five distinct segments). When the audience is genuinely heterogeneous, mixture models achieve substantial improvements in predictive uncertainty (as measured by ELPD-LOO, a Bayesian model comparison metric), while incurring only modest penalties when the audience is actually homogeneous. Interestingly, point prediction accuracy (RMSE) remains similar across models; the gains are in uncertainty calibration—knowing how confident to be in predictions—which is critical for budget-allocation decisions. In practice, we recommend specifying more mixture components than expected, as the model automatically "prunes" unnecessary ones while maintaining stable inference.
+We validate the approach on synthetic datasets that simulate audiences with varying degrees of heterogeneity—from uniform response (one segment) to highly diverse (five distinct segments). When the audience is genuinely heterogeneous, mixture models achieve substantial improvements in predictive uncertainty, while incurring only modest penalties when the audience is actually homogeneous. Interestingly, point prediction accuracy remains similar across models; the gains are in uncertainty calibration—knowing how confident to be in predictions—which is critical for budget-allocation decisions. In practice, we recommend specifying more mixture components than expected, as the model automatically "prunes" unnecessary ones while maintaining stable inference.
+
+We further evaluate the approach on a real-world marketing mix dataset, where the mixture model identifies previously hidden heterogeneous consumer populations—demonstrating that the method surfaces actionable audience structure from observational data.
 
 ### AI-Augmented Research Workflow
-The second thread of the talk addresses how this model was developed. The project paired a supervisor and student working across different native languages, using LLM-processed meeting transcripts to maintain shared context and formalising requirements as executable pytest suites and MCMC diagnostic thresholds. This created a tight loop: human intent expressed in natural language, LLM-assisted code generation, and quantitative validation via LOO-CV and R-hat convergence checks. We share this workflow as a reusable pattern for teams combining domain expertise with probabilistic programming.
+The second thread of the talk addresses how this model was developed. The project paired a supervisor and student working across different native languages, using LLM-processed meeting transcripts to maintain shared context and formalising requirements as executable pytest suites and MCMC diagnostic thresholds. This created a tight loop: human intent expressed in natural language, LLM-assisted code generation, and quantitative validation via predictive accuracy checks and convergence diagnostics. We share this workflow as a reusable pattern for teams combining domain expertise with probabilistic programming.
 
 ### Who Should Attend
 This talk is aimed at data scientists, marketing analysts, and research engineers who work with marketing mix models or Bayesian inference. It is also relevant for anyone interested in structuring AI-augmented research workflows for multilingual or cross-sector collaboration.
@@ -33,7 +35,7 @@ No prior experience with marketing mix modelling is required. Familiarity with B
 ### Outline (40 minutes including Q&A)
 - (0-5 min) The budget-allocation problem and why single-curve MMMs fall short
 - (5-15 min) Mixture-of-Hills model specification: Hill transforms, adstock, stick-breaking weights, identifiability constraints
-- (15-22 min) Benchmark design and results: synthetic DGPs, ELPD-LOO vs RMSE, when mixtures help and when they don't
+- (15-22 min) Benchmark design and results: synthetic DGPs, predictive accuracy vs uncertainty calibration, when mixtures help and when they don't, real-world dataset results
 - (22-30 min) AI-augmented research workflow: transcripts, test-driven iteration, cross-lingual collaboration
 - (30-40 min) Q&A
 
