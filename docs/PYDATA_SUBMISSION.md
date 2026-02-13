@@ -3,8 +3,8 @@
 ## Proposal title
 Bayesian Mixture-of-Hills for Marketing Mix Modelling: A NumPyro Case Study in AI-Augmented Research
 
-## Brief Summary
-Marketing mix models typically assume a single consumer response curve per channel, but real audiences are heterogeneous. This talk introduces a Bayesian mixture-of-Hill-curves approach implemented in NumPyro and JAX that captures latent consumer segments with distinct saturation behaviours. We also share how the model was developed through an AI-augmented research workflow, offering a reproducible template for cross-lingual academic-industry collaboration.
+## Abstract
+Marketing mix models typically assume a single consumer response curve per channel, but real audiences are heterogeneous. This talk introduces a Bayesian mixture-of-Hill-curves approach implemented in NumPyro and JAX that captures latent consumer segments with distinct saturation behaviours. We also share an AI-augmented research workflow—leveraging LLMs for cross-lingual collaboration and test-driven development as the specification mechanism—offering a reproducible template for computational research.
 
 ## Description
 
