@@ -8,42 +8,24 @@ Marketing mix models typically assume a single consumer response curve per chann
 
 ## Description
 
-### What and Why
-Marketing mix models (MMMs) help companies answer the question: "How much should we spend on each advertising channel?" A core component is the response curve—a function describing how sales respond to increased ad spend. Traditional MMMs fit a single response curve per channel, implicitly assuming all consumers react identically to advertising.
+Traditional marketing mix models (MMMs) fit a single response curve per advertising channel, assuming all consumers react identically. In practice, distinct audience segments respond differently—some convert quickly with minimal exposure, others require sustained investment. This heterogeneity leads to miscalibrated uncertainty and suboptimal budget decisions.
 
-In reality, different consumer segments respond differently. Some convert quickly with minimal exposure; others require sustained investment before responding. When this heterogeneity exists, a single-curve assumption leads to miscalibrated uncertainty and suboptimal budget decisions.
+This talk presents a Bayesian mixture-of-Hill-curves approach that captures latent consumer segments, each with distinct saturation behaviour. Using a mixture model, the number of segments and their relative sizes are learned automatically from data. We validate on synthetic datasets spanning one to five segments and on a real-world marketing dataset, showing that mixture models substantially improve uncertainty calibration when heterogeneity is present, with only modest overhead when it is not. We also share an AI-augmented research workflow—LLM-processed meeting transcripts, executable test suites as specifications, and MCMC diagnostics as acceptance criteria—as a reusable pattern for computational research projects.
 
-Our approach addresses this by fitting a mixture of response curves—multiple curves per channel, each capturing a distinct consumer segment. The model automatically learns how many segments exist and their relative sizes, using Bayesian inference to quantify uncertainty. Technical innovations (stick-breaking priors, ordering constraints, hierarchical structure) ensure the model remains identifiable and samples efficiently.
+This talk is aimed at data scientists, marketing analysts, and researchers working with Bayesian methods or advertising effectiveness. The talk is technical but focuses on intuition and practical applicability. Attendees will leave with a practical approach to heterogeneous consumer response, clarity on when mixtures help, a reproducible AI-augmented workflow, and an open-source NumPyro/JAX implementation.
 
-### Validation Results
-We validate the approach on synthetic datasets that simulate audiences with varying degrees of heterogeneity—from uniform response (one segment) to highly diverse (five distinct segments). When the audience is genuinely heterogeneous, mixture models achieve substantial improvements in predictive uncertainty, while incurring only modest penalties when the audience is actually homogeneous. Interestingly, point prediction accuracy remains similar across models; the gains are in uncertainty calibration—knowing how confident to be in predictions—which is critical for budget-allocation decisions. In practice, we recommend specifying more mixture components than expected, as the model automatically "prunes" unnecessary ones while maintaining stable inference.
-
-We further evaluate the approach on a real-world marketing mix dataset, where the mixture model identifies previously hidden heterogeneous consumer populations—demonstrating that the method surfaces actionable audience structure from observational data.
-
-### AI-Augmented Research Workflow
-The second thread of the talk addresses how this model was developed. The project paired a supervisor and student working across different native languages, using LLM-processed meeting transcripts to maintain shared context and formalising requirements as executable pytest suites and MCMC diagnostic thresholds. This created a tight loop: human intent expressed in natural language, LLM-assisted code generation, and quantitative validation via predictive accuracy checks and convergence diagnostics. We share this workflow as a reusable pattern for teams combining domain expertise with probabilistic programming.
-
-### Who Should Attend
-This talk is aimed at data scientists, marketing analysts, and research engineers who work with marketing mix models or Bayesian inference. It is also relevant for anyone interested in structuring AI-augmented research workflows for multilingual or cross-sector collaboration.
-
-### Talk Type and Tone
-This is a technical talk with moderate mathematical depth. We present model specifications, probabilistic programming concepts, and benchmark results, but focus on intuition and practical applicability rather than proofs. The tone is informative and practical, with emphasis on reproducibility and real-world applicability.
-
-### Background Knowledge
-No prior experience with marketing mix modelling is required. Familiarity with Bayesian inference concepts (priors, MCMC, model comparison) is helpful but not essential—key concepts will be briefly introduced.
-
-### Outline (40 minutes including Q&A)
+## Bullet Point Outline
 - (0-5 min) The budget-allocation problem and why single-curve MMMs fall short
-- (5-15 min) Mixture-of-Hills model specification: Hill transforms, adstock, stick-breaking weights, identifiability constraints
-- (15-22 min) Benchmark design and results: synthetic DGPs, predictive accuracy vs uncertainty calibration, when mixtures help and when they don't, real-world dataset results
-- (22-30 min) AI-augmented research workflow: transcripts, test-driven iteration, cross-lingual collaboration
+- (5-15 min) Mixture-of-Hills model: Hill transforms, adstock, mixture weights, identifiability
+- (15-22 min) Benchmark results: synthetic DGPs, uncertainty calibration gains, real-world dataset evaluation
+- (22-30 min) AI-augmented research workflow: LLM-assisted transcripts, test-driven iteration, cross-lingual collaboration
 - (30-40 min) Q&A
 
-### Key Takeaways
-1. **A practical Bayesian approach** to capture heterogeneous consumer response in marketing mix models
-2. **When and why** mixture models outperform single-curve baselines (and when they don't)
-3. **A reproducible workflow pattern** for AI-augmented probabilistic programming research
-4. **An open-source NumPyro/JAX implementation** attendees can apply to their own projects
+## Prior Knowledge Expected
+No prior experience with marketing mix modelling is required. Basic familiarity with Bayesian inference (priors, MCMC, model comparison) is helpful but not essential.
+
+## Keywords
+Bayesian inference, marketing mix modelling, NumPyro, JAX, mixture models, uncertainty calibration, AI-augmented research
 
 ---
 https://pretalx.com/pydata-london-2026-2025/cfp
