@@ -9,7 +9,7 @@
     "single_hill",
     "mixture_k2",
     "mixture_k3",
-    "sparse_k5"
+    "mixture_k5"
   ],
   "synthetic_seeds": [
     0,

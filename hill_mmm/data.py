@@ -148,25 +148,28 @@ def _generate_mixture(config: DGPConfig, K: int) -> tuple[np.ndarray, np.ndarray
 
     if K == 2:
         pi_true = np.array([0.6, 0.4], dtype=np.float32)
-        k_true = np.array([s_median * 0.7, s_median * 1.3], dtype=np.float32)
+        # k ratio: 1.5/0.6 = 2.5 (improved separation)
+        k_true = np.array([s_median * 0.6, s_median * 1.5], dtype=np.float32)
         A_true = np.array([20.0, 40.0], dtype=np.float32)
         n_true = np.array([2.0, 1.2], dtype=np.float32)
 
     elif K == 3:
         pi_true = np.array([0.40, 0.30, 0.30], dtype=np.float32)
-        k_true = np.array([s_median * 0.5, s_median * 1.0, s_median * 1.2], dtype=np.float32)
+        # k ratios: 1.0/0.4=2.5, 1.8/1.0=1.8 (improved from 1.0/0.5=2.0, 1.2/1.0=1.2)
+        k_true = np.array([s_median * 0.4, s_median * 1.0, s_median * 1.8], dtype=np.float32)
         A_true = np.array([15.0, 30.0, 60.0], dtype=np.float32)
         n_true = np.array([2.0, 1.5, 1.0], dtype=np.float32)
 
     elif K == 5:
         pi_true = np.array([0.30, 0.25, 0.20, 0.15, 0.10], dtype=np.float32)
+        # Geometric progression with ~1.6-1.7 ratio for better separation
         k_true = np.array(
             [
-                s_median * 0.4,
-                s_median * 0.7,
+                s_median * 0.3,
+                s_median * 0.55,
                 s_median * 1.0,
-                s_median * 1.3,
-                s_median * 1.6,
+                s_median * 1.7,
+                s_median * 2.8,
             ],
             dtype=np.float32,
         )

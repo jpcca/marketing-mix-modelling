@@ -261,6 +261,17 @@ def test_elpd_comparison(output_dir: Path) -> None:
     ax.legend(title="Model")
     ax.axhline(y=0, color="gray", linestyle="--", alpha=0.3)
 
+    # Add error bar annotation
+    ax.annotate(
+        "Error bars: ±1 std across random seeds",
+        xy=(0.98, 0.02),
+        xycoords="axes fraction",
+        ha="right",
+        va="bottom",
+        fontsize=8,
+        color="gray",
+    )
+
     plt.tight_layout()
     fig.savefig(output_dir / "fig1_elpd_comparison.png")
     plt.close("all")
@@ -293,7 +304,7 @@ def test_elpd_delta(output_dir: Path) -> None:
         except KeyError:
             continue
 
-        for model in ["mixture_k3", "sparse_k5"]:
+        for model in ["mixture_k3", "mixture_k5"]:
             try:
                 row = df.loc[(dgp, k_true, model)]
                 delta = row[("elpd_loo", "mean")] - baseline
@@ -314,7 +325,7 @@ def test_elpd_delta(output_dir: Path) -> None:
     ax.axvline(x=0, color="black", linewidth=1)
     ax.set_yticks(y_ticks)
     ax.set_yticklabels(y_labels, fontsize=9)
-    ax.set_xlabel("ΔELPD-LOO (vs Single Hill)")
+    ax.set_xlabel("ΔELPD-LOO (vs Single Hill)\n(Error bars: ± 1 SD across seeds)")
     ax.set_title("ELPD Improvement Over Single Hill Baseline")
 
     # Add significance annotation
@@ -503,10 +514,18 @@ def test_coverage_plot(output_dir: Path) -> None:
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
 
+    # Add spacing between DGP groups
+    dgp_spacing = 0.3  # Gap between DGP groups
+    n_models = len(MODEL_ORDER)
+    width = 0.18  # Slightly narrower bars
+
     for ax_idx, (cov_type, title) in enumerate([("train", "Training Set"), ("test", "Test Set")]):
         ax = axes[ax_idx]
-        x = np.arange(len(DGP_ORDER))
-        width = 0.25
+        # Calculate x positions with spacing between DGP groups
+        x_positions = []
+        for i in range(len(DGP_ORDER)):
+            x_positions.append(i * (n_models * width + dgp_spacing))
+        x = np.array(x_positions)
 
         for i, model in enumerate(MODEL_ORDER):
             means = []
@@ -520,7 +539,7 @@ def test_coverage_plot(output_dir: Path) -> None:
                     means.append(np.nan)
                     stds.append(np.nan)
 
-            offset = (i - 1) * width
+            offset = (i - (n_models - 1) / 2) * width
             ax.bar(
                 x + offset,
                 means,
@@ -544,6 +563,16 @@ def test_coverage_plot(output_dir: Path) -> None:
 
         if ax_idx == 0:
             ax.legend(title="Model", loc="lower left", fontsize=8)
+
+    # Add annotation for error bars
+    fig.text(
+        0.5,
+        -0.02,
+        "Error bars: ±1 std across random seeds",
+        ha="center",
+        fontsize=9,
+        style="italic",
+    )
 
     plt.tight_layout()
     fig.savefig(output_dir / "fig5_coverage.png")
@@ -585,10 +614,22 @@ def test_response_curves_comparison(output_dir: Path) -> None:
 
     samples = mcmc.get_samples()
 
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharex=True, sharey=True)
 
-    # X values for plotting curves
-    x_plot = np.linspace(0, meta["s_max"] * 1.2, 200)
+    # X values for plotting curves - use True data range
+    x_max = meta["s_max"] * 1.1
+    x_plot = np.linspace(0, x_max, 200)
+
+    # Compute y_effect once for both panels
+    y_effect = y - meta["baseline"]
+
+    # Compute y-axis limits from True curves and data
+    true_curves_max = max(
+        hill(jnp.array([x_max]), meta["A_true"][j], meta["k_true"][j], meta["n_true"][j]).item()
+        for j in range(meta["K_true"])
+    )
+    y_max = max(true_curves_max, y_effect.max()) * 1.1
+    y_min = min(0, y_effect.min()) * 1.1
 
     # Panel A: True curves
     ax = axes[0]
@@ -619,6 +660,8 @@ def test_response_curves_comparison(output_dir: Path) -> None:
     ax.set_title("(a) True Response Curves")
     ax.legend(loc="lower right", fontsize=9)
     ax.grid(True, alpha=0.3)
+    ax.set_ylim(y_min, y_max)
+    ax.set_xlim(0, x_max)
 
     # Panel B: Estimated curves with uncertainty
     ax = axes[1]
@@ -668,158 +711,6 @@ def test_response_curves_comparison(output_dir: Path) -> None:
 
     plt.tight_layout()
     fig.savefig(output_dir / "fig6_response_curves.png")
-    plt.close("all")
-
-
-# =============================================================================
-# Figure 7: Mixture Weights Visualization (Slow - requires MCMC)
-# =============================================================================
-
-
-def test_mixture_weights_visualization(output_dir: Path) -> None:
-    """Figure 7: Mixture weight recovery visualization.
-
-    Shows posterior distribution of mixture weights for different DGPs.
-    """
-    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
-    axes = axes.flatten()
-
-    dgp_configs: list[tuple[DGPType, str]] = [
-        ("single", "(a) True K=1"),
-        ("mixture_k2", "(b) True K=2"),
-        ("mixture_k3", "(c) True K=3"),
-        ("mixture_k5", "(d) True K=5"),
-    ]
-
-    for ax, (dgp_type, title) in zip(axes, dgp_configs):
-        config = DGPConfig(dgp_type=dgp_type, T=100, seed=42)
-        x, y, meta = generate_data(config)
-        prior_config = compute_prior_config(x, y)
-
-        # Run K=5 mixture model (MCMC params match run_benchmark.py)
-        mcmc = run_inference(
-            model_fn=model_hill_mixture,
-            x=x,
-            y=y,
-            seed=42,
-            num_warmup=1000,
-            num_samples=2000,
-            num_chains=4,
-            prior_config=prior_config,
-            K=5,
-        )
-
-        samples = mcmc.get_samples()
-        pis = np.array(samples["pis"])
-
-        # Box plot of mixture weights
-        bp = ax.boxplot(
-            pis,
-            positions=range(1, 6),
-            patch_artist=True,
-            widths=0.6,
-        )
-        for patch, color in zip(bp["boxes"], COLORS_LIST):
-            patch.set_facecolor(color)
-            patch.set_alpha(0.7)
-
-        # Add true weights if mixture
-        if meta["K_true"] > 1:
-            for k, pi_true in enumerate(meta["pi_true"]):
-                ax.scatter(
-                    k + 1,
-                    pi_true,
-                    color="red",
-                    marker="*",
-                    s=150,
-                    zorder=5,
-                    label="True π" if k == 0 else "",
-                )
-
-        ax.set_xlabel("Component")
-        ax.set_ylabel("Mixture Weight (π)")
-        ax.set_title(title)
-        ax.set_ylim(-0.05, 1.05)
-        ax.axhline(y=1 / 5, color="gray", linestyle="--", alpha=0.5)
-        if meta["K_true"] > 1:
-            ax.legend(loc="upper right")
-
-    plt.tight_layout()
-    fig.savefig(output_dir / "fig7_mixture_weights.png")
-    plt.close("all")
-
-
-# =============================================================================
-# Figure 8: Prediction vs Actual (Slow - requires MCMC)
-# =============================================================================
-
-
-def test_prediction_vs_actual(output_dir: Path) -> None:
-    """Figure 8: Prediction vs actual comparison.
-
-    Shows time series of predictions with uncertainty bands.
-    """
-    config = DGPConfig(dgp_type="mixture_k3", T=150, seed=42)
-    x, y, meta = generate_data(config)
-    prior_config = compute_prior_config(x, y)
-
-    # Train/test split
-    train_size = 100
-    x_train, y_train = x[:train_size], y[:train_size]
-    # Note: test data available for future use
-    _x_test, _y_test = x[train_size:], y[train_size:]
-
-    # Run MCMC on training data (parameters match run_benchmark.py)
-    mcmc = run_inference(
-        model_fn=model_hill_mixture_sparse,
-        x=x_train,
-        y=y_train,
-        seed=42,
-        num_warmup=1000,
-        num_samples=2000,
-        num_chains=4,
-        prior_config=prior_config,
-        K=5,
-    )
-
-    samples = mcmc.get_samples()
-
-    fig, axes = plt.subplots(2, 1, figsize=(12, 8))
-
-    # Get mu_expected samples
-    if "mu_expected" in samples:
-        mu_samples = np.array(samples["mu_expected"])
-
-        # Panel A: Training fit
-        ax = axes[0]
-        mu_mean = mu_samples.mean(axis=0)
-        mu_lower = np.percentile(mu_samples, 5, axis=0)
-        mu_upper = np.percentile(mu_samples, 95, axis=0)
-
-        t_train = np.arange(train_size)
-        ax.fill_between(t_train, mu_lower, mu_upper, color="#3498db", alpha=0.3, label="90% CI")
-        ax.plot(t_train, mu_mean, color="#3498db", linewidth=2, label="Predicted Mean")
-        ax.scatter(t_train, y_train, color="black", s=20, alpha=0.6, label="Observed", zorder=5)
-        ax.plot(t_train, meta["mu_true"][:train_size], "--", color="red", label="True μ")
-
-        ax.set_xlabel("Time (t)")
-        ax.set_ylabel("Response (y)")
-        ax.set_title("(a) Training Set Fit")
-        ax.legend(loc="upper right")
-        ax.grid(True, alpha=0.3)
-
-        # Panel B: Residual analysis (inside same condition to ensure mu_mean is bound)
-        ax = axes[1]
-        residuals = y_train - mu_mean
-        ax.scatter(mu_mean, residuals, alpha=0.5, color="#3498db", s=30)
-        ax.axhline(y=0, color="red", linestyle="--")
-        ax.set_xlabel("Predicted Mean")
-        ax.set_ylabel("Residual (y - ŷ)")
-        ax.set_title("(b) Residual Plot")
-        ax.grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    fig.savefig(output_dir / "fig8_prediction_vs_actual.png")
     plt.close("all")
 
 
