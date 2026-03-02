@@ -38,7 +38,7 @@ from hill_mmm.inference import (  # noqa: E402
     relabel_samples_by_k,
     run_inference,
 )
-from hill_mmm.models import model_hill_mixture_unconstrained, model_single_hill  # noqa: E402
+from hill_mmm.models import model_hill_mixture_hierarchical_reparam, model_single_hill  # noqa: E402
 
 # Constants
 DATA_PATH = project_root / "data" / "conjura_mmm_data.csv"
@@ -107,16 +107,16 @@ def run_mixture_model(
     K: int = 3,
     seed: int = 42,
 ) -> dict:
-    """Run unconstrained mixture model with proper diagnostics."""
+    """Run hierarchical mixture model with proper diagnostics."""
     print("\n" + "=" * 60)
-    print(f"Running Unconstrained Mixture Model (K={K})")
+    print(f"Running Hierarchical Mixture Model (K={K})")
     print("=" * 60)
 
     start_time = time.time()
 
     # Run inference
     mcmc = run_inference(
-        model_fn=model_hill_mixture_unconstrained,
+        model_fn=model_hill_mixture_hierarchical_reparam,
         x=data.x,
         y=data.y,
         seed=seed,
