@@ -42,8 +42,8 @@ model_hill_mixture_sparse = model_hill_mixture_hierarchical_reparam  # K=5 passe
 
 # Paths
 RESULTS_DIR = Path(__file__).parent.parent / "results" / "benchmark"
-RESULTS_SUMMARY_CSV = RESULTS_DIR / "synthetic_20260210_152336_summary.csv"
-RESULTS_CSV = RESULTS_DIR / "synthetic_20260210_152336.csv"
+RESULTS_SUMMARY_CSV = RESULTS_DIR / "synthetic_20260302_010732_summary.csv"
+RESULTS_CSV = RESULTS_DIR / "synthetic_20260302_010732.csv"
 
 # DGP ordering for plots
 DGP_ORDER = ["single", "mixture_k2", "mixture_k3", "mixture_k5"]
@@ -389,35 +389,28 @@ def test_convergence_heatmap(output_dir: Path) -> None:
     plt.close("all")
 
 
-def test_convergence_rate_threshold() -> None:
-    """Test that all DGP-model combinations meet minimum convergence threshold.
-
-    Asserts that every cell in the convergence heatmap has at least 60%
-    convergence rate. Fails if any DGP-model combination falls below this.
-    Note: Some model-DGP combinations (especially sparse models with single DGP)
-    have known convergence challenges, hence the 60% threshold.
-    """
-    MIN_CONVERGENCE_RATE = 0.60
-
+def test_convergence_no_failures() -> None:
+    """Fail if any synthetic benchmark run does not converge."""
     df = load_results()
 
-    # Calculate convergence rate per DGP-model combination
-    conv_rates = df.groupby(["dgp", "model"])["converged"].mean().unstack(fill_value=0)
-    conv_rates = conv_rates.reindex(index=DGP_ORDER, columns=MODEL_ORDER)  # type: ignore[call-arg]
+    # Be robust to CSV parsing as bool or string values.
+    converged = df["converged"]
+    if converged.dtype != bool:
+        converged = converged.astype(str).str.lower().map({"true": True, "false": False})
 
-    # Check each cell
-    failures = []
-    for dgp in DGP_ORDER:
-        for model in MODEL_ORDER:
-            rate = conv_rates.loc[dgp, model]
-            if rate < MIN_CONVERGENCE_RATE:
-                failures.append(
-                    f"  {DGP_LABELS[dgp]} + {MODEL_LABELS[model]}: {rate:.1%} < {MIN_CONVERGENCE_RATE:.0%}"
-                )
+    failed = df.loc[~converged.fillna(False), ["dgp", "model", "seed", "max_rhat", "min_ess_bulk"]]
+    if failed.empty:
+        return
 
-    if failures:
-        failure_msg = "\n".join(failures)
-        pytest.fail(f"Convergence rate below {MIN_CONVERGENCE_RATE:.0%} threshold:\n{failure_msg}")
+    details = "\n".join(
+        (
+            "  "
+            f"dgp={row.dgp}, model={row.model}, seed={int(row.seed)}, "
+            f"max_rhat={row.max_rhat:.3f}, min_ess_bulk={row.min_ess_bulk:.1f}"
+        )
+        for row in failed.itertuples(index=False)
+    )
+    pytest.fail(f"Found {len(failed)} non-converged benchmark runs:\n{details}")
 
 
 # =============================================================================
