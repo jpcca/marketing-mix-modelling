@@ -22,6 +22,8 @@ def run_inference(
     num_samples: int = 2000,
     num_chains: int = 4,
     prior_config: dict | None = None,
+    target_accept_prob: float = 0.9,
+    progress_bar: bool = True,
     **model_kwargs,
 ) -> MCMC:
     """Run MCMC inference.
@@ -35,19 +37,21 @@ def run_inference(
         num_samples: Samples per chain
         num_chains: Number of parallel chains
         prior_config: Prior hyperparameters
+        target_accept_prob: NUTS target acceptance probability
+        progress_bar: Whether to show MCMC progress bar
         **model_kwargs: Additional model arguments (e.g., K for mixture)
 
     Returns:
         MCMC object with samples
     """
     rng_key = jax.random.PRNGKey(seed)
-    kernel = NUTS(model_fn, target_accept_prob=0.9)
+    kernel = NUTS(model_fn, target_accept_prob=target_accept_prob)
     mcmc = MCMC(
         kernel,
         num_warmup=num_warmup,
         num_samples=num_samples,
         num_chains=num_chains,
-        progress_bar=True,
+        progress_bar=progress_bar,
     )
     mcmc.run(
         rng_key,

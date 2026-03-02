@@ -21,6 +21,7 @@ import pandas as pd
 from .data import DGP_CONFIGS, DGPConfig, compute_prior_config, generate_data
 from .inference import (
     compute_convergence_diagnostics,
+    compute_label_invariant_diagnostics,
     compute_loo,
     compute_predictions,
     compute_predictive_metrics,
@@ -100,6 +101,19 @@ def run_single_experiment(
 
     # Compute all metrics
     convergence = compute_convergence_diagnostics(mcmc)
+    is_mixture_model = "K" in model_spec.kwargs
+
+    # Mixture models often show inflated component-wise R-hat due weak identifiability.
+    # Use label-invariant log-likelihood R-hat as an additional convergence signal.
+    rhat_log_lik = None
+    converged_effective = convergence["converged"]
+    if is_mixture_model:
+        label_invariant = compute_label_invariant_diagnostics(mcmc, x_train, y_train)
+        rhat_log_lik = float(label_invariant["rhat_log_lik"])
+        converged_effective = bool(
+            bool(convergence["converged"]) or (rhat_log_lik < float(label_invariant["threshold"]))
+        )
+
     loo = compute_loo(mcmc)
     waic = compute_waic(mcmc)
     effective_k = compute_effective_k(mcmc)
@@ -126,7 +140,9 @@ def run_single_experiment(
         # Convergence
         "max_rhat": convergence["max_rhat"],
         "min_ess_bulk": convergence["min_ess_bulk"],
-        "converged": convergence["converged"],
+        "converged_standard": convergence["converged"],
+        "rhat_log_lik": rhat_log_lik,
+        "converged": converged_effective,
         # Model comparison
         "elpd_loo": loo.get("elpd_loo"),
         "loo_se": loo.get("se"),
