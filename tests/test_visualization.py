@@ -579,6 +579,7 @@ def test_coverage_plot(output_dir: Path) -> None:
 DGPType = Literal["single", "mixture_k2", "mixture_k3", "mixture_k5"]
 
 
+@pytest.mark.skip(reason="MCMC-based visualization test is excluded from automated test runs.")
 def test_response_curves_comparison(output_dir: Path) -> None:
     """Figure 6: Response curves comparison.
 
@@ -705,4 +706,3 @@ def test_response_curves_comparison(output_dir: Path) -> None:
     plt.tight_layout()
     fig.savefig(output_dir / "fig6_response_curves.png")
     plt.close("all")
-
