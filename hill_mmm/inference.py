@@ -12,6 +12,8 @@ import jax.numpy as jnp
 import numpy as np
 from numpyro.infer import MCMC, NUTS, Predictive
 
+from .baseline import linear_baseline, standardized_time_index
+
 
 def run_inference(
     model_fn: Callable,
@@ -312,8 +314,7 @@ def compute_mixture_log_likelihood(
     n_samples = samples["A"].shape[0]
 
     # Standardized time
-    t = np.arange(T, dtype=np.float32)
-    t_std = (t - np.mean(t)) / (np.std(t) + 1e-6)
+    t_std = standardized_time_index(T)
 
     log_likelihoods = np.zeros(n_samples)
 
@@ -333,7 +334,7 @@ def compute_mixture_log_likelihood(
         s = np.array(s)
 
         # Baseline
-        baseline = intercept + slope * t_std
+        baseline = linear_baseline(intercept, slope, t_std)
 
         # Hill components
         hill_mat = hill_matrix(jnp.array(s), jnp.array(A), jnp.array(k), jnp.array(n))

@@ -15,6 +15,7 @@ from typing import Literal
 import jax.numpy as jnp
 import numpy as np
 
+from .baseline import linear_baseline, standardized_time_index
 from .transforms import adstock_geometric, hill, hill_matrix
 
 
@@ -83,9 +84,8 @@ def _generate_single_hill(config: DGPConfig) -> tuple[np.ndarray, np.ndarray, di
     s = np.array(adstock_geometric(jnp.array(x), jnp.array(config.alpha)))
 
     # Baseline (intercept + linear trend)
-    t = np.arange(T, dtype=np.float32)
-    t_std = (t - t.mean()) / (t.std() + 1e-6)
-    baseline = config.intercept + config.slope * t_std
+    t_std = standardized_time_index(T)
+    baseline = linear_baseline(config.intercept, config.slope, t_std)
 
     # Single Hill parameters
     s_median = np.median(s)
@@ -139,9 +139,8 @@ def _generate_mixture(config: DGPConfig, K: int) -> tuple[np.ndarray, np.ndarray
     s = np.array(adstock_geometric(jnp.array(x), jnp.array(config.alpha)))
 
     # Baseline
-    t = np.arange(T, dtype=np.float32)
-    t_std = (t - t.mean()) / (t.std() + 1e-6)
-    baseline = config.intercept + config.slope * t_std
+    t_std = standardized_time_index(T)
+    baseline = linear_baseline(config.intercept, config.slope, t_std)
 
     # Component parameters based on K
     s_median = np.median(s)

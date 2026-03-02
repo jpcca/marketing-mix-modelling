@@ -15,6 +15,7 @@ import numpyro.distributions as dist
 from numpyro.handlers import reparam
 from numpyro.infer.reparam import LocScaleReparam
 
+from .baseline import linear_baseline, standardized_time_index
 from .transforms import adstock_geometric, hill, hill_matrix
 
 
@@ -29,8 +30,7 @@ def model_single_hill(x, y=None, prior_config=None):
         prior_config: Dict with prior hyperparameters
     """
     T = x.shape[0]
-    t = jnp.arange(T, dtype=jnp.float32)
-    t_std = (t - jnp.mean(t)) / (jnp.std(t) + 1e-6)
+    t_std = standardized_time_index(T, xp=jnp)
 
     # Default prior config
     if prior_config is None:
@@ -56,7 +56,7 @@ def model_single_hill(x, y=None, prior_config=None):
         dist.Normal(prior_config["intercept_loc"], prior_config["intercept_scale"]),
     )
     slope = numpyro.sample("slope", dist.Normal(0.0, prior_config["slope_scale"]))
-    baseline = intercept + slope * t_std
+    baseline = linear_baseline(intercept, slope, t_std)
 
     # Hill parameters
     s_median = jnp.median(s)
@@ -92,8 +92,7 @@ def _model_hill_mixture_hierarchical_reparam_inner(x, y=None, K=3, prior_config=
     4. Ordered constraint on k for identifiability
     """
     T = x.shape[0]
-    t = jnp.arange(T, dtype=jnp.float32)
-    t_std = (t - jnp.mean(t)) / (jnp.std(t) + 1e-6)
+    t_std = standardized_time_index(T, xp=jnp)
 
     if prior_config is None:
         prior_config = {
@@ -118,7 +117,7 @@ def _model_hill_mixture_hierarchical_reparam_inner(x, y=None, K=3, prior_config=
         dist.Normal(prior_config["intercept_loc"], prior_config["intercept_scale"]),
     )
     slope = numpyro.sample("slope", dist.Normal(0.0, prior_config["slope_scale"]))
-    baseline = intercept + slope * t_std
+    baseline = linear_baseline(intercept, slope, t_std)
 
     # Mixture weights - stick-breaking
     stick_proportions = numpyro.sample(

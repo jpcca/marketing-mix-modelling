@@ -105,39 +105,38 @@ def _is_effectively_converged(convergence: dict, rhat_log_lik: float | None, rha
     return bool(rhat_log_lik < rhat_threshold)
 
 
-def run_single_experiment(
-    dgp_config: DGPConfig,
-    model_spec: ModelSpec,
-    train_ratio: float = 0.75,
-    num_warmup: int = 1000,
-    num_samples: int = 2000,
-    num_chains: int = 4,
-) -> dict:
-    """Run a single DGP x Model experiment.
-
-    Args:
-        dgp_config: Data generating process configuration
-        model_spec: Model specification
-        train_ratio: Fraction of data for training
-        num_warmup: MCMC warmup iterations
-        num_samples: MCMC sample iterations
-        num_chains: Number of MCMC chains
-
-    Returns:
-        Dict with all evaluation metrics
-    """
-    # Generate data
+def _prepare_experiment_data(dgp_config: DGPConfig, train_ratio: float) -> dict:
+    """Generate data, split train/test, and compute prior config."""
     x, y, meta = generate_data(dgp_config)
     T = len(y)
     T_train = int(T * train_ratio)
-
     x_train, y_train = x[:T_train], y[:T_train]
     x_test, y_test = x[T_train:], y[T_train:]
-
-    # Compute priors from training data
     prior_config = compute_prior_config(x_train, y_train)
 
-    # Run inference with deterministic retries.
+    return {
+        "x_train": x_train,
+        "y_train": y_train,
+        "x_test": x_test,
+        "y_test": y_test,
+        "prior_config": prior_config,
+        "meta": meta,
+        "T": T,
+        "T_train": T_train,
+    }
+
+
+def _fit_with_retries(
+    dgp_config: DGPConfig,
+    model_spec: ModelSpec,
+    x_train,
+    y_train,
+    prior_config: dict,
+    num_warmup: int,
+    num_samples: int,
+    num_chains: int,
+) -> dict:
+    """Run inference with deterministic retry schedule."""
     is_mixture_model = "K" in model_spec.kwargs
     retry_schedule = _build_retry_schedule(num_warmup, num_samples, is_mixture_model)
 
@@ -186,12 +185,31 @@ def run_single_experiment(
     assert mcmc is not None
     assert convergence is not None
 
-    loo = compute_loo(mcmc)
-    waic = compute_waic(mcmc)
-    effective_k = compute_effective_k(mcmc)
-    param_recovery = compute_parameter_recovery(mcmc, meta)
+    return {
+        "mcmc": mcmc,
+        "convergence": convergence,
+        "is_mixture_model": is_mixture_model,
+        "rhat_log_lik": rhat_log_lik,
+        "rhat_threshold": rhat_threshold,
+        "converged_effective": converged_effective,
+        "retry_attempt": retry_attempt,
+        "inference_seed": inference_seed,
+        "used_warmup": used_warmup,
+        "used_samples": used_samples,
+        "used_target_accept": used_target_accept,
+    }
 
-    # Predictive metrics on train and test
+
+def _compute_train_test_metrics(
+    mcmc,
+    model_spec: ModelSpec,
+    prior_config: dict,
+    x_train,
+    y_train,
+    x_test,
+    y_test,
+) -> tuple[dict, dict]:
+    """Compute posterior predictive metrics on train and test splits."""
     pred_train = compute_predictions(
         mcmc, model_spec.fn, x_train, prior_config=prior_config, **model_spec.kwargs
     )
@@ -202,25 +220,77 @@ def run_single_experiment(
     train_metrics = compute_predictive_metrics(y_train, pred_train["y"])
     test_metrics = compute_predictive_metrics(y_test, pred_test["y"])
 
+    return train_metrics, test_metrics
+
+
+def run_single_experiment(
+    dgp_config: DGPConfig,
+    model_spec: ModelSpec,
+    train_ratio: float = 0.75,
+    num_warmup: int = 1000,
+    num_samples: int = 2000,
+    num_chains: int = 4,
+) -> dict:
+    """Run a single DGP x Model experiment.
+
+    Args:
+        dgp_config: Data generating process configuration
+        model_spec: Model specification
+        train_ratio: Fraction of data for training
+        num_warmup: MCMC warmup iterations
+        num_samples: MCMC sample iterations
+        num_chains: Number of MCMC chains
+
+    Returns:
+        Dict with all evaluation metrics
+    """
+    prepared = _prepare_experiment_data(dgp_config, train_ratio)
+    fit = _fit_with_retries(
+        dgp_config=dgp_config,
+        model_spec=model_spec,
+        x_train=prepared["x_train"],
+        y_train=prepared["y_train"],
+        prior_config=prepared["prior_config"],
+        num_warmup=num_warmup,
+        num_samples=num_samples,
+        num_chains=num_chains,
+    )
+
+    mcmc = fit["mcmc"]
+    convergence = fit["convergence"]
+    loo = compute_loo(mcmc)
+    waic = compute_waic(mcmc)
+    effective_k = compute_effective_k(mcmc)
+    param_recovery = compute_parameter_recovery(mcmc, prepared["meta"])
+    train_metrics, test_metrics = _compute_train_test_metrics(
+        mcmc=mcmc,
+        model_spec=model_spec,
+        prior_config=prepared["prior_config"],
+        x_train=prepared["x_train"],
+        y_train=prepared["y_train"],
+        x_test=prepared["x_test"],
+        y_test=prepared["y_test"],
+    )
+
     return {
         "dgp": dgp_config.dgp_type,
-        "K_true": meta["K_true"],
+        "K_true": prepared["meta"]["K_true"],
         "model": model_spec.name,
         "seed": dgp_config.seed,
-        "T": T,
-        "T_train": T_train,
+        "T": prepared["T"],
+        "T_train": prepared["T_train"],
         # Convergence
         "max_rhat": convergence["max_rhat"],
         "min_ess_bulk": convergence["min_ess_bulk"],
         "converged_standard": convergence["converged"],
-        "rhat_log_lik": rhat_log_lik,
-        "rhat_threshold": rhat_threshold if is_mixture_model else None,
-        "converged": converged_effective,
-        "retry_attempt": retry_attempt,
-        "inference_seed": inference_seed,
-        "num_warmup_used": used_warmup,
-        "num_samples_used": used_samples,
-        "target_accept_prob_used": used_target_accept,
+        "rhat_log_lik": fit["rhat_log_lik"],
+        "rhat_threshold": fit["rhat_threshold"] if fit["is_mixture_model"] else None,
+        "converged": fit["converged_effective"],
+        "retry_attempt": fit["retry_attempt"],
+        "inference_seed": fit["inference_seed"],
+        "num_warmup_used": fit["used_warmup"],
+        "num_samples_used": fit["used_samples"],
+        "target_accept_prob_used": fit["used_target_accept"],
         # Model comparison
         "elpd_loo": loo.get("elpd_loo"),
         "loo_se": loo.get("se"),
@@ -238,7 +308,7 @@ def run_single_experiment(
         # Parameter recovery
         "alpha_in_ci": param_recovery.get("alpha", {}).get("in_ci"),
         "sigma_in_ci": param_recovery.get("sigma", {}).get("in_ci"),
-        "alpha_true": meta["alpha_true"],
+        "alpha_true": prepared["meta"]["alpha_true"],
         "alpha_est": param_recovery.get("alpha", {}).get("mean"),
     }
 
