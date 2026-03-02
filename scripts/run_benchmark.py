@@ -174,10 +174,13 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
     df_real = load_real_data(str(csv_path))
 
     # Select top N organizations by data quantity
-    selected = select_representative_timeseries(
-        df_real,
-        n_timeseries=config.real_n_orgs,
+    selected_org_ids = select_representative_timeseries(
+        str(csv_path),
+        n=config.real_n_orgs,
         selection_criteria="most_data",
+        min_length=200,
+        min_channels=1,
+        seed=42,
     )
 
     # Get model specs
@@ -188,7 +191,12 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
     current = 0
     start_time = time.time()
 
-    for org_id, org_df in selected.groupby("organization_id"):
+    for org_id in selected_org_ids:
+        org_df = df_real[df_real["organization_id"] == org_id]
+        if len(org_df) == 0:
+            print(f"WARNING: No rows found for organization_id={org_id}, skipping")
+            continue
+
         # Prepare data
         x = np.asarray(org_df["spend"].values)
         y = np.asarray(org_df["revenue"].values)

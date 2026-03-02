@@ -311,37 +311,83 @@ def load_real_data(csv_path: str | Path) -> pd.DataFrame:
 
 
 def select_representative_timeseries(
-    df: pd.DataFrame,
-    n_timeseries: int = 5,
-    selection_criteria: str = "most_data",
+    csv_path: str | Path,
+    n: int | None = None,
+    *,
+    n_timeseries: int | None = None,
+    selection_criteria: str = "stratified",
     min_length: int = 200,
-) -> pd.DataFrame:
-    """Select representative time series from loaded data.
+    min_channels: int = 1,
+    seed: int = 42,
+) -> list[str]:
+    """Select representative organization IDs for benchmarking.
 
     Args:
-        df: DataFrame from load_real_data()
+        csv_path: Path to conjura_mmm_data.csv
+        n: Number of organizations to select (legacy alias)
         n_timeseries: Number of organizations to select
         selection_criteria: "most_data" or "stratified"
         min_length: Minimum observations required
+        min_channels: Minimum number of active channels required
+        seed: Random seed used for deterministic sampling
 
     Returns:
-        DataFrame filtered to selected organizations
+        List of selected organization IDs
     """
-    # Count observations per organization
-    org_counts = df.groupby("organization_id").size().reset_index(name="n_obs")  # type: ignore[call-overload]
-    org_counts = org_counts[org_counts["n_obs"] >= min_length]
+    if n is not None and n_timeseries is not None and n != n_timeseries:
+        raise ValueError("n and n_timeseries must match when both are provided")
 
-    if len(org_counts) == 0:
-        raise ValueError(f"No organizations with >= {min_length} observations")
+    n_select = n if n is not None else n_timeseries
+    if n_select is None:
+        n_select = 5
+    if n_select <= 0:
+        return []
+
+    ts_info = list_timeseries(csv_path, min_length=min_length)
+    if len(ts_info) == 0:
+        raise ValueError("No time series meet the criteria")
+
+    # Prefer "All Territories" to match load_timeseries default behavior.
+    all_territories = ts_info[ts_info["territory_name"] == "All Territories"]
+    if len(all_territories) > 0:
+        ts_info = all_territories
+
+    ts_info = ts_info[ts_info["n_active_channels"] >= min_channels]
+    if len(ts_info) == 0:
+        raise ValueError("No time series meet the criteria")
+
+    # Keep one row per organization.
+    ts_info = ts_info.sort_values(
+        by=["n_days", "n_active_channels", "total_spend"],
+        ascending=[False, False, False],
+    )
+    ts_info = ts_info.drop_duplicates(subset=["organisation_id"], keep="first")
+
+    if len(ts_info) == 0:
+        raise ValueError("No time series meet the criteria")
+
+    n_select = min(n_select, len(ts_info))
 
     if selection_criteria == "most_data":
-        # Select top N by observation count
-        selected_orgs = org_counts.nlargest(n_timeseries, "n_obs")["organization_id"].tolist()  # type: ignore[call-overload]
-    else:
-        # Random selection
-        selected_orgs = org_counts.sample(min(n_timeseries, len(org_counts)))[
-            "organization_id"
-        ].tolist()
+        selected_orgs = ts_info.head(n_select)["organisation_id"].tolist()
+        return [str(org_id) for org_id in selected_orgs]
 
-    result_df: pd.DataFrame = df[df["organization_id"].isin(selected_orgs)].copy()  # type: ignore[assignment]
-    return result_df
+    if selection_criteria != "stratified":
+        raise ValueError(f"Unknown selection_criteria: {selection_criteria}")
+
+    selected_orgs: list[str] = []
+    # First pass: pick one organization per vertical when possible.
+    for _, group in ts_info.groupby("organisation_vertical", sort=True):
+        if len(selected_orgs) >= n_select:
+            break
+        pick = group.sample(n=1, random_state=seed)["organisation_id"].iloc[0]
+        selected_orgs.append(str(pick))
+
+    # Second pass: fill remaining slots from the remaining pool.
+    remaining = ts_info[~ts_info["organisation_id"].isin(selected_orgs)]
+    remaining_slots = n_select - len(selected_orgs)
+    if remaining_slots > 0 and len(remaining) > 0:
+        sampled = remaining.sample(n=remaining_slots, random_state=seed)["organisation_id"].tolist()
+        selected_orgs.extend(str(org_id) for org_id in sampled)
+
+    return selected_orgs[:n_select]
