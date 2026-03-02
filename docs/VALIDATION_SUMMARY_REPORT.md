@@ -298,7 +298,7 @@ python scripts/run_real_data_validation.py \
 ### 6.4 Run Label Switching Diagnostics
 
 ```bash
-python scripts/test_ordering_comparison.py
+python scripts/legacy/test_ordering_comparison.py
 # Results in: results/label_switching_diagnostics/
 ```
 

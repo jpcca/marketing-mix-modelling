@@ -13,10 +13,10 @@ Theoretical motivation:
 
 Usage:
     # Full experiment (recommended)
-    uv run python scripts/test_ordering_comparison.py --use-synthetic --T 200
+    uv run python scripts/legacy/test_ordering_comparison.py --use-synthetic --T 200
 
     # Quick test
-    uv run python scripts/test_ordering_comparison.py --use-synthetic --T 100 --warmup 100 --samples 100
+    uv run python scripts/legacy/test_ordering_comparison.py --use-synthetic --T 100 --warmup 100 --samples 100
 
 Output:
     Results are saved to results/ordering_comparison/:

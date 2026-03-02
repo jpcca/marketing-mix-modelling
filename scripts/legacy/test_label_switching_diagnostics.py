@@ -8,7 +8,7 @@ This script validates the improved convergence diagnostics for mixture models:
 4. Label switching detection
 
 Usage:
-    python scripts/test_label_switching_diagnostics.py [--quick]
+    python scripts/legacy/test_label_switching_diagnostics.py [--quick]
 """
 
 import argparse

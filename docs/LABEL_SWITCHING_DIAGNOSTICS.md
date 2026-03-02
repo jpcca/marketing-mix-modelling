@@ -184,7 +184,7 @@ rhat_relabeled = az.rhat(relabeled)
 |------|----------|
 | Unconstrained model variant | `hill_mmm/models.py::model_hill_mixture_unconstrained` |
 | Post-hoc relabeling function | `hill_mmm/inference.py::relabel_samples_by_k()` |
-| Comparison test script | `scripts/test_ordering_comparison.py` |
+| Comparison test script | `scripts/legacy/test_ordering_comparison.py` |
 | Experiment results | `results/ordering_comparison/` |
 
 ### Newly Implemented (2026-02-06)
@@ -375,7 +375,7 @@ Therefore, **Log-likelihood R-hat should be used as a supplementary metric**, no
 
 | File | Purpose |
 |------|--------|
-| `scripts/test_ordering_comparison.py` | Comparison experiment runner |
+| `scripts/legacy/test_ordering_comparison.py` | Comparison experiment runner |
 | `results/ordering_comparison/results.txt` | Human-readable results |
 | `results/ordering_comparison/results.json` | Machine-readable results |
 | `results/ordering_comparison/results.csv` | Tabular results |
@@ -386,5 +386,5 @@ Therefore, **Log-likelihood R-hat should be used as a supplementary metric**, no
 
 For questions about this investigation:
 - Review `hill_mmm/inference.py` for relabeling implementation
-- Review `scripts/test_ordering_comparison.py` for experiment methodology
+- Review `scripts/legacy/test_ordering_comparison.py` for experiment methodology
 - Check `results/ordering_comparison/results.txt` for detailed experimental output
