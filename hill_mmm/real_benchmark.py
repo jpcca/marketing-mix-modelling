@@ -318,7 +318,6 @@ def print_real_benchmark_table(df: pd.DataFrame) -> None:
     print("=" * 80)
 
     # Summary by model
-    _summary = summarize_real_benchmark(df)  # noqa: F841 - computed for potential future use
     print("\nModel Summary (across organisations):")
     print("-" * 60)
 

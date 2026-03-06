@@ -4,6 +4,7 @@
 Runs all 3 model types and compares their LOO-CV scores.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -166,7 +167,5 @@ def main():
 
 
 if __name__ == "__main__":
-    import os
-
     os.makedirs("results", exist_ok=True)
     main()

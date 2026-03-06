@@ -96,7 +96,9 @@ def _build_retry_schedule(num_warmup: int, num_samples: int, is_mixture_model: b
     ]
 
 
-def _is_effectively_converged(convergence: dict, rhat_log_lik: float | None, rhat_threshold: float) -> bool:
+def _is_effectively_converged(
+    convergence: dict, rhat_log_lik: float | None, rhat_threshold: float
+) -> bool:
     """Evaluate convergence using standard and label-invariant diagnostics."""
     if bool(convergence["converged"]):
         return True
@@ -402,14 +404,14 @@ def _add_delta_loo(df: pd.DataFrame) -> pd.DataFrame:
     df["delta_loo"] = None
     df["delta_loo_significant"] = None
 
-    for (dgp, seed), group in df.groupby(["dgp", "seed"]):
+    for (dgp, seed), group in df.groupby(["dgp", "seed"]):  # type: ignore[misc]
         baseline_row = group[group["model"] == "single_hill"]
         if len(baseline_row) == 0:
             continue
 
         baseline_loo = {
-            "elpd_loo": baseline_row["elpd_loo"].iloc[0],
-            "se": baseline_row["loo_se"].iloc[0],
+            "elpd_loo": baseline_row["elpd_loo"].iloc[0],  # type: ignore[union-attr]
+            "se": baseline_row["loo_se"].iloc[0],  # type: ignore[union-attr]
         }
 
         for idx in group.index:
@@ -448,7 +450,7 @@ def summarize_benchmark(df: pd.DataFrame) -> pd.DataFrame:
 
     summary = df.groupby(["dgp", "K_true", "model"])[metrics].agg(["mean", "std"]).round(2)
 
-    return summary
+    return summary  # type: ignore[return-value]
 
 
 def print_benchmark_table(df: pd.DataFrame) -> None:
@@ -462,7 +464,7 @@ def print_benchmark_table(df: pd.DataFrame) -> None:
     print("=" * 80)
 
     for dgp in df["dgp"].unique():
-        K_true = df[df["dgp"] == dgp]["K_true"].iloc[0]
+        K_true = df[df["dgp"] == dgp]["K_true"].iloc[0]  # type: ignore[union-attr]
         print(f"\nDGP: {dgp} (K_true={K_true})")
         print("-" * 60)
 
@@ -473,7 +475,7 @@ def print_benchmark_table(df: pd.DataFrame) -> None:
         )
         print("-" * 60)
 
-        for model in dgp_data["model"].unique():
+        for model in dgp_data["model"].unique():  # type: ignore[union-attr]
             model_data = dgp_data[dgp_data["model"] == model]
             loo = model_data["elpd_loo"].mean()
             test_rmse = model_data["test_rmse"].mean()
@@ -481,7 +483,7 @@ def print_benchmark_table(df: pd.DataFrame) -> None:
             eff_k = model_data["effective_k_mean"].mean()
             delta = model_data["delta_loo"].mean()
 
-            delta_str = f"{delta:+.1f}" if not pd.isna(delta) else "N/A"
+            delta_str = f"{delta:+.1f}" if not pd.isna(delta) else "N/A"  # type: ignore[arg-type]
             print(
                 f"{model:<15} {loo:>10.1f} {test_rmse:>12.3f} "
                 f"{cov:>10.1%} {eff_k:>8.2f} {delta_str:>10}"
