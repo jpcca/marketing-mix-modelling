@@ -2,10 +2,7 @@
 
 Models:
 1. model_single_hill: Standard single response curve (baseline)
-2. model_hill_mixture_hierarchical_reparam: Hierarchical mixture with reparameterization (K=2,3,5,...)
-   - Uses stick-breaking for mixture weights
-   - Ordered constraint on k for identifiability
-   - Non-centered parameterization for MCMC convergence
+2. model_hill_mixture_hierarchical_reparam: Hierarchical mixture with stabilized component priors
 """
 
 import jax.numpy as jnp
@@ -17,6 +14,21 @@ from numpyro.infer.reparam import LocScaleReparam
 
 from .baseline import linear_baseline, standardized_time_index
 from .transforms import adstock_geometric, hill, hill_matrix
+
+DEFAULT_COMPONENT_ANCHOR_STRENGTH = 0.35
+
+
+def _default_mixture_prior_config() -> dict[str, float]:
+    return {
+        "intercept_loc": 50.0,
+        "intercept_scale": 20.0,
+        "slope_scale": 5.0,
+        "A_loc": np.log(30.0),
+        "A_scale": 0.8,
+        "k_scale": 0.7,
+        "n_scale": 0.4,
+        "sigma_scale": 10.0,
+    }
 
 
 def model_single_hill(x, y=None, prior_config=None):
@@ -81,7 +93,13 @@ def model_single_hill(x, y=None, prior_config=None):
 # =============================================================================
 
 
-def _model_hill_mixture_hierarchical_reparam_inner(x, y=None, K=3, prior_config=None):
+def _model_hill_mixture_hierarchical_reparam_inner(
+    x,
+    y=None,
+    K=3,
+    prior_config=None,
+    component_anchor_strength: float = 0.0,
+):
     """Inner model for hierarchical reparameterized Hill Mixture.
 
     Combines hierarchical priors (partial pooling) with non-centered parameterization.
@@ -95,16 +113,7 @@ def _model_hill_mixture_hierarchical_reparam_inner(x, y=None, K=3, prior_config=
     t_std = standardized_time_index(T, xp=jnp)
 
     if prior_config is None:
-        prior_config = {
-            "intercept_loc": 50.0,
-            "intercept_scale": 20.0,
-            "slope_scale": 5.0,
-            "A_loc": np.log(30.0),
-            "A_scale": 0.8,
-            "k_scale": 0.7,
-            "n_scale": 0.4,
-            "sigma_scale": 10.0,
-        }
+        prior_config = _default_mixture_prior_config()
 
     # Adstock parameter
     alpha = numpyro.sample("alpha", dist.Beta(2, 2))
@@ -152,14 +161,21 @@ def _model_hill_mixture_hierarchical_reparam_inner(x, y=None, K=3, prior_config=
     # ========== NON-CENTERED COMPONENT PARAMETERS ==========
     # A: amplitude per component (hierarchical, non-centered)
     log_A_raw = numpyro.sample("log_A_raw", dist.Normal(0, 1).expand((K,)))  # type: ignore[arg-type]
-    log_A = mu_log_A + sigma_log_A * log_A_raw
+    if component_anchor_strength > 0.0:
+        anchor_A = jnp.linspace(-1.0, 1.0, K) * component_anchor_strength
+        anchor_n = jnp.linspace(-0.8, 0.8, K) * (component_anchor_strength * 0.6)
+    else:
+        anchor_A = jnp.zeros((K,))
+        anchor_n = jnp.zeros((K,))
+
+    log_A = mu_log_A + anchor_A + sigma_log_A * log_A_raw
     A = jnp.exp(log_A)
     numpyro.deterministic("log_A", log_A)
     numpyro.deterministic("A", A)
 
     # n: Hill exponent per component (hierarchical, non-centered)
     log_n_raw = numpyro.sample("log_n_raw", dist.Normal(0, 1).expand((K,)))  # type: ignore[arg-type]
-    log_n = mu_log_n + sigma_log_n * log_n_raw
+    log_n = mu_log_n + anchor_n + sigma_log_n * log_n_raw
     n = jnp.exp(log_n)
     numpyro.deterministic("log_n", log_n)
     numpyro.deterministic("n", n)
@@ -208,28 +224,14 @@ def _model_hill_mixture_hierarchical_reparam_inner(x, y=None, K=3, prior_config=
     numpyro.deterministic("hill_components", hill_mat)
 
 
-def model_hill_mixture_hierarchical_reparam(x, y=None, K=3, prior_config=None):
-    """Hierarchical Hill Mixture Model with reparameterization.
-
-    Combines the best of both worlds:
-    1. Hierarchical priors for partial pooling across components (better regularization)
-    2. Non-centered parameterization for MCMC convergence
-    3. Stick-breaking for mixture weights
-    4. Ordered constraint on k for identifiability
-
-    The hierarchical structure shares information across mixture components,
-    which can improve predictive performance especially with limited data.
-    The non-centered parameterization handles the "funnel" geometry that
-    typically causes convergence issues in hierarchical models.
-
-    Args:
-        x: (T,) raw spend
-        y: (T,) observed response
-        K: Number of mixture components
-        prior_config: Dict with prior hyperparameters
-    """
-    # Apply LocScaleReparam to baseline parameters
-    # Note: hierarchical parameters use manual non-centering above
+def _run_reparameterized_mixture_model(
+    x,
+    y=None,
+    K=3,
+    prior_config=None,
+    component_anchor_strength: float = 0.0,
+):
+    """Apply the shared reparameterization wrapper to a mixture model."""
     reparam_config = {
         "intercept": LocScaleReparam(centered=0),
         "slope": LocScaleReparam(centered=0),
@@ -239,4 +241,49 @@ def model_hill_mixture_hierarchical_reparam(x, y=None, K=3, prior_config=None):
     }
 
     with reparam(config=reparam_config):
-        _model_hill_mixture_hierarchical_reparam_inner(x, y, K, prior_config)
+        _model_hill_mixture_hierarchical_reparam_inner(
+            x,
+            y,
+            K,
+            prior_config,
+            component_anchor_strength=component_anchor_strength,
+        )
+
+
+def model_hill_mixture_hierarchical_reparam(
+    x,
+    y=None,
+    K=3,
+    prior_config=None,
+    component_anchor_strength: float = DEFAULT_COMPONENT_ANCHOR_STRENGTH,
+):
+    """Hierarchical Hill Mixture Model with stabilized component priors.
+
+    Combines the best of both worlds:
+    1. Hierarchical priors for partial pooling across components (better regularization)
+    2. Non-centered parameterization for MCMC convergence
+    3. Stick-breaking for mixture weights
+    4. Ordered constraint on k for identifiability
+    5. Fixed offsets on log A / log n to stabilize component separation
+
+    The hierarchical structure shares information across mixture components,
+    which can improve predictive performance especially with limited data.
+    The non-centered parameterization handles the "funnel" geometry that
+    typically causes convergence issues in hierarchical models. By default,
+    the model uses a modest component-separation prior; setting
+    `component_anchor_strength=0.0` recovers the pre-stabilization behavior.
+
+    Args:
+        x: (T,) raw spend
+        y: (T,) observed response
+        K: Number of mixture components
+        prior_config: Dict with prior hyperparameters
+        component_anchor_strength: Magnitude of fixed component-separation offsets
+    """
+    _run_reparameterized_mixture_model(
+        x,
+        y=y,
+        K=K,
+        prior_config=prior_config,
+        component_anchor_strength=component_anchor_strength,
+    )
