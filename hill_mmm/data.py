@@ -5,7 +5,7 @@ fair model evaluation:
 
 1. single: Single Hill curve (tests overfitting)
 2. mixture_k2: 2-component mixture
-3. mixture_k3: 3-component mixture (current standard)
+3. mixture_k3: 3-component mixture
 4. mixture_k5: 5-component mixture (tests sparse discovery)
 """
 
@@ -36,7 +36,6 @@ class DGPConfig:
         return f"{self.dgp_type}_T{self.T}_seed{self.seed}"
 
 
-# Predefined DGP configurations for benchmarking
 DGP_CONFIGS = {
     "single": DGPConfig(dgp_type="single"),
     "mixture_k2": DGPConfig(dgp_type="mixture_k2"),
@@ -69,35 +68,25 @@ def generate_data(config: DGPConfig) -> tuple[np.ndarray, np.ndarray, dict]:
 
 
 def _generate_single_hill(config: DGPConfig) -> tuple[np.ndarray, np.ndarray, dict]:
-    """Generate data from a single Hill curve (K=1).
-
-    This is the null hypothesis scenario - mixture models
-    should NOT significantly outperform single Hill here.
-    """
+    """Generate data from a single Hill curve (K=1)."""
     rng = np.random.default_rng(config.seed)
     T = config.T
 
-    # Generate spend (log-normal, typical marketing data pattern)
     x = rng.lognormal(mean=1.5, sigma=0.6, size=T).astype(np.float32)
 
-    # Adstock transformation
     s = np.array(adstock_geometric(jnp.array(x), jnp.array(config.alpha)))
 
-    # Baseline (intercept + linear trend)
     t_std = standardized_time_index(T)
     baseline = linear_baseline(config.intercept, config.slope, t_std)
 
-    # Single Hill parameters
     s_median = np.median(s)
     A_true = 30.0
     k_true = s_median  # half-saturation at median spend
     n_true = 1.5
 
-    # Compute effect
     effect = np.array(hill(jnp.array(s), A_true, k_true, n_true))
     mu = baseline + effect
 
-    # Generate observations
     y = rng.normal(loc=mu, scale=config.sigma).astype(np.float32)
 
     meta = {
@@ -132,13 +121,10 @@ def _generate_mixture(config: DGPConfig, K: int) -> tuple[np.ndarray, np.ndarray
     rng = np.random.default_rng(config.seed)
     T = config.T
 
-    # Generate spend
     x = rng.lognormal(mean=1.5, sigma=0.6, size=T).astype(np.float32)
 
-    # Adstock
     s = np.array(adstock_geometric(jnp.array(x), jnp.array(config.alpha)))
 
-    # Baseline
     t_std = standardized_time_index(T)
     baseline = linear_baseline(config.intercept, config.slope, t_std)
 
@@ -147,21 +133,21 @@ def _generate_mixture(config: DGPConfig, K: int) -> tuple[np.ndarray, np.ndarray
 
     if K == 2:
         pi_true = np.array([0.6, 0.4], dtype=np.float32)
-        # k ratio: 1.5/0.6 = 2.5 (improved separation)
+        # k ratio: 1.5/0.6 = 2.5
         k_true = np.array([s_median * 0.6, s_median * 1.5], dtype=np.float32)
         A_true = np.array([20.0, 40.0], dtype=np.float32)
         n_true = np.array([2.0, 1.2], dtype=np.float32)
 
     elif K == 3:
         pi_true = np.array([0.40, 0.30, 0.30], dtype=np.float32)
-        # k ratios: 1.0/0.4=2.5, 1.8/1.0=1.8 (improved from 1.0/0.5=2.0, 1.2/1.0=1.2)
+        # k ratios: 1.0/0.4=2.5, 1.8/1.0=1.8
         k_true = np.array([s_median * 0.4, s_median * 1.0, s_median * 1.8], dtype=np.float32)
         A_true = np.array([15.0, 30.0, 60.0], dtype=np.float32)
         n_true = np.array([2.0, 1.5, 1.0], dtype=np.float32)
 
     elif K == 5:
         pi_true = np.array([0.30, 0.25, 0.20, 0.15, 0.10], dtype=np.float32)
-        # Geometric progression with ~1.6-1.7 ratio for better separation
+        # Geometric progression with ~1.6-1.7x spacing ratio
         k_true = np.array(
             [
                 s_median * 0.3,
@@ -178,16 +164,13 @@ def _generate_mixture(config: DGPConfig, K: int) -> tuple[np.ndarray, np.ndarray
     else:
         raise ValueError(f"Unsupported K={K}")
 
-    # Latent component assignment
     z_true = rng.choice(K, size=T, p=pi_true)
 
-    # Compute effects based on latent assignment
     hill_mat = np.array(
         hill_matrix(jnp.array(s), jnp.array(A_true), jnp.array(k_true), jnp.array(n_true))
     )
     effects = hill_mat[np.arange(T), z_true]
 
-    # Generate observations
     mu = baseline + effects
     y = rng.normal(loc=mu, scale=config.sigma).astype(np.float32)
 
@@ -244,7 +227,6 @@ def compute_prior_config(x: np.ndarray, y: np.ndarray) -> dict:
         # k (half-saturation): scaled to x
         "k_base_loc": float(np.log(x_median + 1e-6)),
         "k_scale": 0.7,
-        # sigma
         "sigma_scale": float(y_std),
         # Reference values
         "x_median": float(x_median),

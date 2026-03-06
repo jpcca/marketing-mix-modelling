@@ -14,7 +14,6 @@ def compute_effective_k(mcmc: MCMC, threshold: float = 0.05) -> dict[str, float]
     """Compute effective number of mixture components.
 
     Counts components with mixture weight > threshold.
-    This is the key metric for showing sparse Dirichlet works.
 
     Args:
         mcmc: Fitted MCMC object (must have 'pis' samples)
@@ -64,7 +63,6 @@ def compute_parameter_recovery(mcmc: MCMC, meta: dict, ci_level: float = 0.95) -
     alpha = (1 - ci_level) / 2
     results = {}
 
-    # Alpha (adstock decay)
     if "alpha" in samples and "alpha_true" in meta:
         alpha_samples = np.array(samples["alpha"])
         true_val = meta["alpha_true"]
@@ -79,7 +77,6 @@ def compute_parameter_recovery(mcmc: MCMC, meta: dict, ci_level: float = 0.95) -
             "in_ci": bool(ci_low <= true_val <= ci_high),
         }
 
-    # Sigma (observation noise)
     if "sigma" in samples and "sigma_true" in meta:
         sigma_samples = np.array(samples["sigma"])
         true_val = meta["sigma_true"]
@@ -94,7 +91,6 @@ def compute_parameter_recovery(mcmc: MCMC, meta: dict, ci_level: float = 0.95) -
             "in_ci": bool(ci_low <= true_val <= ci_high),
         }
 
-    # Intercept
     if "intercept" in samples and "intercept_true" in meta:
         int_samples = np.array(samples["intercept"])
         true_val = meta["intercept_true"]

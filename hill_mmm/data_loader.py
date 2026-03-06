@@ -123,7 +123,6 @@ def list_timeseries(
         if n_days < min_length:
             continue
 
-        # Calculate active channels
         active_channels = []
         for col in SPEND_COLUMNS:
             if col in group.columns:
@@ -131,7 +130,6 @@ def list_timeseries(
                 if nonzero_ratio > 0.1:
                     active_channels.append(col)
 
-        # Sum spend and target
         spend_cols_present = [c for c in SPEND_COLUMNS if c in group.columns]
         total_spend = group[spend_cols_present].fillna(0).sum().sum()
         total_target = group["all_purchases"].sum() if "all_purchases" in group.columns else 0
@@ -202,7 +200,6 @@ def load_timeseries(
 
     df = pd.read_csv(csv_path, parse_dates=["date_day"])
 
-    # Filter to specific organisation and territory
     mask = (df["organisation_id"] == config.organisation_id) & (
         df["territory_name"] == config.territory
     )
@@ -214,7 +211,7 @@ def load_timeseries(
             f"territory={config.territory}"
         )
 
-    # Sort by date and ensure consecutive
+    # Sort by date
     org_df = org_df.sort_values(by="date_day").reset_index(drop=True)  # type: ignore[call-overload]
 
     if len(org_df) < config.min_series_length:
@@ -222,7 +219,6 @@ def load_timeseries(
             f"Series too short: {len(org_df)} days < {config.min_series_length} minimum"
         )
 
-    # Determine spend columns to use
     if config.spend_cols is not None:
         spend_cols = config.spend_cols
     else:
@@ -233,21 +229,18 @@ def load_timeseries(
             f"No active spend channels found for organisation {config.organisation_id}"
         )
 
-    # Extract data
     dates = org_df["date_day"].values
     y = org_df[config.target_col].fillna(0).values.astype(np.float32)
 
-    # Extract spend
     spend_df = org_df[spend_cols].fillna(0)
 
     if config.aggregate_spend:
-        # Phase 1: Sum all channels into single x
+        # Aggregate all channels into single spend series
         x = spend_df.sum(axis=1).values.astype(np.float32)
     else:
-        # Phase 2+: Multi-channel x
+        # Per-channel spend matrix
         x = spend_df.values.astype(np.float32)
 
-    # Build metadata
     meta = {
         "organisation_id": config.organisation_id,
         "territory": config.territory,
@@ -288,14 +281,11 @@ def load_real_data(csv_path: str | Path) -> pd.DataFrame:
     # Use "All Territories" for aggregated view
     df = df[df["territory_name"] == "All Territories"].copy()
 
-    # Aggregate spend across all channels
     spend_cols = [c for c in SPEND_COLUMNS if c in df.columns]
     df["spend"] = df[spend_cols].fillna(0).sum(axis=1)  # type: ignore[union-attr]
 
-    # Use all_purchases as target
     df["revenue"] = df["all_purchases"].fillna(0)  # type: ignore[union-attr]
 
-    # Rename and select columns
     result = df[["organisation_id", "date_day", "spend", "revenue"]].copy()
     result = result.rename(  # type: ignore[union-attr]
         columns={
@@ -304,7 +294,6 @@ def load_real_data(csv_path: str | Path) -> pd.DataFrame:
         }
     )
 
-    # Sort by org and date
     result = result.sort_values(["organization_id", "date"]).reset_index(drop=True)
 
     return result
@@ -356,7 +345,6 @@ def select_representative_timeseries(
     if len(ts_info) == 0:
         raise ValueError("No time series meet the criteria")
 
-    # Keep one row per organization.
     ts_info = ts_info.sort_values(
         by=["n_days", "n_active_channels", "total_spend"],
         ascending=[False, False, False],
