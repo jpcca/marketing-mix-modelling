@@ -10,6 +10,7 @@ import arviz as az
 import jax
 import jax.numpy as jnp
 import numpy as np
+from jax.scipy.special import logsumexp
 from numpyro.infer import MCMC, NUTS, Predictive
 
 from .baseline import linear_baseline, standardized_time_index
@@ -287,6 +288,54 @@ def check_label_switching(samples: dict[str, np.ndarray], param: str = "k") -> d
 # =============================================================================
 
 
+def _batched_adstock_geometric(x: jnp.ndarray, alpha: jnp.ndarray) -> jnp.ndarray:
+    """Vectorized geometric adstock for many posterior draws at once."""
+
+    def step(carry, x_t):
+        carry = x_t + alpha * carry
+        return carry, carry
+
+    init = jnp.zeros_like(alpha)
+    _, s = jax.lax.scan(step, init, x)
+    return jnp.swapaxes(s, 0, 1)
+
+
+@jax.jit
+def _compute_mixture_log_likelihood_vectorized(
+    x: jnp.ndarray,
+    y: jnp.ndarray,
+    alpha: jnp.ndarray,
+    intercept: jnp.ndarray,
+    slope: jnp.ndarray,
+    A: jnp.ndarray,
+    k: jnp.ndarray,
+    n: jnp.ndarray,
+    pis: jnp.ndarray,
+    sigma: jnp.ndarray,
+) -> jnp.ndarray:
+    """Compute total mixture log-likelihood for all draws in a chain."""
+    t_std = standardized_time_index(x.shape[0], xp=jnp)
+    s = _batched_adstock_geometric(x, alpha)  # (n_samples, T)
+    baseline = linear_baseline(intercept[:, None], slope[:, None], t_std[None, :])
+
+    s_expanded = s[:, :, None]  # (n_samples, T, 1)
+    n_expanded = n[:, None, :]  # (n_samples, 1, K)
+    s_power = s_expanded**n_expanded
+    k_power = k[:, None, :] ** n_expanded
+    hill_components = A[:, None, :] * s_power / (k_power + s_power + 1e-12)
+    mu_components = baseline[:, :, None] + hill_components
+
+    y_expanded = y[None, :, None]
+    sigma_expanded = sigma[:, None, None]
+    log_normal = -0.5 * (
+        jnp.log(2.0 * jnp.pi)
+        + 2.0 * jnp.log(sigma_expanded)
+        + ((y_expanded - mu_components) / sigma_expanded) ** 2
+    )
+    log_probs = jnp.log(pis[:, None, :] + 1e-10) + log_normal
+    return jnp.sum(logsumexp(log_probs, axis=-1), axis=-1)
+
+
 def compute_mixture_log_likelihood(
     x: np.ndarray,
     y: np.ndarray,
@@ -308,58 +357,24 @@ def compute_mixture_log_likelihood(
     Returns:
         (n_samples,) array of total log-likelihood per MCMC sample
     """
-    from .transforms import adstock_geometric, hill_matrix
+    required_keys = {"A", "k", "n", "pis", "sigma", "intercept", "slope", alpha_key}
+    missing = sorted(required_keys.difference(samples))
+    if missing:
+        raise ValueError(f"samples missing keys required for log-likelihood: {missing}")
 
-    T = len(x)
-    n_samples = samples["A"].shape[0]
-
-    # Standardized time
-    t_std = standardized_time_index(T)
-
-    log_likelihoods = np.zeros(n_samples)
-
-    for i in range(n_samples):
-        # Get parameters for this sample
-        alpha = float(samples[alpha_key][i])
-        intercept = float(samples["intercept"][i])
-        slope = float(samples["slope"][i])
-        A = samples["A"][i]  # (K,)
-        k = samples["k"][i]  # (K,)
-        n = samples["n"][i]  # (K,)
-        pis = samples["pis"][i]  # (K,)
-        sigma = float(samples["sigma"][i])
-
-        # Compute adstock
-        s = adstock_geometric(jnp.array(x), alpha)
-        s = np.array(s)
-
-        # Baseline
-        baseline = linear_baseline(intercept, slope, t_std)
-
-        # Hill components
-        hill_mat = hill_matrix(jnp.array(s), jnp.array(A), jnp.array(k), jnp.array(n))
-        hill_mat = np.array(hill_mat)  # (T, K)
-
-        # Component means: baseline + hill effect
-        mu_components = baseline[:, None] + hill_mat  # (T, K)
-
-        # Mixture log-likelihood: log sum_k pi_k * N(y_t | mu_tk, sigma)
-        # = log sum_k exp(log(pi_k) + log N(y_t | mu_tk, sigma))
-        from scipy.stats import norm
-
-        log_pis = np.log(pis + 1e-10)
-        log_probs = np.zeros((T, len(pis)))
-        for k_idx in range(len(pis)):
-            log_probs[:, k_idx] = log_pis[k_idx] + norm.logpdf(y, mu_components[:, k_idx], sigma)
-
-        # Log-sum-exp for numerical stability
-        max_log_probs = np.max(log_probs, axis=1, keepdims=True)
-        log_likelihood_per_obs = max_log_probs.squeeze() + np.log(
-            np.sum(np.exp(log_probs - max_log_probs), axis=1)
-        )
-        log_likelihoods[i] = np.sum(log_likelihood_per_obs)
-
-    return log_likelihoods
+    log_likelihoods = _compute_mixture_log_likelihood_vectorized(
+        x=jnp.asarray(x),
+        y=jnp.asarray(y),
+        alpha=jnp.asarray(samples[alpha_key]),
+        intercept=jnp.asarray(samples["intercept"]),
+        slope=jnp.asarray(samples["slope"]),
+        A=jnp.asarray(samples["A"]),
+        k=jnp.asarray(samples["k"]),
+        n=jnp.asarray(samples["n"]),
+        pis=jnp.asarray(samples["pis"]),
+        sigma=jnp.asarray(samples["sigma"]),
+    )
+    return np.asarray(log_likelihoods)
 
 
 def compute_label_invariant_diagnostics(
