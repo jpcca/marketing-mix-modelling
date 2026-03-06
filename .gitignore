@@ -213,3 +213,11 @@ __marimo__/
 # macOS
 .DS_Store
 data/figures/
+
+# Auto-generated experiment outputs (timestamped by scripts)
+results/k_analysis/
+results/logs/
+results/model_comparison.csv
+results/vi_validation/
+results/real_data_validation/
+*.pid
