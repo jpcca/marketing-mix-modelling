@@ -22,14 +22,14 @@ import numpyro
 # Set device count for parallel chains BEFORE any JAX imports
 numpyro.set_host_device_count(2)
 
-from hill_mmm.data import compute_prior_config  # noqa: E402
-from hill_mmm.data_loader import (  # noqa: E402
+from hill_mixture_mmm.data import compute_prior_config  # noqa: E402
+from hill_mixture_mmm.data_loader import (  # noqa: E402
     TimeSeriesConfig,
     load_timeseries,
     select_representative_timeseries,
 )
-from hill_mmm.inference import compute_convergence_diagnostics, run_inference  # noqa: E402
-from hill_mmm.models import model_hill_mixture_hierarchical_reparam  # noqa: E402
+from hill_mixture_mmm.inference import compute_convergence_diagnostics, run_inference  # noqa: E402
+from hill_mixture_mmm.models import model_hill_mixture_hierarchical_reparam  # noqa: E402
 
 
 def run_convergence_test(

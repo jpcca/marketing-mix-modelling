@@ -22,15 +22,15 @@ import numpy as np
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_root / "src"))
 
-from hill_mmm.data_loader import (  # noqa: E402
+from hill_mixture_mmm.data_loader import (  # noqa: E402
     LoadedData,
     TimeSeriesConfig,
     list_timeseries,
     load_timeseries,
 )
-from hill_mmm.inference import (  # noqa: E402
+from hill_mixture_mmm.inference import (  # noqa: E402
     compute_convergence_diagnostics,
     compute_diagnostics_on_relabeled,
     compute_label_invariant_diagnostics,
@@ -38,7 +38,7 @@ from hill_mmm.inference import (  # noqa: E402
     relabel_samples_by_k,
     run_inference,
 )
-from hill_mmm.models import model_hill_mixture_hierarchical_reparam, model_single_hill  # noqa: E402
+from hill_mixture_mmm.models import model_hill_mixture_hierarchical_reparam, model_single_hill  # noqa: E402
 
 # Constants
 DATA_PATH = project_root / "data" / "conjura_mmm_data.csv"

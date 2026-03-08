@@ -12,23 +12,23 @@ import sys
 from pathlib import Path
 
 # Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
-from hill_mmm.data import compute_prior_config
-from hill_mmm.data_loader import (
+from hill_mixture_mmm.data import compute_prior_config
+from hill_mixture_mmm.data_loader import (
     TimeSeriesConfig,
     load_timeseries,
     select_representative_timeseries,
 )
-from hill_mmm.inference import (
+from hill_mixture_mmm.inference import (
     compute_convergence_diagnostics,
     compute_loo,
     compute_predictions,
     compute_predictive_metrics,
     run_inference,
 )
-from hill_mmm.models import model_single_hill
+from hill_mixture_mmm.models import model_single_hill
 
 
 def main():
@@ -123,7 +123,7 @@ def main():
         print("  - Reasonable predictive coverage")
         print("  - Pipeline works end-to-end")
         print("\n  Ready for full benchmark with:")
-        print("  >>> from hill_mmm.real_benchmark import run_real_benchmark")
+        print("  >>> See scripts/run_benchmark.py --real-only")
         print("  >>> results = run_real_benchmark(n_timeseries=5)")
     else:
         print("\n  Status: NEEDS INVESTIGATION")

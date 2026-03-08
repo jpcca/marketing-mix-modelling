@@ -1,4 +1,4 @@
-"""Pytest configuration for hill_mmm tests."""
+"""Pytest configuration for hill_mixture_mmm tests."""
 
 from pathlib import Path
 

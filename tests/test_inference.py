@@ -2,9 +2,9 @@
 
 import numpy as np
 
-from hill_mmm.baseline import linear_baseline, standardized_time_index
-from hill_mmm.inference import compute_mixture_log_likelihood
-from hill_mmm.transforms import adstock_geometric, hill_matrix
+from hill_mixture_mmm.baseline import linear_baseline, standardized_time_index
+from hill_mixture_mmm.inference import compute_mixture_log_likelihood
+from hill_mixture_mmm.transforms import adstock_geometric, hill_matrix
 
 
 def _reference_mixture_log_likelihood(

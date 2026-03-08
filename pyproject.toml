@@ -34,7 +34,7 @@ markers = [
 testpaths = ["tests"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["hill_mmm"]
+packages = ["src/hill_mixture_mmm"]
 
 [tool.pyright]
 venvPath = "."

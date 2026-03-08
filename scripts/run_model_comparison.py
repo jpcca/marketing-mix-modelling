@@ -6,27 +6,45 @@ Runs all 3 model types and compares their LOO-CV scores.
 
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import numpy as np
 import pandas as pd
 
-from hill_mmm.benchmark import MODEL_SPECS
-from hill_mmm.data import compute_prior_config
-from hill_mmm.data_loader import (
+from hill_mixture_mmm.data import compute_prior_config
+from hill_mixture_mmm.data_loader import (
     TimeSeriesConfig,
     load_timeseries,
     select_representative_timeseries,
 )
-from hill_mmm.inference import (
+from hill_mixture_mmm.inference import (
     compute_convergence_diagnostics,
     compute_loo,
     compute_predictions,
     compute_predictive_metrics,
     run_inference,
 )
+from hill_mixture_mmm.models import model_hill_mixture_hierarchical_reparam, model_single_hill
+
+
+@dataclass
+class ModelSpec:
+    """Specification for a model to benchmark."""
+
+    name: str
+    fn: object
+    kwargs: dict
+
+
+MODEL_SPECS = [
+    ModelSpec("single_hill", model_single_hill, {}),
+    ModelSpec("mixture_k2", model_hill_mixture_hierarchical_reparam, {"K": 2}),
+    ModelSpec("mixture_k3", model_hill_mixture_hierarchical_reparam, {"K": 3}),
+    ModelSpec("mixture_k5", model_hill_mixture_hierarchical_reparam, {"K": 5}),
+]
 
 
 def main():

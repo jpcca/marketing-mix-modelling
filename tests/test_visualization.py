@@ -22,14 +22,14 @@ import pytest
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from hill_mmm import (
+from hill_mixture_mmm import (
     DGPConfig,
     compute_prior_config,
     generate_data,
     hill,
     model_hill_mixture_hierarchical_reparam,
 )
-from hill_mmm.inference import run_inference
+from hill_mixture_mmm.inference import run_inference
 
 # Aliases for backward compatibility (all mixture models now use unified hierarchical model)
 model_hill_mixture = model_hill_mixture_hierarchical_reparam

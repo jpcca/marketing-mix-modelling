@@ -5,7 +5,7 @@ for model validation. Each organisation is treated as an independent
 time series (no cross-organisation data sharing).
 
 Usage:
-    from hill_mmm.data_loader import list_timeseries, load_timeseries
+    from hill_mixture_mmm.data_loader import list_timeseries, load_timeseries
 
     # Discover available time series
     ts_info = list_timeseries("data/conjura_mmm_data.csv")

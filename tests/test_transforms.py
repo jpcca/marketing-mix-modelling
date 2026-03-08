@@ -6,7 +6,7 @@ Verifies adstock and hill functions work correctly.
 import jax.numpy as jnp
 import numpy as np
 
-from hill_mmm.transforms import adstock_geometric, hill, hill_matrix
+from hill_mixture_mmm.transforms import adstock_geometric, hill, hill_matrix
 
 
 class TestAdstockGeometric:

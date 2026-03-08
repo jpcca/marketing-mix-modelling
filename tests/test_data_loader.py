@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from hill_mmm.data_loader import (
+from hill_mixture_mmm.data_loader import (
     LoadedData,
     TimeSeriesConfig,
     get_active_channels,

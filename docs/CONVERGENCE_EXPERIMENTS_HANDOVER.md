@@ -173,7 +173,7 @@ python scripts/test_convergence.py \
 Use `hill_mmm/data.py` to test parameter recovery:
 
 ```python
-from hill_mmm.benchmark import run_benchmark_suite
+from hill_mixture_mmm.inference import run_inference
 
 results = run_benchmark_suite(
     dgp_names=["single", "mixture_k2", "mixture_k3"],
