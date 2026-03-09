@@ -14,6 +14,22 @@ Key modules:
 """
 
 from .data import DGP_CONFIGS, DGPConfig, compute_prior_config, generate_data
+from .benchmark import (
+    BenchmarkCaseResult,
+    BenchmarkRunConfig,
+    BenchmarkThresholds,
+    ComparisonThresholds,
+    assert_case_passes,
+    assert_comparison_passes,
+    case_summary,
+    compare_case_results,
+    plot_case_comparison,
+    plot_observed_vs_predictive,
+    plot_response_curves,
+    run_real_benchmark_case,
+    run_synthetic_benchmark_case,
+    save_case_artifacts,
+)
 from .inference import (
     compute_convergence_diagnostics,
     compute_label_invariant_diagnostics,
@@ -43,6 +59,21 @@ __all__ = [
     "DGP_CONFIGS",
     "generate_data",
     "compute_prior_config",
+    # Benchmark
+    "BenchmarkCaseResult",
+    "BenchmarkRunConfig",
+    "BenchmarkThresholds",
+    "ComparisonThresholds",
+    "run_synthetic_benchmark_case",
+    "run_real_benchmark_case",
+    "assert_case_passes",
+    "assert_comparison_passes",
+    "compare_case_results",
+    "case_summary",
+    "plot_observed_vs_predictive",
+    "plot_response_curves",
+    "plot_case_comparison",
+    "save_case_artifacts",
     # Inference
     "run_inference",
     "compute_convergence_diagnostics",
