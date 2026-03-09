@@ -148,6 +148,7 @@ git push origin main --force-with-lease
 6. **Run real full benchmark tests (opt-in):** `HILL_MMM_RUN_FULL_REAL_BENCHMARK=1 uv run pytest tests/test_benchmark_real.py -m benchmark_full`
 7. **Generate paper figures:** `uv run pytest tests/test_visualization.py`
 8. **Update paper submodule:** After generating figures, commit in `paper/` then update submodule reference
+9. **Inspect benchmark pytest logs:** benchmark-oriented pytest runs also write a text report to `results/test_logs/`
 
 ### Git Workflow
 
@@ -197,6 +198,8 @@ git commit -m "Various changes"  # Don't do this
 - The visualization tests read benchmark CSV snapshots from `results/benchmark/` via `RESULTS_CSV` and `RESULTS_SUMMARY_CSV` constants near the top of `tests/test_visualization.py`
 - If you want figures to reflect a newly generated benchmark snapshot, update those constants to the new raw and summary files before running the visualization tests
 - Benchmark test visualizations are written into `paper/figures/{synthetic|real}/{model_name}/`
+- Benchmark case summary JSON files now include label-invariant, relabeled-parameter, and label-switching diagnostics for mixture fits
+- Benchmark-oriented pytest runs also persist a text report under `results/test_logs/`, including failing node IDs and assertion bodies
 - After generating figures, follow the **Critical: Submodule Workflow** section above
 - Remember: Push BOTH the paper submodule AND the main repo to avoid 404 errors
 

@@ -73,6 +73,7 @@ def _run_real_seed(seed: int, benchmark_output_root: Path) -> None:
         config=_real_run_config(seed),
         label=f"real_single_hill_seed{seed}",
     )
+    single_artifacts = save_case_artifacts(single_result, benchmark_output_root)
     assert_case_passes(
         single_result,
         BenchmarkThresholds(
@@ -91,6 +92,7 @@ def _run_real_seed(seed: int, benchmark_output_root: Path) -> None:
         config=_real_run_config(seed),
         label=f"real_mixture_k3_seed{seed}",
     )
+    mixture_artifacts = save_case_artifacts(mixture_result, benchmark_output_root)
     assert_case_passes(
         mixture_result,
         BenchmarkThresholds(
@@ -112,8 +114,6 @@ def _run_real_seed(seed: int, benchmark_output_root: Path) -> None:
         ),
     )
 
-    single_artifacts = save_case_artifacts(single_result, benchmark_output_root)
-    mixture_artifacts = save_case_artifacts(mixture_result, benchmark_output_root)
     comparison_dir = resolve_comparison_artifact_dir(benchmark_output_root, "real")
     comparison_path = plot_case_comparison(
         [single_result, mixture_result],

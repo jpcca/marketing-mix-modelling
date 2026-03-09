@@ -150,9 +150,9 @@ def _run_and_assert_case(
         label=f"synthetic_{dgp_name}_{model_name}_seed{seed}",
     )
 
+    artifacts = save_case_artifacts(result, benchmark_output_root)
     assert_case_passes(result, _synthetic_thresholds(dgp_name, model_name))
 
-    artifacts = save_case_artifacts(result, benchmark_output_root)
     for path in artifacts.values():
         assert path.exists(), f"Expected synthetic artifact at {path}"
 

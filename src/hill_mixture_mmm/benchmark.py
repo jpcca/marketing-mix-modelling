@@ -19,8 +19,8 @@ from .baseline import standardized_time_index
 from .data import DGPConfig, compute_prior_config, generate_data
 from .data_loader import TimeSeriesConfig, load_timeseries
 from .inference import (
+    compute_comprehensive_mixture_diagnostics,
     compute_convergence_diagnostics,
-    compute_label_invariant_diagnostics,
     compute_loo,
     compute_predictions,
     compute_predictive_metrics,
@@ -118,6 +118,8 @@ class BenchmarkCaseResult:
     waic: dict[str, Any]
     convergence: dict[str, Any]
     label_invariant: dict[str, Any] | None
+    relabeled: dict[str, Any] | None
+    label_switching: dict[str, Any] | None
     converged: bool
     effective_k: dict[str, Any]
     parameter_recovery: dict[str, Any] | None
@@ -203,6 +205,8 @@ def _fit_case(
     mcmc = None
     convergence = None
     label_invariant = None
+    relabeled = None
+    label_switching = None
     effective_convergence = False
     fit_summary = {
         "retry_attempt": 0,
@@ -235,11 +239,17 @@ def _fit_case(
             progress_bar=config.progress_bar,
             **model_spec.kwargs,
         )
-        convergence = compute_convergence_diagnostics(mcmc)
-
-        label_invariant = None
         if is_mixture_model:
-            label_invariant = compute_label_invariant_diagnostics(mcmc, x_train, y_train)
+            diagnostics = compute_comprehensive_mixture_diagnostics(mcmc, x_train, y_train)
+            convergence = diagnostics["standard"]
+            label_invariant = diagnostics["label_invariant"]
+            relabeled = diagnostics["relabeled"]
+            label_switching = diagnostics["label_switching"]
+        else:
+            convergence = compute_convergence_diagnostics(mcmc)
+            label_invariant = None
+            relabeled = None
+            label_switching = None
 
         effective_convergence = _is_effectively_converged(convergence, label_invariant)
         if effective_convergence:
@@ -252,6 +262,8 @@ def _fit_case(
         "mcmc": mcmc,
         "convergence": convergence,
         "label_invariant": label_invariant,
+        "relabeled": relabeled,
+        "label_switching": label_switching,
         "converged": effective_convergence,
         "fit_summary": fit_summary,
     }
@@ -346,6 +358,8 @@ def _run_case_from_series(
         waic=compute_waic(mcmc),
         convergence=fit["convergence"],
         label_invariant=fit["label_invariant"],
+        relabeled=fit["relabeled"],
+        label_switching=fit["label_switching"],
         converged=fit["converged"],
         effective_k=compute_effective_k(mcmc),
         parameter_recovery=parameter_recovery,
@@ -447,6 +461,32 @@ def case_summary(result: BenchmarkCaseResult) -> dict[str, Any]:
         summary["label_invariant"] = {
             "rhat_log_lik": float(result.label_invariant["rhat_log_lik"]),
             "threshold": float(result.label_invariant["threshold"]),
+        }
+    if result.relabeled is not None:
+        summary["relabeled"] = {
+            "max_rhat": float(result.relabeled["max_rhat"]),
+            "threshold": float(result.relabeled["threshold"]),
+            "component_rhats": {
+                name: {
+                    "max": float(metrics["max"]),
+                    "per_component": [float(value) for value in metrics["per_component"]],
+                }
+                for name, metrics in result.relabeled["component_rhats"].items()
+            },
+        }
+    if result.label_switching is not None:
+        summary["label_switching"] = {
+            "switching_rate": float(result.label_switching["switching_rate"]),
+            "n_unique_orderings": int(result.label_switching["n_unique_orderings"]),
+            "mode_ordering": [int(value) for value in result.label_switching["mode_ordering"]],
+            "mode_count": int(result.label_switching["mode_count"]),
+            "top_orderings": [
+                {
+                    "ordering": [int(value) for value in ordering],
+                    "count": int(count),
+                }
+                for ordering, count in result.label_switching["top_orderings"]
+            ],
         }
     if result.parameter_recovery is not None:
         summary["parameter_recovery"] = {
@@ -570,7 +610,30 @@ def assert_case_passes(result: BenchmarkCaseResult, thresholds: BenchmarkThresho
             )
 
     if errors:
-        message = "\n".join([f"{result.label} failed benchmark thresholds:"] + [f"- {e}" for e in errors])
+        diagnostics_lines: list[str] = []
+        diagnostics_lines.append(f"- max_rhat={float(result.convergence['max_rhat']):.3f}")
+        diagnostics_lines.append(f"- min_ess_bulk={float(result.convergence['min_ess_bulk']):.1f}")
+        if result.label_invariant is not None:
+            diagnostics_lines.append(
+                f"- rhat_log_lik={float(result.label_invariant['rhat_log_lik']):.3f}"
+            )
+        if result.relabeled is not None:
+            diagnostics_lines.append(
+                f"- relabeled_max_rhat={float(result.relabeled['max_rhat']):.3f}"
+            )
+        if result.label_switching is not None:
+            diagnostics_lines.append(
+                f"- switching_rate={float(result.label_switching['switching_rate']):.3f}"
+            )
+            diagnostics_lines.append(
+                f"- n_unique_orderings={int(result.label_switching['n_unique_orderings'])}"
+            )
+        message = "\n".join(
+            [f"{result.label} failed benchmark thresholds:"]
+            + [f"- {e}" for e in errors]
+            + ["Diagnostics:"]
+            + diagnostics_lines
+        )
         raise AssertionError(message)
 
 
