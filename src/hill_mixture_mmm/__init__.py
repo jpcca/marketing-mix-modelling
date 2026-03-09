@@ -26,6 +26,8 @@ from .benchmark import (
     plot_case_comparison,
     plot_observed_vs_predictive,
     plot_response_curves,
+    resolve_case_artifact_dir,
+    resolve_comparison_artifact_dir,
     run_real_benchmark_case,
     run_synthetic_benchmark_case,
     save_case_artifacts,
@@ -73,6 +75,8 @@ __all__ = [
     "plot_observed_vs_predictive",
     "plot_response_curves",
     "plot_case_comparison",
+    "resolve_case_artifact_dir",
+    "resolve_comparison_artifact_dir",
     "save_case_artifacts",
     # Inference
     "run_inference",

@@ -72,8 +72,8 @@ uv run pytest tests/ -m "not slow"
 - `test_parameter_recovery.py` - Integration tests verifying MCMC recovers known parameters (slow)
 - `test_data_loader.py` - Real-data loading tests
 - `test_visualization.py` - Generates publication figures to `paper/figures/` from benchmark result snapshots
-- `test_benchmark_synthetic.py` - End-to-end synthetic benchmark tests with inference, threshold checks, and visualizations
-- `test_benchmark_real.py` - Opt-in real-data benchmark test with inference, threshold checks, and visualizations
+- `test_benchmark_synthetic.py` - Synthetic smoke/full benchmark tests with inference, threshold checks, and visualizations
+- `test_benchmark_real.py` - Opt-in real-data smoke/full benchmark tests with inference, threshold checks, and visualizations
 
 ## Paper Submodule
 
@@ -142,10 +142,12 @@ git push origin main --force-with-lease
 
 1. **Install dependencies:** `uv sync` or `pip install -e .`
 2. **Run tests:** `uv run pytest tests/`
-3. **Run synthetic benchmark tests:** `uv run pytest tests/test_benchmark_synthetic.py`
-4. **Run real benchmark tests (opt-in):** `HILL_MMM_RUN_REAL_BENCHMARK=1 uv run pytest tests/test_benchmark_real.py`
-5. **Generate paper figures:** `uv run pytest tests/test_visualization.py`
-6. **Update paper submodule:** After generating figures, commit in `paper/` then update submodule reference
+3. **Run synthetic smoke benchmark tests:** `uv run pytest tests/test_benchmark_synthetic.py -m benchmark_smoke`
+4. **Run synthetic full benchmark tests (opt-in):** `HILL_MMM_RUN_FULL_SYNTHETIC_BENCHMARK=1 uv run pytest tests/test_benchmark_synthetic.py -m benchmark_full`
+5. **Run real smoke benchmark tests (opt-in):** `HILL_MMM_RUN_REAL_BENCHMARK=1 uv run pytest tests/test_benchmark_real.py -m benchmark_smoke`
+6. **Run real full benchmark tests (opt-in):** `HILL_MMM_RUN_FULL_REAL_BENCHMARK=1 uv run pytest tests/test_benchmark_real.py -m benchmark_full`
+7. **Generate paper figures:** `uv run pytest tests/test_visualization.py`
+8. **Update paper submodule:** After generating figures, commit in `paper/` then update submodule reference
 
 ### Git Workflow
 
@@ -194,7 +196,7 @@ git commit -m "Various changes"  # Don't do this
 - Output goes to `paper/figures/`
 - The visualization tests read benchmark CSV snapshots from `results/benchmark/` via `RESULTS_CSV` and `RESULTS_SUMMARY_CSV` constants near the top of `tests/test_visualization.py`
 - If you want figures to reflect a newly generated benchmark snapshot, update those constants to the new raw and summary files before running the visualization tests
-- Benchmark test visualizations are written directly into `paper/figures/`
+- Benchmark test visualizations are written into `paper/figures/{synthetic|real}/{model_name}/`
 - After generating figures, follow the **Critical: Submodule Workflow** section above
 - Remember: Push BOTH the paper submodule AND the main repo to avoid 404 errors
 
@@ -204,4 +206,5 @@ git commit -m "Various changes"  # Don't do this
 - Synthetic and real benchmark outputs are saved under `results/benchmark/`
 - Benchmark metric definitions live in `src/hill_mixture_mmm/metrics.py`
 - The preferred benchmark workflow is test-driven: `tests/test_benchmark_synthetic.py` and `tests/test_benchmark_real.py`
+- Benchmark smoke/full seeds are aligned with `scripts/run_benchmark.py`: synthetic `[0]` / `[0,1,2,3,4]`, real `[0]` / `[0,1,2]`
 - Benchmark validation is primarily checked in `tests/test_parameter_recovery.py`, `tests/test_benchmark_synthetic.py`, `tests/test_benchmark_real.py`, and `tests/test_visualization.py`

@@ -73,8 +73,8 @@ class BenchmarkRunConfig:
 class BenchmarkThresholds:
     """Pass/fail thresholds for a single benchmark case."""
 
-    max_rhat: float = 1.05
-    min_ess_bulk: float = 80.0
+    max_rhat: float | None = 1.05
+    min_ess_bulk: float | None = 80.0
     max_label_invariant_rhat: float | None = 1.01
     min_test_coverage_90: float = 0.80
     max_test_rmse: float | None = None
@@ -489,11 +489,14 @@ def assert_case_passes(result: BenchmarkCaseResult, thresholds: BenchmarkThresho
 
     if not result.converged:
         errors.append("effective convergence check failed")
-    if float(result.convergence["max_rhat"]) > thresholds.max_rhat:
+    if thresholds.max_rhat is not None and float(result.convergence["max_rhat"]) > thresholds.max_rhat:
         errors.append(
             f"max_rhat={result.convergence['max_rhat']:.3f} exceeds {thresholds.max_rhat:.3f}"
         )
-    if float(result.convergence["min_ess_bulk"]) < thresholds.min_ess_bulk:
+    if (
+        thresholds.min_ess_bulk is not None
+        and float(result.convergence["min_ess_bulk"]) < thresholds.min_ess_bulk
+    ):
         errors.append(
             f"min_ess_bulk={result.convergence['min_ess_bulk']:.1f} is below {thresholds.min_ess_bulk:.1f}"
         )
@@ -757,9 +760,19 @@ def plot_case_comparison(
     return output_path
 
 
-def save_case_artifacts(result: BenchmarkCaseResult, output_dir: str | Path) -> dict[str, Path]:
+def resolve_case_artifact_dir(output_root: str | Path, result: BenchmarkCaseResult) -> Path:
+    """Return the artifact directory for one benchmark case."""
+    return Path(output_root) / result.domain / result.model_name
+
+
+def resolve_comparison_artifact_dir(output_root: str | Path, domain: str) -> Path:
+    """Return the artifact directory for comparison plots within one domain."""
+    return Path(output_root) / domain / "_comparisons"
+
+
+def save_case_artifacts(result: BenchmarkCaseResult, output_root: str | Path) -> dict[str, Path]:
     """Write a summary JSON and default plots for one benchmark case."""
-    output_dir = Path(output_dir)
+    output_dir = resolve_case_artifact_dir(output_root, result)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     summary_path = output_dir / f"{result.label}_summary.json"

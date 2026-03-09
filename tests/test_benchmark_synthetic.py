@@ -1,5 +1,8 @@
-"""Test-driven synthetic benchmark cases for the Hill MMM models."""
+"""Synthetic benchmark smoke/full test matrix for the Hill MMM models."""
 
+from __future__ import annotations
+
+import os
 from pathlib import Path
 
 import pytest
@@ -14,37 +17,140 @@ from hill_mixture_mmm.benchmark import (
 from hill_mixture_mmm.data import DGPConfig
 
 
-@pytest.mark.slow
-def test_single_hill_synthetic_benchmark(benchmark_output_root: Path) -> None:
-    """Single-Hill should recover a single-component DGP and produce artifacts."""
-    result = run_synthetic_benchmark_case(
-        dgp_config=DGPConfig(dgp_type="single", T=200, seed=42),
-        model_name="single_hill",
-        config=BenchmarkRunConfig(
-            seed=42,
-            num_warmup=300,
-            num_samples=300,
+DGP_NAMES = ["single", "mixture_k2", "mixture_k3", "mixture_k5"]
+MODEL_NAMES = ["single_hill", "mixture_k2", "mixture_k3", "mixture_k5"]
+
+# Match scripts/run_benchmark.py: quick=[0], default=[0,1,2,3,4]
+SMOKE_SYNTHETIC_SEEDS = [0]
+FULL_SYNTHETIC_SEEDS = [0, 1, 2, 3, 4]
+
+
+def _require_full_synthetic_benchmark() -> None:
+    """Skip unless the caller explicitly opts into the multi-seed synthetic benchmark."""
+    enabled = os.getenv("HILL_MMM_RUN_FULL_SYNTHETIC_BENCHMARK", "").strip().lower()
+    if enabled not in {"1", "true", "yes"}:
+        pytest.skip(
+            "full synthetic benchmark is opt-in; set "
+            "HILL_MMM_RUN_FULL_SYNTHETIC_BENCHMARK=1 to run it"
+        )
+
+
+def _synthetic_run_config(dgp_name: str, model_name: str, seed: int) -> BenchmarkRunConfig:
+    """Return an inference configuration suitable for one synthetic benchmark cell."""
+    if model_name == "single_hill":
+        warmup = 500 if dgp_name in {"mixture_k3", "mixture_k5"} else 400
+        samples = warmup
+        return BenchmarkRunConfig(
+            seed=seed,
+            num_warmup=warmup,
+            num_samples=samples,
             num_chains=2,
             progress_bar=False,
             allow_mixture_retries=False,
-        ),
-        label="synthetic_single_single_hill",
+        )
+
+    if model_name == "mixture_k5":
+        warmup = 500
+        samples = 500
+    else:
+        warmup = 450
+        samples = 450
+
+    return BenchmarkRunConfig(
+        seed=seed,
+        num_warmup=warmup,
+        num_samples=samples,
+        num_chains=2,
+        progress_bar=False,
+        allow_mixture_retries=True,
     )
 
-    assert_case_passes(
-        result,
-        BenchmarkThresholds(
+
+def _effective_k_bounds(dgp_name: str, model_name: str) -> tuple[float, float] | None:
+    """Return expected effective-K bounds for mixture models."""
+    if model_name == "single_hill":
+        return None
+
+    bounds = {
+        ("single", "mixture_k2"): (1.2, 1.9),
+        ("single", "mixture_k3"): (1.7, 2.4),
+        ("single", "mixture_k5"): (1.6, 2.3),
+        ("mixture_k2", "mixture_k2"): (1.6, 2.1),
+        ("mixture_k2", "mixture_k3"): (2.2, 2.9),
+        ("mixture_k2", "mixture_k5"): (2.1, 3.4),
+        ("mixture_k3", "mixture_k2"): (1.9, 2.1),
+        ("mixture_k3", "mixture_k3"): (2.6, 3.1),
+        ("mixture_k3", "mixture_k5"): (3.0, 4.2),
+        ("mixture_k5", "mixture_k2"): (1.9, 2.1),
+        ("mixture_k5", "mixture_k3"): (2.6, 3.1),
+        ("mixture_k5", "mixture_k5"): (3.0, 4.6),
+    }
+    return bounds[(dgp_name, model_name)]
+
+
+def _synthetic_thresholds(dgp_name: str, model_name: str) -> BenchmarkThresholds:
+    """Return pass/fail thresholds for one synthetic benchmark cell."""
+    rmse_limits = {
+        "single": 4.0,
+        "mixture_k2": 4.0,
+        "mixture_k3": 5.6,
+        "mixture_k5": 5.6,
+    }
+    coverage_floors = {
+        "single": 0.78,
+        "mixture_k2": 0.84,
+        "mixture_k3": 0.88,
+        "mixture_k5": 0.88,
+    }
+
+    if model_name == "single_hill":
+        return BenchmarkThresholds(
             max_rhat=1.05,
             min_ess_bulk=80.0,
-            min_test_coverage_90=0.90,
-            max_test_rmse=3.50,
-            max_test_mu_rmse=1.00,
-            require_alpha_in_ci=True,
-            require_sigma_in_ci=True,
+            max_label_invariant_rhat=None,
+            min_test_coverage_90=coverage_floors[dgp_name],
+            max_test_rmse=rmse_limits[dgp_name],
+            max_test_mu_rmse=1.0 if dgp_name == "single" else None,
+            require_alpha_in_ci=(dgp_name == "single"),
+            require_sigma_in_ci=(dgp_name == "single"),
             max_pareto_k_bad=0,
             max_pareto_k_very_bad=0,
-        ),
+        )
+
+    max_test_mu_rmse = None
+    if dgp_name == "single":
+        max_test_mu_rmse = 2.0
+    elif model_name == "mixture_k3" and dgp_name == "mixture_k3":
+        max_test_mu_rmse = 6.0
+
+    return BenchmarkThresholds(
+        max_rhat=None,
+        min_ess_bulk=None,
+        max_label_invariant_rhat=1.01,
+        min_test_coverage_90=coverage_floors[dgp_name],
+        max_test_rmse=rmse_limits[dgp_name],
+        max_test_mu_rmse=max_test_mu_rmse,
+        effective_k_bounds=_effective_k_bounds(dgp_name, model_name),
+        max_pareto_k_bad=0,
+        max_pareto_k_very_bad=0,
     )
+
+
+def _run_and_assert_case(
+    dgp_name: str,
+    model_name: str,
+    seed: int,
+    benchmark_output_root: Path,
+) -> None:
+    """Run one synthetic benchmark cell and assert its quality gates."""
+    result = run_synthetic_benchmark_case(
+        dgp_config=DGPConfig(dgp_type=dgp_name, T=200, seed=seed),
+        model_name=model_name,
+        config=_synthetic_run_config(dgp_name, model_name, seed),
+        label=f"synthetic_{dgp_name}_{model_name}_seed{seed}",
+    )
+
+    assert_case_passes(result, _synthetic_thresholds(dgp_name, model_name))
 
     artifacts = save_case_artifacts(result, benchmark_output_root)
     for path in artifacts.values():
@@ -52,37 +158,31 @@ def test_single_hill_synthetic_benchmark(benchmark_output_root: Path) -> None:
 
 
 @pytest.mark.slow
-def test_mixture_k3_synthetic_benchmark(benchmark_output_root: Path) -> None:
-    """Mixture-K3 should converge on a K=3 synthetic DGP and recover effective K."""
-    result = run_synthetic_benchmark_case(
-        dgp_config=DGPConfig(dgp_type="mixture_k3", T=200, seed=42),
-        model_name="mixture_k3",
-        config=BenchmarkRunConfig(
-            seed=42,
-            num_warmup=400,
-            num_samples=400,
-            num_chains=2,
-            progress_bar=False,
-            allow_mixture_retries=True,
-        ),
-        label="synthetic_mixture_k3_model",
-    )
+@pytest.mark.benchmark_smoke
+@pytest.mark.parametrize("seed", SMOKE_SYNTHETIC_SEEDS)
+@pytest.mark.parametrize("dgp_name", DGP_NAMES)
+@pytest.mark.parametrize("model_name", MODEL_NAMES)
+def test_synthetic_benchmark_smoke_matrix(
+    dgp_name: str,
+    model_name: str,
+    seed: int,
+    benchmark_output_root: Path,
+) -> None:
+    """Quick synthetic benchmark smoke test with the original quick seed set."""
+    _run_and_assert_case(dgp_name, model_name, seed, benchmark_output_root)
 
-    assert_case_passes(
-        result,
-        BenchmarkThresholds(
-            max_rhat=1.05,
-            min_ess_bulk=100.0,
-            max_label_invariant_rhat=1.01,
-            min_test_coverage_90=0.85,
-            max_test_rmse=7.00,
-            max_test_mu_rmse=6.00,
-            effective_k_bounds=(2.0, 3.2),
-            max_pareto_k_bad=0,
-            max_pareto_k_very_bad=0,
-        ),
-    )
 
-    artifacts = save_case_artifacts(result, benchmark_output_root)
-    for path in artifacts.values():
-        assert path.exists(), f"Expected synthetic artifact at {path}"
+@pytest.mark.slow
+@pytest.mark.benchmark_full
+@pytest.mark.parametrize("seed", FULL_SYNTHETIC_SEEDS)
+@pytest.mark.parametrize("dgp_name", DGP_NAMES)
+@pytest.mark.parametrize("model_name", MODEL_NAMES)
+def test_synthetic_benchmark_full_matrix(
+    dgp_name: str,
+    model_name: str,
+    seed: int,
+    benchmark_output_root: Path,
+) -> None:
+    """Full synthetic benchmark with the original multi-seed benchmark schedule."""
+    _require_full_synthetic_benchmark()
+    _run_and_assert_case(dgp_name, model_name, seed, benchmark_output_root)

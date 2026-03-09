@@ -11,6 +11,8 @@ BENCHMARK_ARTIFACTS_DIR = FIGURES_DIR
 def pytest_configure(config):
     """Add custom markers."""
     config.addinivalue_line("markers", "slow: marks tests as slow (deselect with '-m not slow')")
+    config.addinivalue_line("markers", "benchmark_smoke: quick benchmark smoke tests")
+    config.addinivalue_line("markers", "benchmark_full: full multi-seed benchmark tests")
 
 
 @pytest.fixture
