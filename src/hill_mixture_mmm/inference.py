@@ -71,6 +71,10 @@ def compute_predictions(
     model_fn: Callable,
     x: np.ndarray,
     prior_config: dict | None = None,
+    history_x: np.ndarray | None = None,
+    time_start: int | None = None,
+    total_time: int | None = None,
+    random_seed: int = 99,
     **model_kwargs,
 ) -> dict[str, np.ndarray]:
     """Compute posterior predictive samples.
@@ -80,15 +84,47 @@ def compute_predictions(
         model_fn: NumPyro model function
         x: (T,) spend values for prediction
         prior_config: Prior hyperparameters
+        history_x: Optional spend history immediately preceding ``x``.
+            When provided, adstock state is continued from this history.
+        time_start: Absolute start index for ``x`` within the full series.
+            Defaults to ``len(history_x)`` when history is provided, else 0.
+        total_time: Total length used to standardize the time trend.
+            Defaults to ``time_start + len(x)``.
+        random_seed: Random seed for posterior predictive sampling
         **model_kwargs: Additional model arguments
 
     Returns:
         Dict with predicted samples for each variable
     """
     samples = mcmc.get_samples()
+    n_samples = int(samples["sigma"].shape[0]) if "sigma" in samples else 0
+
+    if history_x is None:
+        history_x = np.array([], dtype=np.float32)
+    else:
+        history_x = np.asarray(history_x, dtype=np.float32)
+
+    if time_start is None:
+        time_start = int(len(history_x))
+    if total_time is None:
+        total_time = int(time_start + len(x))
+
+    t_std_full = standardized_time_index(total_time)
+    t_std = np.asarray(t_std_full[time_start : time_start + len(x)], dtype=np.float32)
+    adstock_init = _compute_adstock_init(history_x, samples, n_samples)
+
+    if _is_supported_posterior_sample(samples):
+        return _compute_predictive_from_samples(
+            samples=samples,
+            x=np.asarray(x, dtype=np.float32),
+            t_std=t_std,
+            adstock_init=adstock_init,
+            random_seed=random_seed,
+        )
+
     pred = Predictive(model_fn, posterior_samples=samples)
     pred_samples = pred(
-        jax.random.PRNGKey(99),
+        jax.random.PRNGKey(random_seed),
         x=jnp.array(x),
         y=None,
         prior_config=prior_config,
@@ -288,16 +324,106 @@ def check_label_switching(samples: dict[str, np.ndarray], param: str = "k") -> d
 # =============================================================================
 
 
-def _batched_adstock_geometric(x: jnp.ndarray, alpha: jnp.ndarray) -> jnp.ndarray:
+def _batched_adstock_geometric(
+    x: jnp.ndarray,
+    alpha: jnp.ndarray,
+    init: jnp.ndarray | None = None,
+) -> jnp.ndarray:
     """Vectorized geometric adstock for many posterior draws at once."""
 
     def step(carry, x_t):
         carry = x_t + alpha * carry
         return carry, carry
 
-    init = jnp.zeros_like(alpha)
+    if init is None:
+        init = jnp.zeros_like(alpha)
     _, s = jax.lax.scan(step, init, x)
     return jnp.swapaxes(s, 0, 1)
+
+
+def _is_supported_posterior_sample(samples: dict[str, np.ndarray]) -> bool:
+    """Return whether predictive samples can be computed analytically."""
+    single_required = {"alpha", "intercept", "slope", "A", "k", "n", "sigma"}
+    mixture_required = single_required | {"pis"}
+    keys = set(samples)
+    return single_required.issubset(keys) or mixture_required.issubset(keys)
+
+
+def _compute_adstock_init(
+    history_x: np.ndarray,
+    samples: dict[str, np.ndarray],
+    n_samples: int,
+) -> np.ndarray:
+    """Compute posterior-specific adstock carry from the observed history."""
+    if n_samples == 0 or len(history_x) == 0 or "alpha" not in samples:
+        return np.zeros(n_samples, dtype=np.float32)
+
+    carried = _batched_adstock_geometric(
+        x=jnp.asarray(history_x),
+        alpha=jnp.asarray(samples["alpha"]),
+    )
+    return np.asarray(carried[:, -1], dtype=np.float32)
+
+
+def _compute_predictive_from_samples(
+    samples: dict[str, np.ndarray],
+    x: np.ndarray,
+    t_std: np.ndarray,
+    adstock_init: np.ndarray,
+    random_seed: int,
+) -> dict[str, np.ndarray]:
+    """Compute posterior predictive samples while preserving sequential state."""
+    rng = np.random.default_rng(random_seed)
+
+    alpha = np.asarray(samples["alpha"], dtype=np.float32)
+    intercept = np.asarray(samples["intercept"], dtype=np.float32)
+    slope = np.asarray(samples["slope"], dtype=np.float32)
+    sigma = np.asarray(samples["sigma"], dtype=np.float32)
+    A = np.asarray(samples["A"], dtype=np.float32)
+    k = np.asarray(samples["k"], dtype=np.float32)
+    n = np.asarray(samples["n"], dtype=np.float32)
+
+    s = np.asarray(
+        _batched_adstock_geometric(
+            x=jnp.asarray(x),
+            alpha=jnp.asarray(alpha),
+            init=jnp.asarray(adstock_init),
+        ),
+        dtype=np.float32,
+    )
+    baseline = linear_baseline(intercept[:, None], slope[:, None], t_std[None, :])
+
+    if "pis" not in samples:
+        effect = A[:, None] * (s**n[:, None]) / (k[:, None] ** n[:, None] + s**n[:, None] + 1e-12)
+        mu = baseline + effect
+        y = rng.normal(loc=mu, scale=sigma[:, None]).astype(np.float32)
+        return {
+            "y": y,
+            "mu": mu.astype(np.float32),
+            "effect": effect.astype(np.float32),
+            "s": s,
+        }
+
+    pis = np.asarray(samples["pis"], dtype=np.float32)
+    s_expanded = s[:, :, None]
+    n_expanded = n[:, None, :]
+    s_power = s_expanded**n_expanded
+    k_power = k[:, None, :] ** n_expanded
+    hill_components = A[:, None, :] * s_power / (k_power + s_power + 1e-12)
+    mu_components = baseline[:, :, None] + hill_components
+    mu_expected = baseline + np.sum(pis[:, None, :] * hill_components, axis=-1)
+
+    u = rng.random((pis.shape[0], x.shape[0], 1), dtype=np.float32)
+    component_idx = (u > np.cumsum(pis[:, None, :], axis=-1)).sum(axis=-1, dtype=np.int32)
+    mu_selected = np.take_along_axis(mu_components, component_idx[:, :, None], axis=-1).squeeze(-1)
+    y = rng.normal(loc=mu_selected, scale=sigma[:, None]).astype(np.float32)
+
+    return {
+        "y": y,
+        "mu_expected": mu_expected.astype(np.float32),
+        "hill_components": hill_components.astype(np.float32),
+        "s": s,
+    }
 
 
 @jax.jit

@@ -77,7 +77,12 @@ def compute_inference_metrics(
 
     # Predictive performance on test set
     predictions = compute_predictions(
-        mcmc, model_hill_mixture_hierarchical_reparam, x_test, prior_config, K=K
+        mcmc,
+        model_hill_mixture_hierarchical_reparam,
+        x_test,
+        prior_config,
+        history_x=x_train,
+        K=K,
     )
     # Get y samples and compute metrics
     y_samples = predictions.get("y", predictions.get("mu_expected", None))

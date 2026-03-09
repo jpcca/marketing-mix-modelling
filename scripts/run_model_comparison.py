@@ -117,7 +117,14 @@ def main():
 
             # Compute predictions (train and test separately)
             preds_train = compute_predictions(mcmc, spec.fn, x_train, prior_config, **spec.kwargs)
-            preds_test = compute_predictions(mcmc, spec.fn, x_test, prior_config, **spec.kwargs)
+            preds_test = compute_predictions(
+                mcmc,
+                spec.fn,
+                x_test,
+                prior_config,
+                history_x=x_train,
+                **spec.kwargs,
+            )
 
             # Compute metrics (y_true first, y_samples second)
             metrics_train = compute_predictive_metrics(y_train, preds_train["y"])

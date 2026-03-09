@@ -100,7 +100,13 @@ def main():
     # Predictions
     print("\n[7] Computing predictions...")
     pred_train = compute_predictions(mcmc, model_single_hill, x_train, prior_config=prior_config)
-    pred_test = compute_predictions(mcmc, model_single_hill, x_test, prior_config=prior_config)
+    pred_test = compute_predictions(
+        mcmc,
+        model_single_hill,
+        x_test,
+        prior_config=prior_config,
+        history_x=x_train,
+    )
 
     train_metrics = compute_predictive_metrics(y_train, pred_train["y"])
     test_metrics = compute_predictive_metrics(y_test, pred_test["y"])

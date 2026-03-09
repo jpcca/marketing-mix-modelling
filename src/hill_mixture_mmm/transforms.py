@@ -8,7 +8,7 @@ This module contains the fundamental transformations:
 from jax import lax
 
 
-def adstock_geometric(x, alpha):
+def adstock_geometric(x, alpha, init=0.0):
     """Geometric decay adstock transformation.
 
     Models how marketing effects carry over time:
@@ -17,6 +17,7 @@ def adstock_geometric(x, alpha):
     Args:
         x: (T,) array of spend values
         alpha: Decay rate in [0, 1]. 0 = no carryover, 1 = full persistence
+        init: Initial carry entering the sequence
 
     Returns:
         (T,) array of adstocked spend
@@ -26,7 +27,7 @@ def adstock_geometric(x, alpha):
         carry = x_t + alpha * carry
         return carry, carry
 
-    _, s = lax.scan(step, 0.0, x)
+    _, s = lax.scan(step, init, x)
     return s
 
 

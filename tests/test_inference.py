@@ -3,7 +3,8 @@
 import numpy as np
 
 from hill_mixture_mmm.baseline import linear_baseline, standardized_time_index
-from hill_mixture_mmm.inference import compute_mixture_log_likelihood
+from hill_mixture_mmm.inference import compute_mixture_log_likelihood, compute_predictions
+from hill_mixture_mmm.models import model_hill_mixture_hierarchical_reparam, model_single_hill
 from hill_mixture_mmm.transforms import adstock_geometric, hill_matrix
 
 
@@ -97,3 +98,97 @@ class TestMixtureLogLikelihood:
         actual = compute_mixture_log_likelihood(x, y, samples, alpha_key="decay")
 
         np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=1e-5)
+
+
+class _DummyMCMC:
+    """Minimal MCMC stub for predictive tests."""
+
+    def __init__(self, samples: dict[str, np.ndarray]):
+        self._samples = samples
+
+    def get_samples(self, group_by_chain: bool = False):
+        assert not group_by_chain
+        return self._samples
+
+
+class TestSequentialPredictions:
+    """Tests for train/test predictions that preserve temporal state."""
+
+    def test_single_hill_preserves_history_and_absolute_time_index(self):
+        """Single Hill predictions should continue adstock and trend into the test split."""
+        history_x = np.array([2.0, 0.0], dtype=np.float32)
+        x_test = np.array([0.0, 1.0], dtype=np.float32)
+        total_time = len(history_x) + len(x_test)
+
+        samples = {
+            "alpha": np.array([0.5], dtype=np.float32),
+            "intercept": np.array([10.0], dtype=np.float32),
+            "slope": np.array([3.0], dtype=np.float32),
+            "A": np.array([5.0], dtype=np.float32),
+            "k": np.array([1.0], dtype=np.float32),
+            "n": np.array([1.0], dtype=np.float32),
+            "sigma": np.array([0.1], dtype=np.float32),
+        }
+        mcmc = _DummyMCMC(samples)
+
+        predictions = compute_predictions(
+            mcmc,
+            model_single_hill,
+            x_test,
+            history_x=history_x,
+            random_seed=0,
+        )
+
+        carry = np.asarray(adstock_geometric(history_x, samples["alpha"][0]))[-1]
+        s_test = np.asarray(adstock_geometric(x_test, samples["alpha"][0], init=carry))
+        t_std = standardized_time_index(total_time)[len(history_x) :]
+        baseline = linear_baseline(samples["intercept"][0], samples["slope"][0], t_std)
+        effect = samples["A"][0] * s_test / (samples["k"][0] + s_test + 1e-12)
+        expected_mu = baseline + effect
+
+        reset_s = np.asarray(adstock_geometric(x_test, samples["alpha"][0]))
+        reset_t_std = standardized_time_index(len(x_test))
+        reset_mu = linear_baseline(
+            samples["intercept"][0], samples["slope"][0], reset_t_std
+        ) + samples["A"][0] * reset_s / (samples["k"][0] + reset_s + 1e-12)
+
+        np.testing.assert_allclose(predictions["mu"][0], expected_mu, rtol=1e-6, atol=1e-6)
+        assert not np.allclose(predictions["mu"][0], reset_mu)
+
+    def test_mixture_predictions_preserve_history_and_absolute_time_index(self):
+        """Mixture predictions should preserve carryover and absolute trend on the test split."""
+        history_x = np.array([1.0, 1.0], dtype=np.float32)
+        x_test = np.array([0.0, 2.0], dtype=np.float32)
+        total_time = len(history_x) + len(x_test)
+
+        samples = {
+            "alpha": np.array([0.4], dtype=np.float32),
+            "intercept": np.array([8.0], dtype=np.float32),
+            "slope": np.array([2.0], dtype=np.float32),
+            "A": np.array([[2.0, 6.0]], dtype=np.float32),
+            "k": np.array([[0.8, 2.5]], dtype=np.float32),
+            "n": np.array([[1.0, 1.0]], dtype=np.float32),
+            "pis": np.array([[0.25, 0.75]], dtype=np.float32),
+            "sigma": np.array([0.2], dtype=np.float32),
+        }
+        mcmc = _DummyMCMC(samples)
+
+        predictions = compute_predictions(
+            mcmc,
+            model_hill_mixture_hierarchical_reparam,
+            x_test,
+            history_x=history_x,
+            K=2,
+            random_seed=0,
+        )
+
+        carry = np.asarray(adstock_geometric(history_x, samples["alpha"][0]))[-1]
+        s_test = np.asarray(adstock_geometric(x_test, samples["alpha"][0], init=carry))
+        t_std = standardized_time_index(total_time)[len(history_x) :]
+        baseline = linear_baseline(samples["intercept"][0], samples["slope"][0], t_std)
+        hills = np.asarray(hill_matrix(s_test, samples["A"][0], samples["k"][0], samples["n"][0]))
+        expected_mu = baseline + np.sum(samples["pis"][0] * hills, axis=1)
+
+        np.testing.assert_allclose(
+            predictions["mu_expected"][0], expected_mu, rtol=1e-6, atol=1e-6
+        )

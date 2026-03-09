@@ -237,7 +237,12 @@ def _compute_train_test_metrics(
         mcmc, model_spec.fn, x_train, prior_config=prior_config, **model_spec.kwargs
     )
     pred_test = compute_predictions(
-        mcmc, model_spec.fn, x_test, prior_config=prior_config, **model_spec.kwargs
+        mcmc,
+        model_spec.fn,
+        x_test,
+        prior_config=prior_config,
+        history_x=x_train,
+        **model_spec.kwargs,
     )
 
     train_metrics = compute_predictive_metrics(y_train, pred_train["y"])
@@ -787,6 +792,7 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
                         model_spec.fn,
                         x_test,
                         prior_config=prior_config,
+                        history_x=x_train,
                         **model_spec.kwargs,
                     )
 
