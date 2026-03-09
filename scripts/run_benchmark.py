@@ -53,7 +53,12 @@ from hill_mixture_mmm.inference import (
     relabel_samples_by_k,
     run_inference,
 )
-from hill_mixture_mmm.metrics import compute_delta_loo, compute_effective_k, compute_parameter_recovery
+from hill_mixture_mmm.metrics import (
+    compute_delta_loo,
+    compute_effective_k,
+    compute_latent_recovery,
+    compute_parameter_recovery,
+)
 from hill_mixture_mmm.models import model_hill_mixture_hierarchical_reparam, model_single_hill
 
 
@@ -236,7 +241,7 @@ def _compute_train_test_metrics(
     y_train,
     x_test,
     y_test,
-) -> tuple[dict, dict]:
+) -> tuple[dict, dict, dict[str, np.ndarray], dict[str, np.ndarray]]:
     """Compute posterior predictive metrics on train and test splits."""
     total_time = len(x_train) + len(x_test)
     pred_train = compute_predictions(
@@ -260,7 +265,7 @@ def _compute_train_test_metrics(
     train_metrics = compute_predictive_metrics(y_train, pred_train["y"])
     test_metrics = compute_predictive_metrics(y_test, pred_test["y"])
 
-    return train_metrics, test_metrics
+    return train_metrics, test_metrics, pred_train, pred_test
 
 
 def run_single_experiment(
@@ -303,7 +308,7 @@ def run_single_experiment(
     waic = compute_waic(mcmc)
     effective_k = compute_effective_k(mcmc)
     param_recovery = compute_parameter_recovery(mcmc, prepared["meta"])
-    train_metrics, test_metrics = _compute_train_test_metrics(
+    train_metrics, test_metrics, pred_train, pred_test = _compute_train_test_metrics(
         mcmc=mcmc,
         model_spec=model_spec,
         prior_config=prepared["prior_config"],
@@ -311,6 +316,16 @@ def run_single_experiment(
         y_train=prepared["y_train"],
         x_test=prepared["x_test"],
         y_test=prepared["y_test"],
+    )
+    mu_train_samples = pred_train.get("mu", pred_train.get("mu_expected"))
+    mu_test_samples = pred_test.get("mu", pred_test.get("mu_expected"))
+    train_latent = compute_latent_recovery(
+        prepared["meta"]["mu_true"][: prepared["T_train"]],
+        mu_train_samples,
+    )
+    test_latent = compute_latent_recovery(
+        prepared["meta"]["mu_true"][prepared["T_train"] :],
+        mu_test_samples,
     )
 
     return {
@@ -343,6 +358,10 @@ def run_single_experiment(
         "test_rmse": test_metrics["rmse"],
         "train_coverage_90": train_metrics["coverage_90"],
         "test_coverage_90": test_metrics["coverage_90"],
+        "train_mu_rmse": train_latent["rmse"],
+        "test_mu_rmse": test_latent["rmse"],
+        "train_mu_coverage_90": train_latent["coverage_90"],
+        "test_mu_coverage_90": test_latent["coverage_90"],
         # Effective K
         "effective_k_mean": effective_k["effective_k_mean"],
         "effective_k_std": effective_k["effective_k_std"],
@@ -479,11 +498,18 @@ def summarize_benchmark(df: pd.DataFrame) -> pd.DataFrame:
         Summary DataFrame with mean +/- std across seeds
     """
     metrics = [
+        "converged",
         "elpd_loo",
         "test_rmse",
         "train_rmse",
         "test_coverage_90",
+        "test_mu_rmse",
+        "train_mu_rmse",
+        "test_mu_coverage_90",
         "effective_k_mean",
+        "alpha_in_ci",
+        "sigma_in_ci",
+        "delta_loo_significant",
         "delta_loo",
     ]
 

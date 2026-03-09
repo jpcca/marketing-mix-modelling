@@ -3,6 +3,7 @@
 Key metrics:
 - effective_k: Number of active mixture components
 - parameter_recovery: Check if true params in credible intervals
+- latent_recovery: Check recovery of the true latent mean function
 - delta_loo: Relative improvement over baseline
 """
 
@@ -120,6 +121,35 @@ def compute_parameter_recovery(mcmc: MCMC, meta: dict, ci_level: float = 0.95) -
         }
 
     return results
+
+
+def compute_latent_recovery(mu_true: np.ndarray, mu_samples: np.ndarray) -> dict[str, float]:
+    """Measure recovery of the noise-free latent mean function.
+
+    Args:
+        mu_true: (T,) true latent mean from the DGP
+        mu_samples: (n_samples, T) posterior samples of the latent mean
+
+    Returns:
+        Dict with RMSE, MAE, and 90% interval coverage of the true mean
+    """
+    mu_true = np.asarray(mu_true)
+    mu_samples = np.asarray(mu_samples)
+
+    if mu_samples.ndim != 2:
+        raise ValueError("mu_samples must have shape (n_samples, T)")
+    if mu_true.shape[0] != mu_samples.shape[1]:
+        raise ValueError("mu_true and mu_samples must align on time dimension")
+
+    mu_mean = mu_samples.mean(axis=0)
+    q05 = np.quantile(mu_samples, 0.05, axis=0)
+    q95 = np.quantile(mu_samples, 0.95, axis=0)
+
+    return {
+        "rmse": float(np.sqrt(np.mean((mu_mean - mu_true) ** 2))),
+        "mae": float(np.mean(np.abs(mu_mean - mu_true))),
+        "coverage_90": float(np.mean((mu_true >= q05) & (mu_true <= q95))),
+    }
 
 
 def compute_delta_loo(loo_model: dict, loo_baseline: dict) -> dict[str, float]:

@@ -23,7 +23,12 @@ from .inference import (
     compute_waic,
     run_inference,
 )
-from .metrics import compute_delta_loo, compute_effective_k, compute_parameter_recovery
+from .metrics import (
+    compute_delta_loo,
+    compute_effective_k,
+    compute_latent_recovery,
+    compute_parameter_recovery,
+)
 from .models import (
     model_hill_mixture_hierarchical_reparam,
     model_single_hill,
@@ -49,6 +54,7 @@ __all__ = [
     # Metrics
     "compute_delta_loo",
     "compute_effective_k",
+    "compute_latent_recovery",
     "compute_parameter_recovery",
     # Models
     "model_single_hill",
