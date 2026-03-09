@@ -1,6 +1,7 @@
 """Tests for inference utilities."""
 
 import numpy as np
+from numpyro.handlers import seed, trace
 
 from hill_mixture_mmm.baseline import linear_baseline, standardized_time_index
 from hill_mixture_mmm.inference import compute_mixture_log_likelihood, compute_predictions
@@ -191,4 +192,74 @@ class TestSequentialPredictions:
 
         np.testing.assert_allclose(
             predictions["mu_expected"][0], expected_mu, rtol=1e-6, atol=1e-6
+        )
+
+
+class TestCustomTimeIndex:
+    """Tests that models respect externally supplied time indices."""
+
+    def test_single_hill_uses_supplied_time_index(self):
+        """Single Hill should use the provided standardized time index during fitting."""
+        x = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+        default_t = standardized_time_index(len(x))
+        shifted_t = default_t + 5.0
+        prior_config = {
+            "intercept_loc": 10.0,
+            "intercept_scale": 1.0,
+            "slope_scale": 1.0,
+            "A_loc": np.log(5.0),
+            "A_scale": 0.5,
+            "k_base_loc": np.log(2.0),
+            "k_scale": 0.5,
+            "sigma_scale": 1.0,
+        }
+
+        default_trace = trace(seed(model_single_hill, 0)).get_trace(
+            x=x,
+            y=None,
+            prior_config=prior_config,
+            t_std=default_t,
+        )
+        shifted_trace = trace(seed(model_single_hill, 0)).get_trace(
+            x=x,
+            y=None,
+            prior_config=prior_config,
+            t_std=shifted_t,
+        )
+
+        assert not np.allclose(default_trace["mu"]["value"], shifted_trace["mu"]["value"])
+
+    def test_mixture_model_uses_supplied_time_index(self):
+        """Mixture model should use the provided standardized time index during fitting."""
+        x = np.array([1.0, 2.0, 1.5], dtype=np.float32)
+        default_t = standardized_time_index(len(x))
+        shifted_t = default_t - 3.0
+        prior_config = {
+            "intercept_loc": 8.0,
+            "intercept_scale": 1.0,
+            "slope_scale": 1.0,
+            "A_loc": np.log(4.0),
+            "A_scale": 0.5,
+            "k_scale": 0.5,
+            "sigma_scale": 1.0,
+        }
+
+        default_trace = trace(seed(model_hill_mixture_hierarchical_reparam, 0)).get_trace(
+            x=x,
+            y=None,
+            prior_config=prior_config,
+            t_std=default_t,
+            K=2,
+        )
+        shifted_trace = trace(seed(model_hill_mixture_hierarchical_reparam, 0)).get_trace(
+            x=x,
+            y=None,
+            prior_config=prior_config,
+            t_std=shifted_t,
+            K=2,
+        )
+
+        assert not np.allclose(
+            default_trace["mu_expected"]["value"],
+            shifted_trace["mu_expected"]["value"],
         )

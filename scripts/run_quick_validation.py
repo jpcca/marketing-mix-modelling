@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
+from hill_mixture_mmm.baseline import standardized_time_index
 from hill_mixture_mmm.data import compute_prior_config
 from hill_mixture_mmm.data_loader import (
     TimeSeriesConfig,
@@ -60,6 +61,7 @@ def main():
     # Train/test split
     T = len(data.y)
     T_train = int(T * 0.75)
+    t_std_full = standardized_time_index(T)
     x_train, y_train = data.x[:T_train], data.y[:T_train]
     x_test, y_test = data.x[T_train:], data.y[T_train:]
     print(f"    Train: {T_train}, Test: {T - T_train}")
@@ -82,6 +84,7 @@ def main():
         num_samples=400,
         num_chains=2,
         prior_config=prior_config,
+        t_std=t_std_full[:T_train],
     )
 
     # Diagnostics
@@ -99,13 +102,20 @@ def main():
 
     # Predictions
     print("\n[7] Computing predictions...")
-    pred_train = compute_predictions(mcmc, model_single_hill, x_train, prior_config=prior_config)
+    pred_train = compute_predictions(
+        mcmc,
+        model_single_hill,
+        x_train,
+        prior_config=prior_config,
+        total_time=T,
+    )
     pred_test = compute_predictions(
         mcmc,
         model_single_hill,
         x_test,
         prior_config=prior_config,
         history_x=x_train,
+        total_time=T,
     )
 
     train_metrics = compute_predictive_metrics(y_train, pred_train["y"])

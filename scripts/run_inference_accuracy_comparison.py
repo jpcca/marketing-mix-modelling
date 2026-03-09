@@ -27,6 +27,7 @@ import pandas as pd
 # Set device count for parallel chains BEFORE any JAX imports
 numpyro.set_host_device_count(2)
 
+from hill_mixture_mmm.baseline import standardized_time_index  # noqa: E402
 from hill_mixture_mmm.data import compute_prior_config  # noqa: E402
 from hill_mixture_mmm.data_loader import (  # noqa: E402
     TimeSeriesConfig,
@@ -82,6 +83,7 @@ def compute_inference_metrics(
         x_test,
         prior_config,
         history_x=x_train,
+        total_time=len(x_train) + len(x_test),
         K=K,
     )
     # Get y samples and compute metrics
@@ -160,6 +162,7 @@ def run_inference_comparison(
 
             # Train/test split
             split_idx = int(T * train_ratio)
+            t_std_full = standardized_time_index(T)
             x_train, y_train = data.x[:split_idx], data.y[:split_idx]
             x_test, y_test = data.x[split_idx:], data.y[split_idx:]
 
@@ -179,6 +182,7 @@ def run_inference_comparison(
                 num_samples=samples,
                 num_chains=chains,
                 prior_config=prior_config,
+                t_std=t_std_full[:split_idx],
                 K=K,
             )
             elapsed = time.time() - start_time

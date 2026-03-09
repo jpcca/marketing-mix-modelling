@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 import numpy as np
 import pandas as pd
 
+from hill_mixture_mmm.baseline import standardized_time_index
 from hill_mixture_mmm.data import compute_prior_config
 from hill_mixture_mmm.data_loader import (
     TimeSeriesConfig,
@@ -80,6 +81,7 @@ def main():
     # Split train/test manually
     T = len(data.y)
     T_train = int(T * TRAIN_RATIO)
+    t_std_full = standardized_time_index(T)
     x_train, y_train = data.x[:T_train], data.y[:T_train]
     x_test, y_test = data.x[T_train:], data.y[T_train:]
 
@@ -105,6 +107,7 @@ def main():
                 num_samples=NUM_SAMPLES,
                 num_chains=NUM_CHAINS,
                 prior_config=prior_config,
+                t_std=t_std_full[:T_train],
                 **spec.kwargs,
             )
 
@@ -116,13 +119,21 @@ def main():
             loo_result = compute_loo(mcmc)
 
             # Compute predictions (train and test separately)
-            preds_train = compute_predictions(mcmc, spec.fn, x_train, prior_config, **spec.kwargs)
+            preds_train = compute_predictions(
+                mcmc,
+                spec.fn,
+                x_train,
+                prior_config,
+                total_time=T,
+                **spec.kwargs,
+            )
             preds_test = compute_predictions(
                 mcmc,
                 spec.fn,
                 x_test,
                 prior_config,
                 history_x=x_train,
+                total_time=T,
                 **spec.kwargs,
             )
 

@@ -40,6 +40,7 @@ import numpy as np
 import numpyro
 import pandas as pd
 
+from hill_mixture_mmm.baseline import standardized_time_index
 from hill_mixture_mmm.data import DGP_CONFIGS, DGPConfig, compute_prior_config, generate_data
 from hill_mixture_mmm.inference import (
     compute_comprehensive_mixture_diagnostics,
@@ -133,6 +134,7 @@ def _prepare_experiment_data(dgp_config: DGPConfig, train_ratio: float) -> dict:
     x, y, meta = generate_data(dgp_config)
     T = len(y)
     T_train = int(T * train_ratio)
+    t_std_full = standardized_time_index(T)
     x_train, y_train = x[:T_train], y[:T_train]
     x_test, y_test = x[T_train:], y[T_train:]
     prior_config = compute_prior_config(x_train, y_train)
@@ -146,6 +148,7 @@ def _prepare_experiment_data(dgp_config: DGPConfig, train_ratio: float) -> dict:
         "meta": meta,
         "T": T,
         "T_train": T_train,
+        "t_std_train": t_std_full[:T_train],
     }
 
 
@@ -154,6 +157,7 @@ def _fit_with_retries(
     model_spec: ModelSpec,
     x_train,
     y_train,
+    t_std_train,
     prior_config: dict,
     num_warmup: int,
     num_samples: int,
@@ -189,6 +193,7 @@ def _fit_with_retries(
             num_samples=used_samples,
             num_chains=num_chains,
             prior_config=prior_config,
+            t_std=t_std_train,
             target_accept_prob=used_target_accept,
             **model_spec.kwargs,
         )
@@ -233,8 +238,14 @@ def _compute_train_test_metrics(
     y_test,
 ) -> tuple[dict, dict]:
     """Compute posterior predictive metrics on train and test splits."""
+    total_time = len(x_train) + len(x_test)
     pred_train = compute_predictions(
-        mcmc, model_spec.fn, x_train, prior_config=prior_config, **model_spec.kwargs
+        mcmc,
+        model_spec.fn,
+        x_train,
+        prior_config=prior_config,
+        total_time=total_time,
+        **model_spec.kwargs,
     )
     pred_test = compute_predictions(
         mcmc,
@@ -242,6 +253,7 @@ def _compute_train_test_metrics(
         x_test,
         prior_config=prior_config,
         history_x=x_train,
+        total_time=total_time,
         **model_spec.kwargs,
     )
 
@@ -278,6 +290,7 @@ def run_single_experiment(
         model_spec=model_spec,
         x_train=prepared["x_train"],
         y_train=prepared["y_train"],
+        t_std_train=prepared["t_std_train"],
         prior_config=prepared["prior_config"],
         num_warmup=num_warmup,
         num_samples=num_samples,
@@ -722,6 +735,7 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
         y = np.asarray(org_df["revenue"].values)
         T = len(y)
         T_train = int(T * config.train_ratio)
+        t_std_full = standardized_time_index(T)
 
         x_train, y_train = x[:T_train], y[:T_train]
         x_test, y_test = x[T_train:], y[T_train:]
@@ -752,6 +766,7 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
                         num_samples=config.num_samples,
                         num_chains=config.num_chains,
                         prior_config=prior_config,
+                        t_std=t_std_full[:T_train],
                         **model_spec.kwargs,
                     )
 
@@ -785,6 +800,7 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
                         model_spec.fn,
                         x_train,
                         prior_config=prior_config,
+                        total_time=T,
                         **model_spec.kwargs,
                     )
                     pred_test = compute_predictions(
@@ -793,6 +809,7 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
                         x_test,
                         prior_config=prior_config,
                         history_x=x_train,
+                        total_time=T,
                         **model_spec.kwargs,
                     )
 

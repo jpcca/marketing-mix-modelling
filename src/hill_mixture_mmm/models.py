@@ -31,7 +31,7 @@ def _default_mixture_prior_config() -> dict[str, float]:
     }
 
 
-def model_single_hill(x, y=None, prior_config=None):
+def model_single_hill(x, y=None, prior_config=None, t_std=None):
     """Single Hill function MMM.
 
     x -> adstock(x, alpha) -> hill(s, A, k, n) -> y
@@ -42,7 +42,10 @@ def model_single_hill(x, y=None, prior_config=None):
         prior_config: Dict with prior hyperparameters
     """
     T = x.shape[0]
-    t_std = standardized_time_index(T, xp=jnp)
+    if t_std is None:
+        t_std = standardized_time_index(T, xp=jnp)
+    else:
+        t_std = jnp.asarray(t_std)
 
     # Default prior config
     if prior_config is None:
@@ -98,6 +101,7 @@ def _model_hill_mixture_hierarchical_reparam_inner(
     y=None,
     K=3,
     prior_config=None,
+    t_std=None,
     component_anchor_strength: float = 0.0,
 ):
     """Inner model for hierarchical reparameterized Hill Mixture.
@@ -110,7 +114,10 @@ def _model_hill_mixture_hierarchical_reparam_inner(
     4. Ordered constraint on k for identifiability
     """
     T = x.shape[0]
-    t_std = standardized_time_index(T, xp=jnp)
+    if t_std is None:
+        t_std = standardized_time_index(T, xp=jnp)
+    else:
+        t_std = jnp.asarray(t_std)
 
     if prior_config is None:
         prior_config = _default_mixture_prior_config()
@@ -229,6 +236,7 @@ def _run_reparameterized_mixture_model(
     y=None,
     K=3,
     prior_config=None,
+    t_std=None,
     component_anchor_strength: float = 0.0,
 ):
     """Apply the shared reparameterization wrapper to a mixture model."""
@@ -246,6 +254,7 @@ def _run_reparameterized_mixture_model(
             y,
             K,
             prior_config,
+            t_std=t_std,
             component_anchor_strength=component_anchor_strength,
         )
 
@@ -255,6 +264,7 @@ def model_hill_mixture_hierarchical_reparam(
     y=None,
     K=3,
     prior_config=None,
+    t_std=None,
     component_anchor_strength: float = DEFAULT_COMPONENT_ANCHOR_STRENGTH,
 ):
     """Hierarchical Hill Mixture Model with stabilized component priors.
@@ -285,5 +295,6 @@ def model_hill_mixture_hierarchical_reparam(
         y=y,
         K=K,
         prior_config=prior_config,
+        t_std=t_std,
         component_anchor_strength=component_anchor_strength,
     )
