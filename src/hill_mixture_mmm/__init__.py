@@ -42,10 +42,14 @@ from .inference import (
     run_inference,
 )
 from .metrics import (
+    compute_across_seed_component_stability,
+    compute_component_set_alignment,
     compute_delta_loo,
     compute_effective_k,
     compute_latent_recovery,
+    compute_permutation_invariant_component_recovery,
     compute_parameter_recovery,
+    summarize_component_posterior,
 )
 from .models import (
     model_hill_mixture_hierarchical_reparam,
@@ -90,7 +94,11 @@ __all__ = [
     "compute_delta_loo",
     "compute_effective_k",
     "compute_latent_recovery",
+    "compute_component_set_alignment",
+    "compute_permutation_invariant_component_recovery",
+    "compute_across_seed_component_stability",
     "compute_parameter_recovery",
+    "summarize_component_posterior",
     # Models
     "model_single_hill",
     "model_hill_mixture_hierarchical_reparam",

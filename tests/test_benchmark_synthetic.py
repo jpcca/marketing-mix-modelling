@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from hill_mixture_mmm.benchmark import (
     save_case_artifacts,
 )
 from hill_mixture_mmm.data import DGPConfig
+from hill_mixture_mmm.metrics import compute_across_seed_component_stability
 
 
 DGP_NAMES = ["single", "mixture_k2", "mixture_k3", "mixture_k5"]
@@ -157,6 +159,21 @@ def _run_and_assert_case(
         assert path.exists(), f"Expected synthetic artifact at {path}"
 
 
+def _case_summary_path(
+    benchmark_output_root: Path,
+    dgp_name: str,
+    model_name: str,
+    seed: int,
+) -> Path:
+    """Return the saved summary path for one synthetic benchmark seed."""
+    return (
+        benchmark_output_root
+        / "synthetic"
+        / model_name
+        / f"synthetic_{dgp_name}_{model_name}_seed{seed}_summary.json"
+    )
+
+
 @pytest.mark.slow
 @pytest.mark.benchmark_smoke
 @pytest.mark.parametrize("seed", SMOKE_SYNTHETIC_SEEDS)
@@ -186,3 +203,37 @@ def test_synthetic_benchmark_full_matrix(
     """Full synthetic benchmark with the original multi-seed benchmark schedule."""
     _require_full_synthetic_benchmark()
     _run_and_assert_case(dgp_name, model_name, seed, benchmark_output_root)
+
+
+@pytest.mark.slow
+@pytest.mark.benchmark_full
+@pytest.mark.parametrize("dgp_name", DGP_NAMES)
+@pytest.mark.parametrize("model_name", MODEL_NAMES)
+def test_synthetic_benchmark_full_across_seed_stability(
+    dgp_name: str,
+    model_name: str,
+    benchmark_output_root: Path,
+) -> None:
+    """Summarize across-seed component stability after the full synthetic sweep."""
+    _require_full_synthetic_benchmark()
+
+    summaries = []
+    for seed in FULL_SYNTHETIC_SEEDS:
+        summary_path = _case_summary_path(benchmark_output_root, dgp_name, model_name, seed)
+        assert summary_path.exists(), f"Expected benchmark summary at {summary_path}"
+        with summary_path.open("r", encoding="utf-8") as fh:
+            summaries.append(json.load(fh))
+
+    stability = compute_across_seed_component_stability(summaries)
+    stability_path = (
+        benchmark_output_root
+        / "synthetic"
+        / model_name
+        / f"synthetic_{dgp_name}_{model_name}_across_seed_stability.json"
+    )
+    with stability_path.open("w", encoding="utf-8") as fh:
+        json.dump(stability, fh, indent=2)
+
+    assert stability["num_seeds"] == len(FULL_SYNTHETIC_SEEDS)
+    assert stability["pair_count"] == (len(FULL_SYNTHETIC_SEEDS) * (len(FULL_SYNTHETIC_SEEDS) - 1)) // 2
+    assert stability_path.exists(), f"Expected across-seed stability summary at {stability_path}"

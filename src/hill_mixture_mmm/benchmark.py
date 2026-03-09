@@ -32,7 +32,9 @@ from .metrics import (
     compute_delta_loo,
     compute_effective_k,
     compute_latent_recovery,
+    compute_permutation_invariant_component_recovery,
     compute_parameter_recovery,
+    summarize_component_posterior,
 )
 from .models import model_hill_mixture_hierarchical_reparam, model_single_hill
 from .transforms import hill
@@ -120,6 +122,8 @@ class BenchmarkCaseResult:
     label_invariant: dict[str, Any] | None
     relabeled: dict[str, Any] | None
     label_switching: dict[str, Any] | None
+    component_summary: dict[str, Any] | None
+    component_recovery: dict[str, Any] | None
     converged: bool
     effective_k: dict[str, Any]
     parameter_recovery: dict[str, Any] | None
@@ -339,6 +343,15 @@ def _run_case_from_series(
     if "pis" in samples and np.asarray(samples["pis"]).ndim == 2:
         samples = relabel_samples_by_k(samples)
 
+    component_scale = 1.0
+    if meta is not None and "s_median" in meta:
+        component_scale = float(meta["s_median"])
+    component_summary = summarize_component_posterior(samples, scale_reference=component_scale)
+
+    component_recovery = None
+    if meta is not None:
+        component_recovery = compute_permutation_invariant_component_recovery(samples, meta)
+
     return BenchmarkCaseResult(
         label=label,
         domain=domain,
@@ -360,6 +373,8 @@ def _run_case_from_series(
         label_invariant=fit["label_invariant"],
         relabeled=fit["relabeled"],
         label_switching=fit["label_switching"],
+        component_summary=component_summary,
+        component_recovery=component_recovery,
         converged=fit["converged"],
         effective_k=compute_effective_k(mcmc),
         parameter_recovery=parameter_recovery,
@@ -486,6 +501,59 @@ def case_summary(result: BenchmarkCaseResult) -> dict[str, Any]:
                     "count": int(count),
                 }
                 for ordering, count in result.label_switching["top_orderings"]
+            ],
+        }
+    if result.component_summary is not None:
+        summary["component_summary"] = {
+            "K_total": int(result.component_summary["K_total"]),
+            "K_active": int(result.component_summary["K_active"]),
+            "weight_threshold": float(result.component_summary["weight_threshold"]),
+            "scale_reference": float(result.component_summary["scale_reference"]),
+            "components": [
+                {
+                    "index": int(component["index"]),
+                    "A_mean": float(component["A_mean"]),
+                    "A_std": float(component["A_std"]),
+                    "k_mean": float(component["k_mean"]),
+                    "k_std": float(component["k_std"]),
+                    "k_ratio_mean": float(component["k_ratio_mean"]),
+                    "k_ratio_std": float(component["k_ratio_std"]),
+                    "n_mean": float(component["n_mean"]),
+                    "n_std": float(component["n_std"]),
+                    "pi_mean": float(component["pi_mean"]),
+                    "pi_std": float(component["pi_std"]),
+                    "active": bool(component["active"]),
+                }
+                for component in result.component_summary["components"]
+            ],
+        }
+    if result.component_recovery is not None:
+        summary["component_recovery"] = {
+            "K_true": int(result.component_recovery["K_true"]),
+            "K_true_active": int(result.component_recovery["K_true_active"]),
+            "K_posterior": int(result.component_recovery["K_posterior"]),
+            "K_posterior_active": int(result.component_recovery["K_posterior_active"]),
+            "effective_k_error": float(result.component_recovery["effective_k_error"]),
+            "weighted_curve_rmse": float(result.component_recovery["weighted_curve_rmse"]),
+            "weighted_curve_nrmse": float(result.component_recovery["weighted_curve_nrmse"]),
+            "weighted_pi_abs_error": float(result.component_recovery["weighted_pi_abs_error"]),
+            "mean_A_rel_error": float(result.component_recovery["mean_A_rel_error"]),
+            "mean_k_ratio_rel_error": float(result.component_recovery["mean_k_ratio_rel_error"]),
+            "mean_n_abs_error": float(result.component_recovery["mean_n_abs_error"]),
+            "unmatched_true_weight": float(result.component_recovery["unmatched_reference_weight"]),
+            "unmatched_posterior_weight": float(result.component_recovery["unmatched_candidate_weight"]),
+            "matched_components": [
+                {
+                    "true_component_index": int(component["reference_component_index"]),
+                    "posterior_component_index": int(component["candidate_component_index"]),
+                    "curve_rmse": float(component["curve_rmse"]),
+                    "curve_nrmse": float(component["curve_nrmse"]),
+                    "pi_abs_error": float(component["pi_abs_error"]),
+                    "A_rel_error": float(component["A_rel_error"]),
+                    "k_ratio_rel_error": float(component["k_ratio_rel_error"]),
+                    "n_abs_error": float(component["n_abs_error"]),
+                }
+                for component in result.component_recovery["matched_components"]
             ],
         }
     if result.parameter_recovery is not None:
@@ -725,63 +793,209 @@ def plot_observed_vs_predictive(result: BenchmarkCaseResult, output_path: str | 
 
 
 def plot_response_curves(result: BenchmarkCaseResult, output_path: str | Path) -> Path:
-    """Save posterior response curve plot for one benchmark case."""
+    """Save an overlaid component-response plot for one benchmark case."""
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     x_full = np.concatenate([result.x_train, result.x_test])
-    grid = np.linspace(0.0, max(float(np.max(x_full)) * 1.1, 1.0), 200, dtype=np.float32)
     samples = result.samples
-
-    fig, ax = plt.subplots(figsize=(7.5, 5.0))
-
-    if "pis" not in samples:
-        A = np.asarray(samples["A"], dtype=np.float32)
-        k = np.asarray(samples["k"], dtype=np.float32)
-        n = np.asarray(samples["n"], dtype=np.float32)
-        curves = np.asarray([hill(grid, A_i, k_i, n_i) for A_i, k_i, n_i in zip(A, k, n)], dtype=np.float32)
+    if result.meta is not None and "s_max" in result.meta:
+        grid_max = max(float(result.meta["s_max"]) * 1.1, 1.0)
+        x_label = "Adstocked Spend"
     else:
+        grid_max = max(float(np.max(x_full)) * 1.1, 1.0)
+        x_label = "Spend (Proxy)"
+    grid = np.linspace(0.0, grid_max, 200, dtype=np.float32)
+
+    def _posterior_component_payload() -> tuple[np.ndarray, np.ndarray]:
         A = np.asarray(samples["A"], dtype=np.float32)
         k = np.asarray(samples["k"], dtype=np.float32)
         n = np.asarray(samples["n"], dtype=np.float32)
-        pis = np.asarray(samples["pis"], dtype=np.float32)
-        component_curves = np.stack(
-            [A[:, i : i + 1] * (grid[None, :] ** n[:, i : i + 1]) / (k[:, i : i + 1] ** n[:, i : i + 1] + grid[None, :] ** n[:, i : i + 1] + 1e-12) for i in range(A.shape[1])],
-            axis=-1,
-        )
-        curves = np.sum(component_curves * pis[:, None, :], axis=-1)
+        if A.ndim == 1:
+            A = A[:, None]
+            k = k[:, None]
+            n = n[:, None]
+        if "pis" in samples:
+            pis = np.asarray(samples["pis"], dtype=np.float32)
+            if pis.ndim == 1:
+                pis = pis[:, None]
+        else:
+            pis = np.ones((A.shape[0], 1), dtype=np.float32)
 
-        mean_A = A.mean(axis=0)
-        mean_k = k.mean(axis=0)
-        mean_n = n.mean(axis=0)
-        mean_pis = pis.mean(axis=0)
-        for idx, (A_i, k_i, n_i, pi_i) in enumerate(zip(mean_A, mean_k, mean_n, mean_pis, strict=True)):
-            component = np.asarray(hill(grid, A_i, k_i, n_i), dtype=np.float32)
-            ax.plot(grid, component, linestyle="--", linewidth=1.0, alpha=0.6, label=f"Posterior Component {idx + 1} ({pi_i:.2f})")
+        grid_terms = grid[None, :, None] ** n[:, None, :]
+        denom = k[:, None, :] ** n[:, None, :] + grid_terms + 1e-12
+        component_curves = A[:, None, :] * grid_terms / denom
+        return component_curves, pis
 
-    curve_mean = curves.mean(axis=0)
-    curve_q05 = np.quantile(curves, 0.05, axis=0)
-    curve_q95 = np.quantile(curves, 0.95, axis=0)
+    posterior_component_curves, posterior_pis = _posterior_component_payload()
+    posterior_weights = posterior_pis.mean(axis=0)
+    posterior_means = posterior_component_curves.mean(axis=0)
+    posterior_lowers = np.quantile(posterior_component_curves, 0.05, axis=0)
+    posterior_uppers = np.quantile(posterior_component_curves, 0.95, axis=0)
+    posterior_component_indices = list(range(posterior_component_curves.shape[-1]))
+    if result.component_summary is not None:
+        posterior_component_indices = [
+            int(component["index"])
+            for component in result.component_summary["components"]
+            if bool(component["active"])
+        ] or posterior_component_indices
 
-    ax.plot(grid, curve_mean, color="#d62728", linewidth=2.0, label="Posterior Mean Effect")
-    ax.fill_between(grid, curve_q05, curve_q95, color="#d62728", alpha=0.15, label="90% Interval")
-
+    true_components = None
+    true_weights = None
+    true_component_indices: list[int] = []
     if result.meta is not None and {"A_true", "k_true", "n_true", "pi_true"}.issubset(result.meta):
         A_true = np.asarray(result.meta["A_true"], dtype=np.float32)
         k_true = np.asarray(result.meta["k_true"], dtype=np.float32)
         n_true = np.asarray(result.meta["n_true"], dtype=np.float32)
-        pi_true = np.asarray(result.meta["pi_true"], dtype=np.float32)
+        true_weights = np.asarray(result.meta["pi_true"], dtype=np.float32)
         true_components = np.stack(
-            [np.asarray(hill(grid, A_i, k_i, n_i), dtype=np.float32) for A_i, k_i, n_i in zip(A_true, k_true, n_true, strict=True)],
+            [
+                np.asarray(hill(grid, A_i, k_i, n_i), dtype=np.float32)
+                for A_i, k_i, n_i in zip(A_true, k_true, n_true, strict=True)
+            ],
             axis=0,
         )
-        true_curve = np.sum(pi_true[:, None] * true_components, axis=0)
-        ax.plot(grid, true_curve, color="#2ca02c", linewidth=2.0, linestyle=":", label="True Expected Effect")
+        true_component_indices = list(range(true_components.shape[0]))
 
-    ax.set_title(f"{result.label}: Response Curves")
-    ax.set_xlabel("Spend")
-    ax.set_ylabel("Incremental Effect")
-    ax.legend(loc="upper left", fontsize=8)
+    panel_specs: list[dict[str, Any]] = []
+    used_true: set[int] = set()
+    used_posterior: set[int] = set()
+    matched_components = []
+    if result.component_recovery is not None:
+        matched_components = list(result.component_recovery.get("matched_components", []))
+
+    for match in sorted(
+        matched_components,
+        key=lambda item: int(item.get("true_component_index", item.get("reference_component_index", -1))),
+    ):
+        true_idx = int(match.get("true_component_index", match.get("reference_component_index")))
+        posterior_idx = int(
+            match.get("posterior_component_index", match.get("candidate_component_index"))
+        )
+        panel_specs.append(
+            {
+                "true_idx": true_idx,
+                "posterior_idx": posterior_idx,
+                "match_metrics": match,
+            }
+        )
+        used_true.add(true_idx)
+        used_posterior.add(posterior_idx)
+
+    if true_components is not None and not panel_specs:
+        paired = min(len(true_component_indices), len(posterior_component_indices))
+        for idx in range(paired):
+            true_idx = true_component_indices[idx]
+            posterior_idx = posterior_component_indices[idx]
+            panel_specs.append(
+                {
+                    "true_idx": true_idx,
+                    "posterior_idx": posterior_idx,
+                    "match_metrics": None,
+                }
+            )
+            used_true.add(true_idx)
+            used_posterior.add(posterior_idx)
+
+    for true_idx in true_component_indices:
+        if true_idx not in used_true:
+            panel_specs.append({"true_idx": true_idx, "posterior_idx": None, "match_metrics": None})
+    for posterior_idx in posterior_component_indices:
+        if posterior_idx not in used_posterior:
+            panel_specs.append(
+                {"true_idx": None, "posterior_idx": posterior_idx, "match_metrics": None}
+            )
+    if not panel_specs:
+        panel_specs.append({"true_idx": None, "posterior_idx": 0, "match_metrics": None})
+
+    all_y_max = [float(np.max(posterior_uppers[:, idx])) for idx in posterior_component_indices]
+    if true_components is not None:
+        all_y_max.extend(float(np.max(true_components[idx])) for idx in true_component_indices)
+    y_max = max(all_y_max, default=1.0) * 1.08
+
+    fig, ax = plt.subplots(figsize=(9.2, 5.8))
+    color_cycle = plt.rcParams["axes.prop_cycle"].by_key().get("color", ["#1f77b4"])
+    color_by_true: dict[int, str] = {}
+    color_by_posterior: dict[int, str] = {}
+
+    color_index = 0
+    for spec in panel_specs:
+        color = color_cycle[color_index % len(color_cycle)]
+        if spec["true_idx"] is not None and spec["true_idx"] not in color_by_true:
+            color_by_true[spec["true_idx"]] = color
+        if spec["posterior_idx"] is not None and spec["posterior_idx"] not in color_by_posterior:
+            color_by_posterior[spec["posterior_idx"]] = color
+        if (
+            spec["true_idx"] is not None
+            or spec["posterior_idx"] is not None
+        ):
+            color_index += 1
+
+    for posterior_idx in posterior_component_indices:
+        color = color_by_posterior.get(
+            posterior_idx,
+            color_cycle[posterior_idx % len(color_cycle)],
+        )
+        label_suffix = f" (pi={posterior_weights[posterior_idx]:.2f})"
+        ax.fill_between(
+            grid,
+            posterior_lowers[:, posterior_idx],
+            posterior_uppers[:, posterior_idx],
+            color=color,
+            alpha=0.14,
+        )
+        ax.plot(
+            grid,
+            posterior_means[:, posterior_idx],
+            color=color,
+            linewidth=2.2,
+            label=f"Posterior {posterior_idx + 1}{label_suffix}",
+        )
+
+    if true_components is not None:
+        for true_idx in true_component_indices:
+            color = color_by_true.get(true_idx, color_cycle[true_idx % len(color_cycle)])
+            label_suffix = ""
+            if true_weights is not None:
+                label_suffix = f" (pi={true_weights[true_idx]:.2f})"
+            ax.plot(
+                grid,
+                true_components[true_idx],
+                color=color,
+                linewidth=2.2,
+                linestyle="--",
+                label=f"True {true_idx + 1}{label_suffix}",
+            )
+
+    annotation_lines = []
+    if result.component_recovery is not None:
+        annotation_lines.extend(
+            [
+                f"weighted curve nRMSE={float(result.component_recovery['weighted_curve_nrmse']):.2f}",
+                f"effective K error={float(result.component_recovery['effective_k_error']):.2f}",
+                f"unmatched true weight={float(result.component_recovery['unmatched_reference_weight']):.2f}",
+                f"unmatched posterior weight={float(result.component_recovery['unmatched_candidate_weight']):.2f}",
+            ]
+        )
+    if annotation_lines:
+        ax.text(
+            0.99,
+            0.02,
+            "\n".join(annotation_lines),
+            transform=ax.transAxes,
+            ha="right",
+            va="bottom",
+            fontsize=8,
+            bbox={"facecolor": "white", "alpha": 0.85, "edgecolor": "none"},
+        )
+
+    ax.set_title(f"{result.label}: Component Response Recovery")
+    ax.set_xlabel(x_label)
+    ax.set_ylabel("Component Effect")
+    ax.grid(True, alpha=0.25)
+    ax.set_xlim(0.0, grid_max)
+    ax.set_ylim(0.0, y_max)
+    ax.legend(loc="upper left", fontsize=8, ncols=2)
     fig.tight_layout()
     fig.savefig(output_path, dpi=200)
     plt.close(fig)

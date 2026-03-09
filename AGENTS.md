@@ -198,7 +198,8 @@ git commit -m "Various changes"  # Don't do this
 - The visualization tests read benchmark CSV snapshots from `results/benchmark/` via `RESULTS_CSV` and `RESULTS_SUMMARY_CSV` constants near the top of `tests/test_visualization.py`
 - If you want figures to reflect a newly generated benchmark snapshot, update those constants to the new raw and summary files before running the visualization tests
 - Benchmark test visualizations are written into `paper/figures/{synthetic|real}/{model_name}/`
-- Benchmark case summary JSON files now include label-invariant, relabeled-parameter, and label-switching diagnostics for mixture fits
+- Benchmark case summary JSON files now include label-invariant, relabeled-parameter, label-switching, component-summary, and permutation-invariant component-recovery diagnostics for mixture fits
+- Full synthetic benchmark runs also write across-seed component stability summaries to `paper/figures/synthetic/{model_name}/synthetic_{dgp}_{model}_across_seed_stability.json`
 - Benchmark-oriented pytest runs also persist a text report under `results/test_logs/`, including failing node IDs and assertion bodies
 - After generating figures, follow the **Critical: Submodule Workflow** section above
 - Remember: Push BOTH the paper submodule AND the main repo to avoid 404 errors
