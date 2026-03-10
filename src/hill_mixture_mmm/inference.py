@@ -26,6 +26,7 @@ def run_inference(
     num_chains: int = 4,
     prior_config: dict | None = None,
     target_accept_prob: float = 0.9,
+    max_tree_depth: int = 10,
     progress_bar: bool = True,
     **model_kwargs,
 ) -> MCMC:
@@ -41,6 +42,7 @@ def run_inference(
         num_chains: Number of parallel chains
         prior_config: Prior hyperparameters
         target_accept_prob: NUTS target acceptance probability
+        max_tree_depth: Maximum NUTS tree depth
         progress_bar: Whether to show MCMC progress bar
         **model_kwargs: Additional model arguments (e.g., K for mixture)
 
@@ -48,7 +50,11 @@ def run_inference(
         MCMC object with samples
     """
     rng_key = jax.random.PRNGKey(seed)
-    kernel = NUTS(model_fn, target_accept_prob=target_accept_prob)
+    kernel = NUTS(
+        model_fn,
+        target_accept_prob=target_accept_prob,
+        max_tree_depth=max_tree_depth,
+    )
     mcmc = MCMC(
         kernel,
         num_warmup=num_warmup,
@@ -61,6 +67,7 @@ def run_inference(
         x=jnp.array(x),
         y=jnp.array(y),
         prior_config=prior_config,
+        extra_fields=("diverging", "energy", "num_steps", "accept_prob"),
         **model_kwargs,
     )
     return mcmc
@@ -188,6 +195,39 @@ def compute_convergence_diagnostics(mcmc: MCMC) -> dict[str, Any]:
         "min_ess_tail": float(summary["ess_tail"].min()),
         "converged": bool(summary["r_hat"].max() < 1.05),
         "ess_sufficient": bool(summary["ess_bulk"].min() > 400),
+    }
+
+
+def compute_hmc_diagnostics(
+    mcmc: MCMC,
+    *,
+    max_tree_depth: int = 10,
+    bfmi_threshold: float = 0.3,
+) -> dict[str, Any]:
+    """Compute sampler diagnostics used in stricter HMC convergence checks."""
+    extra_fields = mcmc.get_extra_fields(group_by_chain=True)
+
+    diverging = np.asarray(extra_fields.get("diverging", np.zeros((1, 0), dtype=bool)))
+    energy = np.asarray(extra_fields.get("energy", np.zeros((diverging.shape[0], 0))))
+    num_steps = np.asarray(extra_fields.get("num_steps", np.zeros_like(diverging, dtype=int)))
+    accept_prob = np.asarray(
+        extra_fields.get("accept_prob", np.zeros_like(diverging, dtype=float))
+    )
+
+    tree_depth = np.floor(np.log2(np.maximum(num_steps, 1))).astype(int) + 1
+    bfmi_by_chain = np.asarray(az.bfmi(energy), dtype=float) if energy.size else np.array([np.nan])
+
+    return {
+        "num_divergences": int(np.sum(diverging)),
+        "has_divergence": bool(np.any(diverging)),
+        "bfmi_by_chain": bfmi_by_chain.tolist(),
+        "min_bfmi": float(np.nanmin(bfmi_by_chain)),
+        "bfmi_ok": bool(np.nanmin(bfmi_by_chain) >= bfmi_threshold),
+        "max_tree_depth": int(max_tree_depth),
+        "tree_depth_hits": int(np.sum(tree_depth >= max_tree_depth)),
+        "max_tree_depth_hit": bool(np.any(tree_depth >= max_tree_depth)),
+        "max_num_steps": int(np.max(num_steps)) if num_steps.size else 0,
+        "mean_accept_prob": float(np.mean(accept_prob)) if accept_prob.size else float("nan"),
     }
 
 
@@ -526,6 +566,8 @@ def compute_label_invariant_diagnostics(
         Dict with:
         - rhat_log_lik: R-hat on total log-likelihood
         - rhat_scalars: R-hat on scalar parameters
+        - min_ess_bulk: Minimum bulk ESS across label-invariant quantities
+        - min_ess_tail: Minimum tail ESS across label-invariant quantities
         - converged: Whether all R-hats < 1.01 (stricter threshold)
         - details: Per-parameter diagnostics
     """
@@ -543,24 +585,38 @@ def compute_label_invariant_diagnostics(
 
     # Compute R-hat on log-likelihood
     rhat_log_lik = _compute_rhat(log_liks, method=method)
+    ess_bulk_log_lik = _compute_ess(log_liks, method="bulk")
+    ess_tail_log_lik = _compute_ess(log_liks, method="tail")
 
     # Compute R-hat on scalar parameters
     scalar_params = ["intercept", "slope", "sigma", "alpha"]
     rhat_scalars = {}
+    ess_bulk_scalars = {}
+    ess_tail_scalars = {}
     for param in scalar_params:
         if param in samples:
             param_values = samples[param]  # (n_chains, n_samples)
             if param_values.ndim == 2:  # Scalar parameter
                 rhat_scalars[param] = _compute_rhat(param_values, method=method)
+                ess_bulk_scalars[param] = _compute_ess(param_values, method="bulk")
+                ess_tail_scalars[param] = _compute_ess(param_values, method="tail")
 
     # Check convergence with stricter threshold (1.01 per Vehtari et al.)
     all_rhats = [rhat_log_lik] + list(rhat_scalars.values())
+    all_ess_bulk = [ess_bulk_log_lik] + list(ess_bulk_scalars.values())
+    all_ess_tail = [ess_tail_log_lik] + list(ess_tail_scalars.values())
     max_rhat = max(all_rhats)
     converged = max_rhat < 1.01
 
     return {
         "rhat_log_lik": rhat_log_lik,
         "rhat_scalars": rhat_scalars,
+        "ess_bulk_log_lik": ess_bulk_log_lik,
+        "ess_tail_log_lik": ess_tail_log_lik,
+        "ess_bulk_scalars": ess_bulk_scalars,
+        "ess_tail_scalars": ess_tail_scalars,
+        "min_ess_bulk": float(np.nanmin(all_ess_bulk)),
+        "min_ess_tail": float(np.nanmin(all_ess_tail)),
         "max_rhat": max_rhat,
         "converged": converged,
         "method": method,
@@ -582,7 +638,7 @@ def compute_diagnostics_on_relabeled(
         method: R-hat method - 'rank' (recommended) or 'split'
 
     Returns:
-        Dict with per-parameter R-hat on relabeled samples
+        Dict with per-parameter R-hat and ESS on relabeled samples
     """
     samples_by_chain = mcmc.get_samples(group_by_chain=True)
     n_chains = list(samples_by_chain.values())[0].shape[0]
@@ -602,6 +658,8 @@ def compute_diagnostics_on_relabeled(
     # Compute R-hat on component parameters
     component_params = ["A", "k", "n", "pis"]
     results = {}
+    ess_bulk_results = {}
+    ess_tail_results = {}
 
     for param in component_params:
         if param in relabeled_samples:
@@ -609,21 +667,39 @@ def compute_diagnostics_on_relabeled(
             if values.ndim == 3:
                 K = values.shape[2]
                 rhats = []
+                ess_bulk = []
+                ess_tail = []
                 for k_idx in range(K):
                     rhat = _compute_rhat(values[:, :, k_idx], method=method)
                     rhats.append(rhat)
+                    ess_bulk.append(_compute_ess(values[:, :, k_idx], method="bulk"))
+                    ess_tail.append(_compute_ess(values[:, :, k_idx], method="tail"))
                 results[param] = {
                     "per_component": rhats,
                     "max": max(rhats),
                 }
+                ess_bulk_results[param] = {
+                    "per_component": ess_bulk,
+                    "min": min(ess_bulk),
+                }
+                ess_tail_results[param] = {
+                    "per_component": ess_tail,
+                    "min": min(ess_tail),
+                }
 
     # Overall convergence
     max_rhat = max(r["max"] for r in results.values())
+    min_ess_bulk = min(r["min"] for r in ess_bulk_results.values())
+    min_ess_tail = min(r["min"] for r in ess_tail_results.values())
     converged = max_rhat < 1.01
 
     return {
         "component_rhats": results,
+        "component_ess_bulk": ess_bulk_results,
+        "component_ess_tail": ess_tail_results,
         "max_rhat": max_rhat,
+        "min_ess_bulk": min_ess_bulk,
+        "min_ess_tail": min_ess_tail,
         "converged": converged,
         "method": method,
         "threshold": 1.01,
@@ -698,6 +774,49 @@ def _compute_rhat(values: np.ndarray, method: str = "rank") -> float:
         import warnings
 
         warnings.warn(f"R-hat computation failed: {e}")
+        return np.nan
+
+
+def _compute_ess(values: np.ndarray, method: str = "bulk") -> float:
+    """Compute ESS using ArviZ."""
+    import xarray as xr
+
+    n_chains, n_samples = values.shape
+
+    if n_chains < 2:
+        return np.nan
+    if np.any(~np.isfinite(values)):
+        return np.nan
+    if np.allclose(values, values[0, 0]):
+        return float(n_chains * n_samples)
+
+    try:
+        da = xr.DataArray(
+            values,
+            dims=["chain", "draw"],
+            coords={"chain": np.arange(n_chains), "draw": np.arange(n_samples)},
+        )
+        ess = az.ess(da, method=method)
+
+        if isinstance(ess, xr.Dataset):
+            var_name = list(ess.data_vars)[0]
+            result = float(ess[var_name].values.item())
+        elif isinstance(ess, xr.DataArray):
+            result = float(ess.values.item())
+        elif isinstance(ess, (int, float)):
+            result = float(ess)
+        elif hasattr(ess, "item"):
+            result = float(ess.item())
+        else:
+            result = float(ess)
+
+        if not np.isfinite(result):
+            return np.nan
+        return result
+    except (ValueError, TypeError, RuntimeWarning) as e:
+        import warnings
+
+        warnings.warn(f"ESS computation failed: {e}")
         return np.nan
 
 

@@ -1,0 +1,583 @@
+"""Generate selected paper figures from synthetic benchmark results."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Any
+
+import matplotlib
+import numpy as np
+import pandas as pd
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+
+DGP_ORDER = ["single", "mixture_k2", "mixture_k3", "mixture_k5"]
+DGP_K_TRUE = {"single": 1, "mixture_k2": 2, "mixture_k3": 3, "mixture_k5": 5}
+DGP_LABELS = {
+    "single": "Single (K=1)",
+    "mixture_k2": "Mixture (K=2)",
+    "mixture_k3": "Mixture (K=3)",
+    "mixture_k5": "Mixture (K=5)",
+}
+MODEL_ORDER = ["single_hill", "mixture_k2", "mixture_k3", "mixture_k5"]
+MODEL_LABELS = {
+    "single_hill": "Single Hill",
+    "mixture_k2": "Mixture (K=2)",
+    "mixture_k3": "Mixture (K=3)",
+    "mixture_k5": "Mixture (K=5)",
+}
+COLORS = {
+    "single_hill": "#1f77b4",
+    "mixture_k2": "#9467bd",
+    "mixture_k3": "#ff7f0e",
+    "mixture_k5": "#2ca02c",
+}
+DEFAULT_FIGURE_IDS = ("fig0", "fig1", "fig2", "fig3", "fig5")
+
+plt.rcParams.update(
+    {
+        "font.size": 11,
+        "axes.labelsize": 12,
+        "axes.titlesize": 13,
+        "legend.fontsize": 10,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "figure.dpi": 150,
+        "savefig.dpi": 300,
+        "savefig.bbox": "tight",
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+    }
+)
+
+
+def _safe_float(value: Any) -> float | None:
+    """Return a float when possible, else None."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _nested_metric(summary: dict[str, Any], section: str, key: str) -> float | None:
+    """Read a numeric metric from a nested summary dictionary."""
+    payload = summary.get(section)
+    if not isinstance(payload, dict):
+        return None
+    return _safe_float(payload.get(key))
+
+
+def _normalize_bool(series: pd.Series) -> pd.Series:
+    """Convert boolean-like benchmark columns into strict bools."""
+    if pd.api.types.is_bool_dtype(series):
+        return series.fillna(False)
+    return (
+        series.astype(str)
+        .str.lower()
+        .map({"true": True, "false": False, "1": True, "0": False})
+        .fillna(False)
+    )
+
+
+def _summary_to_record(summary: dict[str, Any]) -> dict[str, Any]:
+    """Project a seed-level synthetic summary JSON into one raw-results record."""
+    dgp_name = str(summary["dataset_name"])
+    label_invariant = summary.get("label_invariant") or {}
+    relabeled = summary.get("relabeled") or {}
+
+    return {
+        "dgp": dgp_name,
+        "K_true": DGP_K_TRUE.get(dgp_name),
+        "model": summary["model_name"],
+        "seed": int(summary["seed"]),
+        "converged": bool(summary["converged"]),
+        "max_rhat": _nested_metric(summary, "convergence", "max_rhat"),
+        "min_ess_bulk": _nested_metric(summary, "convergence", "min_ess_bulk"),
+        "min_ess_tail": _nested_metric(summary, "convergence", "min_ess_tail"),
+        "rhat_log_lik": _safe_float(label_invariant.get("rhat_log_lik")),
+        "relabeled_max_rhat": _safe_float(relabeled.get("max_rhat")),
+        "num_divergences": _nested_metric(summary, "hmc_diagnostics", "num_divergences"),
+        "min_bfmi": _nested_metric(summary, "hmc_diagnostics", "min_bfmi"),
+        "tree_depth_hits": _nested_metric(summary, "hmc_diagnostics", "tree_depth_hits"),
+        "elpd_loo": _nested_metric(summary, "loo", "elpd_loo"),
+        "pareto_k_bad": _nested_metric(summary, "loo", "pareto_k_bad"),
+        "pareto_k_very_bad": _nested_metric(summary, "loo", "pareto_k_very_bad"),
+        "train_rmse": _nested_metric(summary, "train_metrics", "rmse"),
+        "test_rmse": _nested_metric(summary, "test_metrics", "rmse"),
+        "train_coverage_90": _nested_metric(summary, "train_metrics", "coverage_90"),
+        "test_coverage_90": _nested_metric(summary, "test_metrics", "coverage_90"),
+        "effective_k_mean": _nested_metric(summary, "effective_k", "mean"),
+        "effective_k_std": _nested_metric(summary, "effective_k", "std"),
+    }
+
+
+def load_synthetic_results_from_artifacts(
+    artifact_root: str | Path,
+    *,
+    summary_paths: Sequence[str | Path] | None = None,
+) -> pd.DataFrame:
+    """Load seed-level synthetic benchmark rows from saved case summaries."""
+    artifact_root = Path(artifact_root)
+    if summary_paths is None:
+        paths = sorted(artifact_root.glob("synthetic/*/*_seed*_summary.json"))
+    else:
+        paths = [Path(path) for path in summary_paths]
+
+    rows_by_case: dict[tuple[str, str, int], dict[str, Any]] = {}
+    for path in paths:
+        summary = json.loads(path.read_text(encoding="utf-8"))
+        if summary.get("domain") != "synthetic":
+            continue
+        record = _summary_to_record(summary)
+        key = (record["dgp"], record["model"], record["seed"])
+        rows_by_case[key] = record
+
+    if not rows_by_case:
+        raise ValueError(f"No synthetic seed-level summaries found under {artifact_root}")
+
+    df = pd.DataFrame(rows_by_case.values())
+    if "converged" in df.columns:
+        df["converged"] = _normalize_bool(df["converged"])
+    return df
+
+
+def load_synthetic_results(
+    *,
+    results_csv: str | Path | None = None,
+    artifact_root: str | Path | None = None,
+    summary_paths: Sequence[str | Path] | None = None,
+) -> pd.DataFrame:
+    """Load synthetic benchmark rows from either a raw CSV or saved summaries."""
+    if results_csv is not None:
+        df = pd.read_csv(results_csv)
+        if "converged" in df.columns:
+            df["converged"] = _normalize_bool(df["converged"])
+        return df
+    if artifact_root is None:
+        raise ValueError("Pass either results_csv or artifact_root")
+    return load_synthetic_results_from_artifacts(artifact_root, summary_paths=summary_paths)
+
+
+def _metric_frame(df: pd.DataFrame, metric: str) -> pd.DataFrame:
+    """Aggregate one metric to mean/std per DGP-model cell."""
+    metric_frame = (
+        df.groupby(["dgp", "model"], as_index=False)
+        .agg(mean=(metric, "mean"), std=(metric, "std"))
+        .fillna({"std": 0.0})
+    )
+    return metric_frame
+
+
+def _lookup_metric(metric_frame: pd.DataFrame, dgp_name: str, model_name: str) -> tuple[float, float]:
+    """Return mean/std for one DGP-model cell."""
+    row = metric_frame[
+        (metric_frame["dgp"] == dgp_name) & (metric_frame["model"] == model_name)
+    ]
+    if row.empty:
+        return np.nan, np.nan
+    return float(row["mean"].iloc[0]), float(row["std"].iloc[0])
+
+
+def generate_graphical_model_figure(output_dir: str | Path) -> Path:
+    """Render Figure 0: plate notation for the Hill mixture model."""
+    import daft
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    pgm = daft.PGM(dpi=150)
+
+    y_prior = 5
+    y_segment = 3
+    y_time = 1.5
+    y_outcome = 0
+
+    pgm.add_node("alpha", r"$\alpha$", 1, y_prior)
+    pgm.add_node("mu0", r"$\mu_0$", 2.5, y_prior)  # type: ignore[arg-type]
+    pgm.add_node("beta", r"$\beta$", 4, y_prior)
+    pgm.add_node("sigma", r"$\sigma$", 5.5, y_prior)  # type: ignore[arg-type]
+    pgm.add_node("pi", r"$\boldsymbol{\pi}$", 7, y_prior)
+
+    pgm.add_node("A_k", r"$A_k$", 7, y_segment)  # type: ignore[arg-type]
+    pgm.add_node("lambda_k", r"$\lambda_k$", 8.5, y_segment)  # type: ignore[arg-type]
+    pgm.add_node("n_k", r"$n_k$", 10, y_segment)  # type: ignore[arg-type]
+
+    pgm.add_node("x_t", r"$x_t$", 1, y_time, observed=True)  # type: ignore[arg-type]
+    pgm.add_node("s_t", r"$s_t$", 2.5, y_time)  # type: ignore[arg-type]
+    pgm.add_node("f_k_t", r"$f_k(s_t)$", 5.5, y_time)  # type: ignore[arg-type]
+    pgm.add_node("y_t", r"$y_t$", 5.5, y_outcome, observed=True)  # type: ignore[arg-type]
+
+    pgm.add_edge("x_t", "s_t")
+    pgm.add_edge("alpha", "s_t")
+    pgm.add_edge("s_t", "f_k_t")
+    pgm.add_edge("A_k", "f_k_t")
+    pgm.add_edge("lambda_k", "f_k_t")
+    pgm.add_edge("n_k", "f_k_t")
+    pgm.add_edge("f_k_t", "y_t")
+    pgm.add_edge("mu0", "y_t")
+    pgm.add_edge("beta", "y_t")
+    pgm.add_edge("sigma", "y_t")
+    pgm.add_edge("pi", "y_t")
+
+    pgm.add_plate(
+        [6.3, 2.4, 4.4, 1.2],
+        label=r"$k = 1, \ldots, K$" + "\n(Latent Segments)",
+        shift=-0.1,  # type: ignore[arg-type]
+    )
+    pgm.add_plate(
+        [0.3, -0.6, 6.0, 2.8],
+        label=r"$t = 1, \ldots, T$" + "\n(Time Periods)",
+        shift=-0.1,  # type: ignore[arg-type]
+    )
+
+    pgm.add_text(1, y_prior + 0.7, "Adstock\nDecay", fontsize=8)  # type: ignore[arg-type]
+    pgm.add_text(2.5, y_prior + 0.7, "Baseline", fontsize=8)  # type: ignore[arg-type]
+    pgm.add_text(4, y_prior + 0.7, "Trend", fontsize=8)  # type: ignore[arg-type]
+    pgm.add_text(5.5, y_prior + 0.7, "Noise", fontsize=8)  # type: ignore[arg-type]
+    pgm.add_text(7, y_prior + 0.7, "Mixture\nWeights", fontsize=8)  # type: ignore[arg-type]
+    pgm.add_text(7, y_segment + 0.7, "Max\nEffect", fontsize=7)  # type: ignore[arg-type]
+    pgm.add_text(8.5, y_segment + 0.7, "Half-\nSaturation", fontsize=7)  # type: ignore[arg-type]
+    pgm.add_text(10, y_segment + 0.7, "Steepness", fontsize=7)  # type: ignore[arg-type]
+    pgm.add_text(1, y_time - 0.7, "Spend", fontsize=8)  # type: ignore[arg-type]
+    pgm.add_text(2.5, y_time - 0.7, "Adstocked\nSpend", fontsize=7)  # type: ignore[arg-type]
+    pgm.add_text(6.5, y_time, "Hill\nResponse", fontsize=7)  # type: ignore[arg-type]
+    pgm.add_text(5.5, y_outcome - 0.7, "Observed\nOutcome", fontsize=8)  # type: ignore[arg-type]
+
+    pgm.render()
+    output_path = output_dir / "fig0_graphical_model.png"
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close("all")
+    return output_path
+
+
+def generate_elpd_comparison_figure(df: pd.DataFrame, output_dir: str | Path) -> Path:
+    """Render Figure 1: ELPD-LOO comparison across DGPs and models."""
+    output_dir = Path(output_dir)
+    metric_frame = _metric_frame(df, "elpd_loo")
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    x = np.arange(len(DGP_ORDER))
+    width = 0.18
+
+    for idx, model_name in enumerate(MODEL_ORDER):
+        means: list[float] = []
+        stds: list[float] = []
+        for dgp_name in DGP_ORDER:
+            mean, std = _lookup_metric(metric_frame, dgp_name, model_name)
+            means.append(mean)
+            stds.append(std)
+
+        offset = (idx - (len(MODEL_ORDER) - 1) / 2) * width
+        ax.bar(
+            x + offset,
+            means,
+            width,
+            yerr=stds,
+            label=MODEL_LABELS[model_name],
+            color=COLORS[model_name],
+            capsize=3,
+            alpha=0.85,
+            edgecolor="white",
+            linewidth=0.5,
+        )
+
+    ax.set_xlabel("Data Generating Process")
+    ax.set_ylabel("ELPD-LOO")
+    ax.set_title("Model Comparison: Expected Log Pointwise Predictive Density")
+    ax.set_xticks(x)
+    ax.set_xticklabels([DGP_LABELS[dgp_name] for dgp_name in DGP_ORDER])
+    ax.legend(title="Model")
+    ax.axhline(y=0, color="gray", linestyle="--", alpha=0.3)
+    ax.annotate(
+        "Error bars: ±1 std across random seeds",
+        xy=(0.98, 0.02),
+        xycoords="axes fraction",
+        ha="right",
+        va="bottom",
+        fontsize=8,
+        color="gray",
+    )
+
+    plt.tight_layout()
+    output_path = output_dir / "fig1_elpd_comparison.png"
+    fig.savefig(output_path)
+    plt.close(fig)
+    return output_path
+
+
+def generate_elpd_delta_figure(df: pd.DataFrame, output_dir: str | Path) -> Path:
+    """Render Figure 2: ELPD improvement over the single-Hill baseline."""
+    output_dir = Path(output_dir)
+    metric_frame = _metric_frame(df, "elpd_loo")
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    y_pos = 0.0
+    y_ticks: list[float] = []
+    y_labels: list[str] = []
+
+    for dgp_name in DGP_ORDER:
+        baseline_mean, _ = _lookup_metric(metric_frame, dgp_name, "single_hill")
+        if np.isnan(baseline_mean):
+            continue
+
+        for model_name in ["mixture_k3", "mixture_k5"]:
+            mean, std = _lookup_metric(metric_frame, dgp_name, model_name)
+            if np.isnan(mean):
+                continue
+
+            delta = mean - baseline_mean
+            ax.barh(
+                y_pos,
+                delta,
+                xerr=0.0 if np.isnan(std) else std,
+                color=COLORS[model_name],
+                alpha=0.8,
+                capsize=3,
+                height=0.6,
+            )
+            y_ticks.append(y_pos)
+            y_labels.append(f"{DGP_LABELS[dgp_name]}\n{MODEL_LABELS[model_name]}")
+            y_pos += 1.0
+
+        y_pos += 0.5
+
+    ax.axvline(x=0, color="black", linewidth=1)
+    ax.set_yticks(y_ticks)
+    ax.set_yticklabels(y_labels, fontsize=9)
+    ax.set_xlabel("ΔELPD-LOO (vs Single Hill)\n(Error bars: ±1 SD across seeds)")
+    ax.set_title("ELPD Improvement Over Single Hill Baseline")
+
+    left, right = ax.get_xlim()
+    ax.axvspan(0, right, alpha=0.1, color="green")
+    ax.axvspan(left, 0, alpha=0.1, color="red")
+    ax.text(right * 0.7, max(y_pos - 1.0, 0.0), "Better", fontsize=10, color="green")
+    ax.text(left * 0.7, max(y_pos - 1.0, 0.0), "Worse", fontsize=10, color="red")
+
+    plt.tight_layout()
+    output_path = output_dir / "fig2_elpd_delta.png"
+    fig.savefig(output_path)
+    plt.close(fig)
+    return output_path
+
+
+def generate_convergence_heatmap_figure(df: pd.DataFrame, output_dir: str | Path) -> Path:
+    """Render Figure 3: convergence-rate heatmap by DGP and model."""
+    output_dir = Path(output_dir)
+    convergence = _normalize_bool(df["converged"])
+    conv_rates = (
+        df.assign(converged=convergence)
+        .groupby(["dgp", "model"])["converged"]
+        .mean()
+        .unstack(fill_value=0.0)
+        .reindex(index=DGP_ORDER, columns=MODEL_ORDER)
+        .fillna(0.0)
+    )
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    im = ax.imshow(conv_rates.values, cmap="RdYlGn", vmin=0, vmax=1, aspect="auto")
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label("Convergence Rate")
+
+    ax.set_xticks(np.arange(len(MODEL_ORDER)))
+    ax.set_yticks(np.arange(len(DGP_ORDER)))
+    ax.set_xticklabels([MODEL_LABELS[model_name] for model_name in MODEL_ORDER])
+    ax.set_yticklabels([DGP_LABELS[dgp_name] for dgp_name in DGP_ORDER])
+
+    for row_idx, dgp_name in enumerate(DGP_ORDER):
+        for col_idx, model_name in enumerate(MODEL_ORDER):
+            value = float(conv_rates.loc[dgp_name, model_name])
+            text_color = "white" if value < 0.5 else "black"
+            ax.text(
+                col_idx,
+                row_idx,
+                f"{value:.0%}",
+                ha="center",
+                va="center",
+                color=text_color,
+                fontsize=12,
+            )
+
+    ax.set_xlabel("Model")
+    ax.set_ylabel("Data Generating Process")
+    ax.set_title("MCMC Convergence Rate by DGP and Model")
+
+    plt.tight_layout()
+    output_path = output_dir / "fig3_convergence_heatmap.png"
+    fig.savefig(output_path)
+    plt.close(fig)
+    return output_path
+
+
+def generate_coverage_figure(df: pd.DataFrame, output_dir: str | Path) -> Path:
+    """Render Figure 5: train/test 90% interval coverage."""
+    output_dir = Path(output_dir)
+    coverage = (
+        df.groupby(["dgp", "model"], as_index=False)
+        .agg(
+            train_cov_mean=("train_coverage_90", "mean"),
+            train_cov_std=("train_coverage_90", "std"),
+            test_cov_mean=("test_coverage_90", "mean"),
+            test_cov_std=("test_coverage_90", "std"),
+        )
+        .fillna({"train_cov_std": 0.0, "test_cov_std": 0.0})
+    )
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
+    dgp_spacing = 0.3
+    n_models = len(MODEL_ORDER)
+    width = 0.18
+
+    for axis_index, (prefix, title) in enumerate([("train", "Training Set"), ("test", "Test Set")]):
+        ax = axes[axis_index]
+        x_positions = np.array(
+            [idx * (n_models * width + dgp_spacing) for idx in range(len(DGP_ORDER))]
+        )
+
+        for model_index, model_name in enumerate(MODEL_ORDER):
+            means: list[float] = []
+            stds: list[float] = []
+            for dgp_name in DGP_ORDER:
+                row = coverage[
+                    (coverage["dgp"] == dgp_name) & (coverage["model"] == model_name)
+                ]
+                if row.empty:
+                    means.append(np.nan)
+                    stds.append(np.nan)
+                    continue
+                means.append(float(row[f"{prefix}_cov_mean"].iloc[0]))
+                stds.append(float(row[f"{prefix}_cov_std"].iloc[0]))
+
+            offset = (model_index - (n_models - 1) / 2) * width
+            ax.bar(
+                x_positions + offset,
+                means,
+                width,
+                yerr=stds,
+                label=MODEL_LABELS[model_name],
+                color=COLORS[model_name],
+                capsize=3,
+                alpha=0.85,
+            )
+
+        ax.axhline(y=0.9, color="red", linestyle="--", linewidth=2, label="Nominal (90%)")
+        ax.set_xlabel("Data Generating Process")
+        ax.set_ylabel("Coverage Rate")
+        ax.set_title(f"90% Prediction Interval Coverage ({title})")
+        ax.set_xticks(x_positions)
+        ax.set_xticklabels([DGP_LABELS[dgp_name] for dgp_name in DGP_ORDER], rotation=15)
+        ax.set_ylim(0.5, 1.05)
+
+        if axis_index == 0:
+            ax.legend(title="Model", loc="lower left", fontsize=8)
+
+    fig.text(
+        0.5,
+        -0.02,
+        "Error bars: ±1 std across random seeds",
+        ha="center",
+        fontsize=9,
+        style="italic",
+    )
+
+    plt.tight_layout()
+    output_path = output_dir / "fig5_coverage.png"
+    fig.savefig(output_path)
+    plt.close(fig)
+    return output_path
+
+
+def generate_publication_figures(
+    *,
+    output_dir: str | Path,
+    results_csv: str | Path | None = None,
+    artifact_root: str | Path | None = None,
+    summary_paths: Sequence[str | Path] | None = None,
+    figure_ids: Sequence[str] = DEFAULT_FIGURE_IDS,
+) -> dict[str, Path]:
+    """Generate the selected benchmark paper figures."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    requested = tuple(dict.fromkeys(figure_ids))
+    unknown = sorted(set(requested) - set(DEFAULT_FIGURE_IDS))
+    if unknown:
+        raise ValueError(f"Unknown figure ids: {', '.join(unknown)}")
+
+    generated: dict[str, Path] = {}
+    if "fig0" in requested:
+        generated["fig0"] = generate_graphical_model_figure(output_dir)
+
+    data_figures = [figure_id for figure_id in requested if figure_id != "fig0"]
+    if not data_figures:
+        return generated
+
+    df = load_synthetic_results(
+        results_csv=results_csv,
+        artifact_root=artifact_root,
+        summary_paths=summary_paths,
+    )
+
+    generators = {
+        "fig1": generate_elpd_comparison_figure,
+        "fig2": generate_elpd_delta_figure,
+        "fig3": generate_convergence_heatmap_figure,
+        "fig5": generate_coverage_figure,
+    }
+    for figure_id in data_figures:
+        generated[figure_id] = generators[figure_id](df, output_dir)
+
+    return generated
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    """Return the CLI parser."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("paper/figures"),
+        help="Directory to receive fig0/1/2/3/5 outputs.",
+    )
+    parser.add_argument(
+        "--results-csv",
+        type=Path,
+        help="Raw synthetic benchmark CSV to visualize.",
+    )
+    parser.add_argument(
+        "--artifact-root",
+        type=Path,
+        help="Benchmark artifact root containing synthetic/*/*_seed*_summary.json.",
+    )
+    parser.add_argument(
+        "--figure",
+        dest="figure_ids",
+        action="append",
+        choices=DEFAULT_FIGURE_IDS,
+        help="Generate only the selected figure id. Repeat to request multiple figures.",
+    )
+    return parser
+
+
+def main() -> None:
+    """CLI entry point."""
+    parser = _build_parser()
+    args = parser.parse_args()
+    generated = generate_publication_figures(
+        output_dir=args.output_dir,
+        results_csv=args.results_csv,
+        artifact_root=args.artifact_root,
+        figure_ids=args.figure_ids or DEFAULT_FIGURE_IDS,
+    )
+    for figure_id, path in generated.items():
+        print(f"{figure_id}: {path}")
+
+
+if __name__ == "__main__":
+    main()

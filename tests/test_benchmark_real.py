@@ -52,7 +52,6 @@ def _real_run_config(seed: int) -> BenchmarkRunConfig:
         num_samples=int(os.getenv("HILL_MMM_REAL_SAMPLES", "2000")),
         num_chains=int(os.getenv("HILL_MMM_REAL_CHAINS", "4")),
         progress_bar=False,
-        allow_mixture_retries=False,
     )
 
 
@@ -77,9 +76,9 @@ def _run_real_seed(seed: int, benchmark_output_root: Path) -> None:
     assert_case_passes(
         single_result,
         BenchmarkThresholds(
-            max_rhat=1.05,
-            min_ess_bulk=100.0,
+            max_rhat=1.01,
             max_label_invariant_rhat=None,
+            max_relabeled_rhat=None,
             min_test_coverage_90=0.75,
             max_test_rmse=15.0,
         ),
@@ -96,9 +95,17 @@ def _run_real_seed(seed: int, benchmark_output_root: Path) -> None:
     assert_case_passes(
         mixture_result,
         BenchmarkThresholds(
-            max_rhat=1.05,
-            min_ess_bulk=100.0,
+            max_rhat=None,
+            min_ess_bulk=None,
+            min_ess_tail=None,
+            min_ess_bulk_per_chain=None,
+            min_ess_tail_per_chain=None,
             max_label_invariant_rhat=1.01,
+            min_label_invariant_ess_bulk_per_chain=100.0,
+            min_label_invariant_ess_tail_per_chain=100.0,
+            max_relabeled_rhat=1.01,
+            min_relabeled_ess_bulk_per_chain=100.0,
+            min_relabeled_ess_tail_per_chain=100.0,
             min_test_coverage_90=0.75,
             max_test_rmse=15.0,
             effective_k_bounds=(1.5, 3.5),

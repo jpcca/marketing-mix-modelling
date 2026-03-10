@@ -81,48 +81,6 @@ MODEL_SPECS = [
 ]
 
 
-def _build_retry_schedule(num_warmup: int, num_samples: int, is_mixture_model: bool) -> list[dict]:
-    """Build deterministic retry schedule for convergence."""
-    base_attempt = [
-        {
-            "seed_offset": 0,
-            "num_warmup": num_warmup,
-            "num_samples": num_samples,
-            "target_accept_prob": 0.90,
-        }
-    ]
-    if not is_mixture_model:
-        return base_attempt
-
-    # Fixed schedule avoids cherry-picking while improving difficult mixture cases.
-    return base_attempt + [
-        {
-            "seed_offset": 1000,
-            "num_warmup": max(num_warmup, 2000),
-            "num_samples": max(num_samples, 3000),
-            "target_accept_prob": 0.95,
-        },
-        {
-            "seed_offset": 3000,
-            "num_warmup": max(num_warmup, 2000),
-            "num_samples": max(num_samples, 3000),
-            "target_accept_prob": 0.95,
-        },
-        {
-            "seed_offset": 4000,
-            "num_warmup": max(num_warmup, 2000),
-            "num_samples": max(num_samples, 3000),
-            "target_accept_prob": 0.95,
-        },
-        {
-            "seed_offset": 2000,
-            "num_warmup": max(num_warmup, 3000),
-            "num_samples": max(num_samples, 4000),
-            "target_accept_prob": 0.97,
-        },
-    ]
-
-
 def _is_effectively_converged(
     convergence: dict, rhat_log_lik: float | None, rhat_threshold: float
 ) -> bool:
@@ -157,7 +115,7 @@ def _prepare_experiment_data(dgp_config: DGPConfig, train_ratio: float) -> dict:
     }
 
 
-def _fit_with_retries(
+def _fit_once(
     dgp_config: DGPConfig,
     model_spec: ModelSpec,
     x_train,
@@ -168,55 +126,34 @@ def _fit_with_retries(
     num_samples: int,
     num_chains: int,
 ) -> dict:
-    """Run inference with deterministic retry schedule."""
+    """Run one inference pass and compute convergence diagnostics."""
     is_mixture_model = "K" in model_spec.kwargs
-    retry_schedule = _build_retry_schedule(num_warmup, num_samples, is_mixture_model)
-
-    mcmc = None
-    convergence = None
-    rhat_log_lik = None
-    rhat_threshold = 1.01
-    converged_effective = False
-    retry_attempt = 0
     inference_seed = dgp_config.seed
-    used_warmup = num_warmup
-    used_samples = num_samples
     used_target_accept = 0.90
 
-    for attempt_idx, attempt in enumerate(retry_schedule):
-        inference_seed = dgp_config.seed + int(attempt["seed_offset"])
-        used_warmup = int(attempt["num_warmup"])
-        used_samples = int(attempt["num_samples"])
-        used_target_accept = float(attempt["target_accept_prob"])
+    mcmc = run_inference(
+        model_spec.fn,
+        x_train,
+        y_train,
+        seed=inference_seed,
+        num_warmup=num_warmup,
+        num_samples=num_samples,
+        num_chains=num_chains,
+        prior_config=prior_config,
+        t_std=t_std_train,
+        target_accept_prob=used_target_accept,
+        **model_spec.kwargs,
+    )
+    convergence = compute_convergence_diagnostics(mcmc)
 
-        mcmc = run_inference(
-            model_spec.fn,
-            x_train,
-            y_train,
-            seed=inference_seed,
-            num_warmup=used_warmup,
-            num_samples=used_samples,
-            num_chains=num_chains,
-            prior_config=prior_config,
-            t_std=t_std_train,
-            target_accept_prob=used_target_accept,
-            **model_spec.kwargs,
-        )
-        convergence = compute_convergence_diagnostics(mcmc)
+    rhat_log_lik = None
+    rhat_threshold = 1.01
+    if is_mixture_model:
+        label_invariant = compute_label_invariant_diagnostics(mcmc, x_train, y_train)
+        rhat_log_lik = float(label_invariant["rhat_log_lik"])
+        rhat_threshold = float(label_invariant["threshold"])
 
-        rhat_log_lik = None
-        if is_mixture_model:
-            label_invariant = compute_label_invariant_diagnostics(mcmc, x_train, y_train)
-            rhat_log_lik = float(label_invariant["rhat_log_lik"])
-            rhat_threshold = float(label_invariant["threshold"])
-
-        converged_effective = _is_effectively_converged(convergence, rhat_log_lik, rhat_threshold)
-        retry_attempt = attempt_idx
-        if converged_effective:
-            break
-
-    assert mcmc is not None
-    assert convergence is not None
+    converged_effective = _is_effectively_converged(convergence, rhat_log_lik, rhat_threshold)
 
     return {
         "mcmc": mcmc,
@@ -225,10 +162,9 @@ def _fit_with_retries(
         "rhat_log_lik": rhat_log_lik,
         "rhat_threshold": rhat_threshold,
         "converged_effective": converged_effective,
-        "retry_attempt": retry_attempt,
         "inference_seed": inference_seed,
-        "used_warmup": used_warmup,
-        "used_samples": used_samples,
+        "used_warmup": num_warmup,
+        "used_samples": num_samples,
         "used_target_accept": used_target_accept,
     }
 
@@ -290,7 +226,7 @@ def run_single_experiment(
         Dict with all evaluation metrics
     """
     prepared = _prepare_experiment_data(dgp_config, train_ratio)
-    fit = _fit_with_retries(
+    fit = _fit_once(
         dgp_config=dgp_config,
         model_spec=model_spec,
         x_train=prepared["x_train"],
@@ -342,7 +278,6 @@ def run_single_experiment(
         "rhat_log_lik": fit["rhat_log_lik"],
         "rhat_threshold": fit["rhat_threshold"] if fit["is_mixture_model"] else None,
         "converged": fit["converged_effective"],
-        "retry_attempt": fit["retry_attempt"],
         "inference_seed": fit["inference_seed"],
         "num_warmup_used": fit["used_warmup"],
         "num_samples_used": fit["used_samples"],

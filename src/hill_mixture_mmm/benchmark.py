@@ -21,6 +21,7 @@ from .data_loader import TimeSeriesConfig, load_timeseries
 from .inference import (
     compute_comprehensive_mixture_diagnostics,
     compute_convergence_diagnostics,
+    compute_hmc_diagnostics,
     compute_loo,
     compute_predictions,
     compute_predictive_metrics,
@@ -67,17 +68,29 @@ class BenchmarkRunConfig:
     num_samples: int = 300
     num_chains: int = 2
     target_accept_prob: float = 0.90
+    max_tree_depth: int = 10
     progress_bar: bool = False
-    allow_mixture_retries: bool = True
 
 
 @dataclass(frozen=True)
 class BenchmarkThresholds:
     """Pass/fail thresholds for a single benchmark case."""
 
-    max_rhat: float | None = 1.05
-    min_ess_bulk: float | None = 80.0
-    max_label_invariant_rhat: float | None = 1.01
+    require_effective_convergence: bool = True
+    max_rhat: float | None = 1.01
+    min_ess_bulk: float | None = None
+    min_ess_tail: float | None = None
+    min_ess_bulk_per_chain: float | None = 100.0
+    min_ess_tail_per_chain: float | None = 100.0
+    max_label_invariant_rhat: float | None = None
+    min_label_invariant_ess_bulk_per_chain: float | None = None
+    min_label_invariant_ess_tail_per_chain: float | None = None
+    max_relabeled_rhat: float | None = None
+    min_relabeled_ess_bulk_per_chain: float | None = None
+    min_relabeled_ess_tail_per_chain: float | None = None
+    max_divergences: int | None = 0
+    min_bfmi: float | None = 0.3
+    max_tree_depth_hits: int | None = 0
     min_test_coverage_90: float = 0.80
     max_test_rmse: float | None = None
     max_test_mu_rmse: float | None = None
@@ -119,6 +132,7 @@ class BenchmarkCaseResult:
     loo: dict[str, Any]
     waic: dict[str, Any]
     convergence: dict[str, Any]
+    hmc_diagnostics: dict[str, Any]
     label_invariant: dict[str, Any] | None
     relabeled: dict[str, Any] | None
     label_switching: dict[str, Any] | None
@@ -142,45 +156,62 @@ def get_model_spec(model_name: str) -> ModelSpec:
         raise ValueError(f"Unknown model: {model_name}") from exc
 
 
-def _build_retry_schedule(config: BenchmarkRunConfig, is_mixture_model: bool) -> list[dict[str, Any]]:
-    """Build a deterministic retry schedule for mixture fits."""
-    base_attempt = [
-        {
-            "seed_offset": 0,
-            "num_warmup": config.num_warmup,
-            "num_samples": config.num_samples,
-            "target_accept_prob": config.target_accept_prob,
-        }
-    ]
-    if not is_mixture_model or not config.allow_mixture_retries:
-        return base_attempt
-    return base_attempt + [
-        {
-            "seed_offset": 1000,
-            "num_warmup": max(config.num_warmup, 500),
-            "num_samples": max(config.num_samples, 500),
-            "target_accept_prob": max(config.target_accept_prob, 0.95),
-        },
-        {
-            "seed_offset": 2000,
-            "num_warmup": max(config.num_warmup, 800),
-            "num_samples": max(config.num_samples, 800),
-            "target_accept_prob": max(config.target_accept_prob, 0.97),
-        },
-    ]
+def _required_ess(num_chains: int, minimum_per_chain: float) -> float:
+    """Convert an ESS-per-chain rule into a total ESS threshold."""
+    return float(num_chains) * float(minimum_per_chain)
+
+
+def _passes_hmc_requirements(
+    hmc_diagnostics: dict[str, Any],
+    *,
+    max_divergences: int = 0,
+    min_bfmi: float = 0.3,
+    max_tree_depth_hits: int = 0,
+) -> bool:
+    """Return True when HMC diagnostics satisfy the publication-quality rules."""
+    if int(hmc_diagnostics.get("num_divergences", 0)) > max_divergences:
+        return False
+    if float(hmc_diagnostics.get("min_bfmi", np.nan)) < min_bfmi:
+        return False
+    if int(hmc_diagnostics.get("tree_depth_hits", 0)) > max_tree_depth_hits:
+        return False
+    return True
 
 
 def _is_effectively_converged(
+    *,
+    model_name: str,
     convergence: dict[str, Any],
+    hmc_diagnostics: dict[str, Any],
     label_invariant: dict[str, Any] | None,
-    label_threshold: float = 1.01,
+    relabeled: dict[str, Any] | None,
+    num_chains: int,
+    rhat_threshold: float = 1.01,
+    min_ess_per_chain: float = 100.0,
 ) -> bool:
-    """Evaluate convergence with label-invariant diagnostics when available."""
-    if bool(convergence["converged"]):
-        return True
-    if label_invariant is None:
+    """Evaluate publication-quality convergence for benchmark outputs."""
+    required_ess = _required_ess(num_chains, min_ess_per_chain)
+    if not _passes_hmc_requirements(hmc_diagnostics):
         return False
-    return bool(label_invariant.get("rhat_log_lik", np.inf) <= label_threshold)
+
+    if model_name == "single_hill":
+        return bool(
+            float(convergence.get("max_rhat", np.inf)) <= rhat_threshold
+            and float(convergence.get("min_ess_bulk", 0.0)) >= required_ess
+            and float(convergence.get("min_ess_tail", 0.0)) >= required_ess
+        )
+
+    if label_invariant is None or relabeled is None:
+        return False
+
+    return bool(
+        float(label_invariant.get("max_rhat", np.inf)) <= rhat_threshold
+        and float(label_invariant.get("min_ess_bulk", 0.0)) >= required_ess
+        and float(label_invariant.get("min_ess_tail", 0.0)) >= required_ess
+        and float(relabeled.get("max_rhat", np.inf)) <= rhat_threshold
+        and float(relabeled.get("min_ess_bulk", 0.0)) >= required_ess
+        and float(relabeled.get("min_ess_tail", 0.0)) >= required_ess
+    )
 
 
 def _extract_latent_samples(predictions: dict[str, np.ndarray]) -> np.ndarray | None:
@@ -200,71 +231,63 @@ def _fit_case(
     prior_config: dict[str, Any],
     config: BenchmarkRunConfig,
 ) -> dict[str, Any]:
-    """Run inference with optional retries and return diagnostics."""
+    """Run one inference pass and return diagnostics."""
     numpyro.set_host_device_count(max(1, config.num_chains))
 
     is_mixture_model = "K" in model_spec.kwargs
-    retry_schedule = _build_retry_schedule(config, is_mixture_model)
-
-    mcmc = None
-    convergence = None
-    label_invariant = None
-    relabeled = None
-    label_switching = None
-    effective_convergence = False
     fit_summary = {
-        "retry_attempt": 0,
         "inference_seed": config.seed,
         "num_warmup_used": config.num_warmup,
         "num_samples_used": config.num_samples,
+        "num_chains_used": config.num_chains,
         "target_accept_prob_used": config.target_accept_prob,
+        "max_tree_depth_used": config.max_tree_depth,
     }
 
-    for attempt_idx, attempt in enumerate(retry_schedule):
-        fit_summary = {
-            "retry_attempt": attempt_idx,
-            "inference_seed": config.seed + int(attempt["seed_offset"]),
-            "num_warmup_used": int(attempt["num_warmup"]),
-            "num_samples_used": int(attempt["num_samples"]),
-            "target_accept_prob_used": float(attempt["target_accept_prob"]),
-        }
+    mcmc = run_inference(
+        model_spec.fn,
+        x_train,
+        y_train,
+        seed=fit_summary["inference_seed"],
+        num_warmup=fit_summary["num_warmup_used"],
+        num_samples=fit_summary["num_samples_used"],
+        num_chains=config.num_chains,
+        prior_config=prior_config,
+        t_std=t_std_train,
+        target_accept_prob=fit_summary["target_accept_prob_used"],
+        max_tree_depth=fit_summary["max_tree_depth_used"],
+        progress_bar=config.progress_bar,
+        **model_spec.kwargs,
+    )
+    hmc_diagnostics = compute_hmc_diagnostics(
+        mcmc,
+        max_tree_depth=fit_summary["max_tree_depth_used"],
+    )
+    if is_mixture_model:
+        diagnostics = compute_comprehensive_mixture_diagnostics(mcmc, x_train, y_train)
+        convergence = diagnostics["standard"]
+        label_invariant = diagnostics["label_invariant"]
+        relabeled = diagnostics["relabeled"]
+        label_switching = diagnostics["label_switching"]
+    else:
+        convergence = compute_convergence_diagnostics(mcmc)
+        label_invariant = None
+        relabeled = None
+        label_switching = None
 
-        mcmc = run_inference(
-            model_spec.fn,
-            x_train,
-            y_train,
-            seed=fit_summary["inference_seed"],
-            num_warmup=fit_summary["num_warmup_used"],
-            num_samples=fit_summary["num_samples_used"],
-            num_chains=config.num_chains,
-            prior_config=prior_config,
-            t_std=t_std_train,
-            target_accept_prob=fit_summary["target_accept_prob_used"],
-            progress_bar=config.progress_bar,
-            **model_spec.kwargs,
-        )
-        if is_mixture_model:
-            diagnostics = compute_comprehensive_mixture_diagnostics(mcmc, x_train, y_train)
-            convergence = diagnostics["standard"]
-            label_invariant = diagnostics["label_invariant"]
-            relabeled = diagnostics["relabeled"]
-            label_switching = diagnostics["label_switching"]
-        else:
-            convergence = compute_convergence_diagnostics(mcmc)
-            label_invariant = None
-            relabeled = None
-            label_switching = None
-
-        effective_convergence = _is_effectively_converged(convergence, label_invariant)
-        if effective_convergence:
-            break
-
-    assert mcmc is not None
-    assert convergence is not None
+    effective_convergence = _is_effectively_converged(
+        model_name=model_spec.name,
+        convergence=convergence,
+        hmc_diagnostics=hmc_diagnostics,
+        label_invariant=label_invariant,
+        relabeled=relabeled,
+        num_chains=fit_summary["num_chains_used"],
+    )
 
     return {
         "mcmc": mcmc,
         "convergence": convergence,
+        "hmc_diagnostics": hmc_diagnostics,
         "label_invariant": label_invariant,
         "relabeled": relabeled,
         "label_switching": label_switching,
@@ -370,6 +393,7 @@ def _run_case_from_series(
         loo=compute_loo(mcmc),
         waic=compute_waic(mcmc),
         convergence=fit["convergence"],
+        hmc_diagnostics=fit["hmc_diagnostics"],
         label_invariant=fit["label_invariant"],
         relabeled=fit["relabeled"],
         label_switching=fit["label_switching"],
@@ -447,6 +471,14 @@ def case_summary(result: BenchmarkCaseResult) -> dict[str, Any]:
         "convergence": {
             "max_rhat": float(result.convergence["max_rhat"]),
             "min_ess_bulk": float(result.convergence["min_ess_bulk"]),
+            "min_ess_tail": float(result.convergence["min_ess_tail"]),
+        },
+        "hmc_diagnostics": {
+            "num_divergences": int(result.hmc_diagnostics["num_divergences"]),
+            "min_bfmi": float(result.hmc_diagnostics["min_bfmi"]),
+            "tree_depth_hits": int(result.hmc_diagnostics["tree_depth_hits"]),
+            "max_num_steps": int(result.hmc_diagnostics["max_num_steps"]),
+            "mean_accept_prob": float(result.hmc_diagnostics["mean_accept_prob"]),
         },
         "loo": {
             "elpd_loo": float(result.loo.get("elpd_loo", np.nan)),
@@ -475,11 +507,16 @@ def case_summary(result: BenchmarkCaseResult) -> dict[str, Any]:
     if result.label_invariant is not None:
         summary["label_invariant"] = {
             "rhat_log_lik": float(result.label_invariant["rhat_log_lik"]),
+            "max_rhat": float(result.label_invariant["max_rhat"]),
+            "min_ess_bulk": float(result.label_invariant["min_ess_bulk"]),
+            "min_ess_tail": float(result.label_invariant["min_ess_tail"]),
             "threshold": float(result.label_invariant["threshold"]),
         }
     if result.relabeled is not None:
         summary["relabeled"] = {
             "max_rhat": float(result.relabeled["max_rhat"]),
+            "min_ess_bulk": float(result.relabeled["min_ess_bulk"]),
+            "min_ess_tail": float(result.relabeled["min_ess_tail"]),
             "threshold": float(result.relabeled["threshold"]),
             "component_rhats": {
                 name: {
@@ -594,9 +631,10 @@ def compare_case_results(
 def assert_case_passes(result: BenchmarkCaseResult, thresholds: BenchmarkThresholds) -> None:
     """Raise an AssertionError if a benchmark case fails its thresholds."""
     errors: list[str] = []
+    num_chains_used = int(result.fit_summary.get("num_chains_used", 1))
 
-    if not result.converged:
-        errors.append("effective convergence check failed")
+    if thresholds.require_effective_convergence and not result.converged:
+        errors.append("publication convergence check failed")
     if thresholds.max_rhat is not None and float(result.convergence["max_rhat"]) > thresholds.max_rhat:
         errors.append(
             f"max_rhat={result.convergence['max_rhat']:.3f} exceeds {thresholds.max_rhat:.3f}"
@@ -608,11 +646,111 @@ def assert_case_passes(result: BenchmarkCaseResult, thresholds: BenchmarkThresho
         errors.append(
             f"min_ess_bulk={result.convergence['min_ess_bulk']:.1f} is below {thresholds.min_ess_bulk:.1f}"
         )
-    if thresholds.max_label_invariant_rhat is not None and result.label_invariant is not None:
-        rhat_log_lik = float(result.label_invariant["rhat_log_lik"])
-        if rhat_log_lik > thresholds.max_label_invariant_rhat:
+    if (
+        thresholds.min_ess_tail is not None
+        and float(result.convergence["min_ess_tail"]) < thresholds.min_ess_tail
+    ):
+        errors.append(
+            f"min_ess_tail={result.convergence['min_ess_tail']:.1f} is below {thresholds.min_ess_tail:.1f}"
+        )
+    if thresholds.min_ess_bulk_per_chain is not None:
+        required_ess_bulk = _required_ess(num_chains_used, thresholds.min_ess_bulk_per_chain)
+        if float(result.convergence["min_ess_bulk"]) < required_ess_bulk:
             errors.append(
-                f"rhat_log_lik={rhat_log_lik:.3f} exceeds {thresholds.max_label_invariant_rhat:.3f}"
+                f"min_ess_bulk={result.convergence['min_ess_bulk']:.1f} is below "
+                f"{required_ess_bulk:.1f} ({thresholds.min_ess_bulk_per_chain:.1f} per chain)"
+            )
+    if thresholds.min_ess_tail_per_chain is not None:
+        required_ess_tail = _required_ess(num_chains_used, thresholds.min_ess_tail_per_chain)
+        if float(result.convergence["min_ess_tail"]) < required_ess_tail:
+            errors.append(
+                f"min_ess_tail={result.convergence['min_ess_tail']:.1f} is below "
+                f"{required_ess_tail:.1f} ({thresholds.min_ess_tail_per_chain:.1f} per chain)"
+            )
+    if thresholds.max_label_invariant_rhat is not None and result.label_invariant is not None:
+        label_max_rhat = float(result.label_invariant["max_rhat"])
+        if label_max_rhat > thresholds.max_label_invariant_rhat:
+            errors.append(
+                f"label_invariant_max_rhat={label_max_rhat:.3f} exceeds "
+                f"{thresholds.max_label_invariant_rhat:.3f}"
+            )
+    elif thresholds.max_label_invariant_rhat is not None:
+        errors.append("label-invariant diagnostics are unavailable")
+    if thresholds.min_label_invariant_ess_bulk_per_chain is not None:
+        if result.label_invariant is None:
+            errors.append("label-invariant diagnostics are unavailable")
+        else:
+            required_label_ess_bulk = _required_ess(
+                num_chains_used, thresholds.min_label_invariant_ess_bulk_per_chain
+            )
+            if float(result.label_invariant["min_ess_bulk"]) < required_label_ess_bulk:
+                errors.append(
+                    f"label_invariant_min_ess_bulk={result.label_invariant['min_ess_bulk']:.1f} "
+                    f"is below {required_label_ess_bulk:.1f} "
+                    f"({thresholds.min_label_invariant_ess_bulk_per_chain:.1f} per chain)"
+                )
+    if thresholds.min_label_invariant_ess_tail_per_chain is not None:
+        if result.label_invariant is None:
+            errors.append("label-invariant diagnostics are unavailable")
+        else:
+            required_label_ess_tail = _required_ess(
+                num_chains_used, thresholds.min_label_invariant_ess_tail_per_chain
+            )
+            if float(result.label_invariant["min_ess_tail"]) < required_label_ess_tail:
+                errors.append(
+                    f"label_invariant_min_ess_tail={result.label_invariant['min_ess_tail']:.1f} "
+                    f"is below {required_label_ess_tail:.1f} "
+                    f"({thresholds.min_label_invariant_ess_tail_per_chain:.1f} per chain)"
+                )
+    if thresholds.max_relabeled_rhat is not None:
+        if result.relabeled is None:
+            errors.append("relabeled diagnostics are unavailable")
+        elif float(result.relabeled["max_rhat"]) > thresholds.max_relabeled_rhat:
+            errors.append(
+                f"relabeled_max_rhat={result.relabeled['max_rhat']:.3f} exceeds "
+                f"{thresholds.max_relabeled_rhat:.3f}"
+            )
+    if thresholds.min_relabeled_ess_bulk_per_chain is not None:
+        if result.relabeled is None:
+            errors.append("relabeled diagnostics are unavailable")
+        else:
+            required_relabeled_ess_bulk = _required_ess(
+                num_chains_used, thresholds.min_relabeled_ess_bulk_per_chain
+            )
+            if float(result.relabeled["min_ess_bulk"]) < required_relabeled_ess_bulk:
+                errors.append(
+                    f"relabeled_min_ess_bulk={result.relabeled['min_ess_bulk']:.1f} is below "
+                    f"{required_relabeled_ess_bulk:.1f} "
+                    f"({thresholds.min_relabeled_ess_bulk_per_chain:.1f} per chain)"
+                )
+    if thresholds.min_relabeled_ess_tail_per_chain is not None:
+        if result.relabeled is None:
+            errors.append("relabeled diagnostics are unavailable")
+        else:
+            required_relabeled_ess_tail = _required_ess(
+                num_chains_used, thresholds.min_relabeled_ess_tail_per_chain
+            )
+            if float(result.relabeled["min_ess_tail"]) < required_relabeled_ess_tail:
+                errors.append(
+                    f"relabeled_min_ess_tail={result.relabeled['min_ess_tail']:.1f} is below "
+                    f"{required_relabeled_ess_tail:.1f} "
+                    f"({thresholds.min_relabeled_ess_tail_per_chain:.1f} per chain)"
+                )
+    if thresholds.max_divergences is not None:
+        num_divergences = int(result.hmc_diagnostics["num_divergences"])
+        if num_divergences > thresholds.max_divergences:
+            errors.append(
+                f"num_divergences={num_divergences} exceeds {thresholds.max_divergences}"
+            )
+    if thresholds.min_bfmi is not None:
+        min_bfmi = float(result.hmc_diagnostics["min_bfmi"])
+        if min_bfmi < thresholds.min_bfmi:
+            errors.append(f"min_bfmi={min_bfmi:.3f} is below {thresholds.min_bfmi:.3f}")
+    if thresholds.max_tree_depth_hits is not None:
+        tree_depth_hits = int(result.hmc_diagnostics["tree_depth_hits"])
+        if tree_depth_hits > thresholds.max_tree_depth_hits:
+            errors.append(
+                f"tree_depth_hits={tree_depth_hits} exceeds {thresholds.max_tree_depth_hits}"
             )
 
     loo_value = float(result.loo.get("elpd_loo", np.nan))
@@ -681,13 +819,36 @@ def assert_case_passes(result: BenchmarkCaseResult, thresholds: BenchmarkThresho
         diagnostics_lines: list[str] = []
         diagnostics_lines.append(f"- max_rhat={float(result.convergence['max_rhat']):.3f}")
         diagnostics_lines.append(f"- min_ess_bulk={float(result.convergence['min_ess_bulk']):.1f}")
+        diagnostics_lines.append(f"- min_ess_tail={float(result.convergence['min_ess_tail']):.1f}")
+        diagnostics_lines.append(
+            f"- num_divergences={int(result.hmc_diagnostics['num_divergences'])}"
+        )
+        diagnostics_lines.append(f"- min_bfmi={float(result.hmc_diagnostics['min_bfmi']):.3f}")
+        diagnostics_lines.append(
+            f"- tree_depth_hits={int(result.hmc_diagnostics['tree_depth_hits'])}"
+        )
         if result.label_invariant is not None:
             diagnostics_lines.append(
                 f"- rhat_log_lik={float(result.label_invariant['rhat_log_lik']):.3f}"
             )
+            diagnostics_lines.append(
+                f"- label_invariant_max_rhat={float(result.label_invariant['max_rhat']):.3f}"
+            )
+            diagnostics_lines.append(
+                f"- label_invariant_min_ess_bulk={float(result.label_invariant['min_ess_bulk']):.1f}"
+            )
+            diagnostics_lines.append(
+                f"- label_invariant_min_ess_tail={float(result.label_invariant['min_ess_tail']):.1f}"
+            )
         if result.relabeled is not None:
             diagnostics_lines.append(
                 f"- relabeled_max_rhat={float(result.relabeled['max_rhat']):.3f}"
+            )
+            diagnostics_lines.append(
+                f"- relabeled_min_ess_bulk={float(result.relabeled['min_ess_bulk']):.1f}"
+            )
+            diagnostics_lines.append(
+                f"- relabeled_min_ess_tail={float(result.relabeled['min_ess_tail']):.1f}"
             )
         if result.label_switching is not None:
             diagnostics_lines.append(
