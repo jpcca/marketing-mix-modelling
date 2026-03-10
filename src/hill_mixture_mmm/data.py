@@ -147,19 +147,20 @@ def _generate_mixture(config: DGPConfig, K: int) -> tuple[np.ndarray, np.ndarray
 
     elif K == 5:
         pi_true = np.array([0.30, 0.25, 0.20, 0.15, 0.10], dtype=np.float32)
-        # Geometric progression with ~1.6-1.7x spacing ratio
+        # The three highest-effect components are intentionally spread out on the
+        # observed spend scale so identifiability checks are not driven by near-ties.
         k_true = np.array(
             [
                 s_median * 0.3,
                 s_median * 0.55,
-                s_median * 1.0,
-                s_median * 1.7,
+                s_median * 0.95,
                 s_median * 2.8,
+                s_median * 4.0,
             ],
             dtype=np.float32,
         )
-        A_true = np.array([10.0, 20.0, 35.0, 50.0, 70.0], dtype=np.float32)
-        n_true = np.array([2.5, 2.0, 1.5, 1.2, 1.0], dtype=np.float32)
+        A_true = np.array([10.0, 20.0, 38.0, 55.0, 95.0], dtype=np.float32)
+        n_true = np.array([2.5, 2.0, 1.7, 1.2, 0.75], dtype=np.float32)
 
     else:
         raise ValueError(f"Unsupported K={K}")

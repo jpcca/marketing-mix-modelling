@@ -153,6 +153,32 @@ class TestDataGeneration:
         assert meta["K_true"] == 5
         assert len(meta["A_true"]) == 5
 
+    def test_mixture_k5_dgp_separates_top_three_components(self):
+        """The highest-effect K=5 components should be clearly separated."""
+        config = DGPConfig(dgp_type="mixture_k5", T=200, seed=0)
+        _, _, meta = generate_data(config)
+
+        hill_mat = np.asarray(meta["hill_mat"])
+        top_indices = np.argsort(np.asarray(meta["A_true"]))[-3:]
+        min_pairwise_nrmse = np.inf
+
+        for left_idx in range(len(top_indices)):
+            for right_idx in range(left_idx + 1, len(top_indices)):
+                component_left = hill_mat[:, top_indices[left_idx]]
+                component_right = hill_mat[:, top_indices[right_idx]]
+                rmse = np.sqrt(np.mean((component_left - component_right) ** 2))
+                scale = max(
+                    float(np.max(np.abs(component_left))),
+                    float(np.max(np.abs(component_right))),
+                    1.0,
+                )
+                min_pairwise_nrmse = min(min_pairwise_nrmse, float(rmse / scale))
+
+        assert min_pairwise_nrmse > 0.12, (
+            "mixture_k5 top components are still too close for identifiability checks: "
+            f"min pairwise nRMSE={min_pairwise_nrmse:.3f}"
+        )
+
     def test_different_seeds_produce_different_data(self):
         """Different seeds should produce different y values."""
         config1 = DGPConfig(dgp_type="single", T=100, seed=0)
