@@ -5,9 +5,20 @@ import numpy as np
 from hill_mixture_mmm.metrics import (
     compute_across_seed_component_stability,
     compute_latent_recovery,
+    compute_parameter_recovery,
     compute_permutation_invariant_component_recovery,
     summarize_component_posterior,
 )
+
+
+class _FakeMCMC:
+    """Minimal MCMC stub for metric unit tests."""
+
+    def __init__(self, samples: dict[str, np.ndarray]) -> None:
+        self._samples = samples
+
+    def get_samples(self) -> dict[str, np.ndarray]:
+        return self._samples
 
 
 class TestLatentRecovery:
@@ -102,3 +113,27 @@ class TestComponentMetrics:
         assert stability["active_k_consistency"] == 1.0
         assert stability["weighted_curve_nrmse"]["mean"] < 0.05
         assert stability["weighted_pi_abs_error"]["mean"] < 0.05
+
+
+class TestParameterRecovery:
+    """Tests for scalar parameter recovery summaries."""
+
+    def test_parameter_recovery_reports_slope_when_available(self):
+        """Slope should be included alongside the other scalar recovery metrics."""
+        mcmc = _FakeMCMC(
+            {
+                "slope": np.array([1.8, 2.0, 2.2, 2.1], dtype=np.float32),
+                "intercept": np.array([49.0, 50.0, 51.0, 50.5], dtype=np.float32),
+            }
+        )
+        meta = {
+            "slope_true": 2.0,
+            "intercept_true": 50.0,
+        }
+
+        recovery = compute_parameter_recovery(mcmc, meta)
+
+        assert "slope" in recovery
+        assert recovery["slope"]["true"] == 2.0
+        assert recovery["slope"]["in_ci"]
+        assert "intercept" in recovery

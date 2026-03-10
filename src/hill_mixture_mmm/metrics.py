@@ -114,6 +114,20 @@ def compute_parameter_recovery(mcmc: MCMC, meta: dict, ci_level: float = 0.95) -
             "in_ci": bool(ci_low <= true_val <= ci_high),
         }
 
+    if "slope" in samples and "slope_true" in meta:
+        slope_samples = np.array(samples["slope"])
+        true_val = meta["slope_true"]
+        ci_low = np.percentile(slope_samples, 100 * alpha)
+        ci_high = np.percentile(slope_samples, 100 * (1 - alpha))
+        results["slope"] = {
+            "true": true_val,
+            "mean": float(slope_samples.mean()),
+            "std": float(slope_samples.std()),
+            "ci_low": float(ci_low),
+            "ci_high": float(ci_high),
+            "in_ci": bool(ci_low <= true_val <= ci_high),
+        }
+
     # For mixture models, check if any component matches true pis
     if "pis" in samples and "pi_true" in meta:
         pis_samples = np.array(samples["pis"])  # (n_samples, K)
