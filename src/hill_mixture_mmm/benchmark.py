@@ -833,12 +833,14 @@ def plot_response_curves(result: BenchmarkCaseResult, output_path: str | Path) -
     posterior_lowers = np.quantile(posterior_component_curves, 0.05, axis=0)
     posterior_uppers = np.quantile(posterior_component_curves, 0.95, axis=0)
     posterior_component_indices = list(range(posterior_component_curves.shape[-1]))
+    posterior_component_active: dict[int, bool] = {
+        idx: True for idx in posterior_component_indices
+    }
     if result.component_summary is not None:
-        posterior_component_indices = [
-            int(component["index"])
+        posterior_component_active = {
+            int(component["index"]): bool(component["active"])
             for component in result.component_summary["components"]
-            if bool(component["active"])
-        ] or posterior_component_indices
+        }
 
     true_components = None
     true_weights = None
@@ -913,7 +915,7 @@ def plot_response_curves(result: BenchmarkCaseResult, output_path: str | Path) -
         all_y_max.extend(float(np.max(true_components[idx])) for idx in true_component_indices)
     y_max = max(all_y_max, default=1.0) * 1.08
 
-    fig, ax = plt.subplots(figsize=(9.2, 5.8))
+    fig, ax = plt.subplots(figsize=(10.2, 5.8))
     color_cycle = plt.rcParams["axes.prop_cycle"].by_key().get("color", ["#1f77b4"])
     color_by_true: dict[int, str] = {}
     color_by_posterior: dict[int, str] = {}
@@ -936,19 +938,23 @@ def plot_response_curves(result: BenchmarkCaseResult, output_path: str | Path) -
             posterior_idx,
             color_cycle[posterior_idx % len(color_cycle)],
         )
+        is_active = posterior_component_active.get(posterior_idx, True)
         label_suffix = f" (pi={posterior_weights[posterior_idx]:.2f})"
+        if not is_active:
+            label_suffix += ", inactive"
         ax.fill_between(
             grid,
             posterior_lowers[:, posterior_idx],
             posterior_uppers[:, posterior_idx],
             color=color,
-            alpha=0.14,
+            alpha=0.14 if is_active else 0.07,
         )
         ax.plot(
             grid,
             posterior_means[:, posterior_idx],
             color=color,
             linewidth=2.2,
+            alpha=1.0 if is_active else 0.55,
             label=f"Posterior {posterior_idx + 1}{label_suffix}",
         )
 
