@@ -9,6 +9,7 @@ from hill_mixture_mmm.benchmark import (
     BenchmarkCaseResult,
     BenchmarkThresholds,
     assert_case_passes,
+    evaluate_case_diagnostic_status,
 )
 from hill_mixture_mmm.inference import compute_hmc_diagnostics
 
@@ -24,7 +25,15 @@ class _DummyMCMC:
         return self._extra_fields
 
 
-def _make_mixture_result(*, converged: bool = True, relabeled_max_rhat: float = 1.0) -> BenchmarkCaseResult:
+def _make_mixture_result(
+    *,
+    converged: bool = True,
+    label_invariant_max_rhat: float = 1.0,
+    label_invariant_min_ess: float = 400.0,
+    relabeled_max_rhat: float = 1.0,
+    relabeled_min_ess: float = 400.0,
+    num_divergences: int = 0,
+) -> BenchmarkCaseResult:
     """Return a minimal benchmark result suitable for assert_case_passes tests."""
     return BenchmarkCaseResult(
         label="synthetic_case",
@@ -51,8 +60,8 @@ def _make_mixture_result(*, converged: bool = True, relabeled_max_rhat: float = 
             "ess_sufficient": True,
         },
         hmc_diagnostics={
-            "num_divergences": 0,
-            "has_divergence": False,
+            "num_divergences": num_divergences,
+            "has_divergence": num_divergences > 0,
             "bfmi_by_chain": [0.8, 0.9],
             "min_bfmi": 0.8,
             "bfmi_ok": True,
@@ -65,24 +74,24 @@ def _make_mixture_result(*, converged: bool = True, relabeled_max_rhat: float = 
         label_invariant={
             "rhat_log_lik": 1.0,
             "rhat_scalars": {"sigma": 1.0},
-            "ess_bulk_log_lik": 400.0,
-            "ess_tail_log_lik": 400.0,
-            "ess_bulk_scalars": {"sigma": 400.0},
-            "ess_tail_scalars": {"sigma": 400.0},
-            "min_ess_bulk": 400.0,
-            "min_ess_tail": 400.0,
-            "max_rhat": 1.0,
-            "converged": True,
+            "ess_bulk_log_lik": label_invariant_min_ess,
+            "ess_tail_log_lik": label_invariant_min_ess,
+            "ess_bulk_scalars": {"sigma": label_invariant_min_ess},
+            "ess_tail_scalars": {"sigma": label_invariant_min_ess},
+            "min_ess_bulk": label_invariant_min_ess,
+            "min_ess_tail": label_invariant_min_ess,
+            "max_rhat": label_invariant_max_rhat,
+            "converged": label_invariant_max_rhat < 1.01,
             "method": "rank",
             "threshold": 1.01,
         },
         relabeled={
             "component_rhats": {"A": {"per_component": [relabeled_max_rhat], "max": relabeled_max_rhat}},
-            "component_ess_bulk": {"A": {"per_component": [400.0], "min": 400.0}},
-            "component_ess_tail": {"A": {"per_component": [400.0], "min": 400.0}},
+            "component_ess_bulk": {"A": {"per_component": [relabeled_min_ess], "min": relabeled_min_ess}},
+            "component_ess_tail": {"A": {"per_component": [relabeled_min_ess], "min": relabeled_min_ess}},
             "max_rhat": relabeled_max_rhat,
-            "min_ess_bulk": 400.0,
-            "min_ess_tail": 400.0,
+            "min_ess_bulk": relabeled_min_ess,
+            "min_ess_tail": relabeled_min_ess,
             "converged": relabeled_max_rhat < 1.01,
             "method": "rank",
             "threshold": 1.01,
@@ -111,6 +120,37 @@ def _make_mixture_result(*, converged: bool = True, relabeled_max_rhat: float = 
             "target_accept_prob_used": 0.9,
             "max_tree_depth_used": 10,
         },
+    )
+
+
+def _reportability_thresholds(*, require_truth_metrics: bool = False) -> BenchmarkThresholds:
+    """Return thresholds that only check reportability-style hard gates."""
+    return BenchmarkThresholds(
+        max_rhat=None,
+        min_ess_bulk=None,
+        min_ess_tail=None,
+        min_ess_bulk_per_chain=None,
+        min_ess_tail_per_chain=None,
+        max_label_invariant_rhat=None,
+        min_label_invariant_ess_bulk_per_chain=None,
+        min_label_invariant_ess_tail_per_chain=None,
+        max_relabeled_rhat=None,
+        min_relabeled_ess_bulk_per_chain=None,
+        min_relabeled_ess_tail_per_chain=None,
+        max_divergences=None,
+        min_bfmi=None,
+        max_tree_depth_hits=None,
+        min_test_coverage_90=None,
+        max_test_rmse=None,
+        max_test_mu_rmse=None,
+        min_test_mu_coverage_90=None,
+        require_alpha_in_ci=False,
+        require_sigma_in_ci=False,
+        effective_k_bounds=None,
+        max_pareto_k_bad=None,
+        max_pareto_k_very_bad=None,
+        require_reportable_diagnostics=True,
+        require_truth_metrics=require_truth_metrics,
     )
 
 
@@ -153,24 +193,139 @@ def test_compute_hmc_diagnostics_reports_bfmi_and_tree_depth_hits():
     assert diagnostics["min_bfmi"] < 0.3
 
 
-def test_assert_case_passes_requires_relabeled_component_convergence_for_mixtures():
-    """Mixture benchmark thresholds should fail when relabeled component R-hat is too high."""
-    result = _make_mixture_result(converged=False, relabeled_max_rhat=1.02)
+def test_evaluate_case_diagnostic_status_warns_on_marginal_label_invariant_rhat():
+    """Marginal label-invariant R-hat issues should surface as warnings, not failures."""
+    result = _make_mixture_result(converged=False, label_invariant_max_rhat=1.02)
+    status = evaluate_case_diagnostic_status(result)
 
-    with pytest.raises(AssertionError, match="relabeled_max_rhat=1.020 exceeds 1.010"):
+    assert status["publication_status"] == "Warn"
+    assert "label_invariant_max_rhat=1.020 exceeds pass threshold 1.010" in status["warnings"]
+
+
+def test_evaluate_case_diagnostic_status_warns_on_borderline_divergences():
+    """A small number of divergences should downgrade diagnostics to warning, not failure."""
+    result = _make_mixture_result(num_divergences=3)
+    status = evaluate_case_diagnostic_status(result)
+
+    assert status["publication_status"] == "Warn"
+    assert status["sampler_status"] == "Warn"
+    assert "num_divergences=3.000 exceeds pass threshold 0.000" in status["warnings"]
+
+
+def test_assert_case_passes_uses_fail_thresholds_for_label_invariant_rhat():
+    """Hard benchmark failures should only trigger once label-invariant R-hat exceeds 1.05."""
+    warning_result = _make_mixture_result(converged=False, label_invariant_max_rhat=1.02)
+    assert_case_passes(
+        warning_result,
+        BenchmarkThresholds(
+            max_rhat=None,
+            min_ess_bulk=None,
+            min_ess_tail=None,
+            min_ess_bulk_per_chain=None,
+            min_ess_tail_per_chain=None,
+            max_label_invariant_rhat=1.05,
+            min_label_invariant_ess_bulk_per_chain=50.0,
+            min_label_invariant_ess_tail_per_chain=50.0,
+            max_relabeled_rhat=None,
+            min_relabeled_ess_bulk_per_chain=None,
+            min_relabeled_ess_tail_per_chain=None,
+            max_divergences=5,
+            min_bfmi=0.2,
+            max_tree_depth_hits=10,
+        ),
+    )
+
+    failing_result = _make_mixture_result(converged=False, label_invariant_max_rhat=1.06)
+    with pytest.raises(AssertionError, match="label_invariant_max_rhat=1.060 exceeds 1.050"):
         assert_case_passes(
-            result,
+            failing_result,
             BenchmarkThresholds(
                 max_rhat=None,
                 min_ess_bulk=None,
                 min_ess_tail=None,
                 min_ess_bulk_per_chain=None,
                 min_ess_tail_per_chain=None,
-                max_label_invariant_rhat=1.01,
-                min_label_invariant_ess_bulk_per_chain=100.0,
-                min_label_invariant_ess_tail_per_chain=100.0,
-                max_relabeled_rhat=1.01,
-                min_relabeled_ess_bulk_per_chain=100.0,
-                min_relabeled_ess_tail_per_chain=100.0,
+                max_label_invariant_rhat=1.05,
+                min_label_invariant_ess_bulk_per_chain=50.0,
+                min_label_invariant_ess_tail_per_chain=50.0,
+                max_relabeled_rhat=None,
+                min_relabeled_ess_bulk_per_chain=None,
+                min_relabeled_ess_tail_per_chain=None,
+                max_divergences=5,
+                min_bfmi=0.2,
+                max_tree_depth_hits=10,
             ),
         )
+
+
+def test_assert_case_passes_allows_small_divergence_counts_but_fails_above_five():
+    """Full-benchmark thresholds should tolerate only borderline divergence counts."""
+    warning_result = _make_mixture_result(num_divergences=3)
+    assert_case_passes(
+        warning_result,
+        BenchmarkThresholds(
+            max_rhat=None,
+            min_ess_bulk=None,
+            min_ess_tail=None,
+            min_ess_bulk_per_chain=None,
+            min_ess_tail_per_chain=None,
+            max_label_invariant_rhat=1.05,
+            min_label_invariant_ess_bulk_per_chain=50.0,
+            min_label_invariant_ess_tail_per_chain=50.0,
+            max_relabeled_rhat=None,
+            min_relabeled_ess_bulk_per_chain=None,
+            min_relabeled_ess_tail_per_chain=None,
+            max_divergences=5,
+            min_bfmi=0.2,
+            max_tree_depth_hits=10,
+        ),
+    )
+
+    failing_result = _make_mixture_result(num_divergences=6)
+    with pytest.raises(AssertionError, match="num_divergences=6 exceeds 5"):
+        assert_case_passes(
+            failing_result,
+            BenchmarkThresholds(
+                max_rhat=None,
+                min_ess_bulk=None,
+                min_ess_tail=None,
+                min_ess_bulk_per_chain=None,
+                min_ess_tail_per_chain=None,
+                max_label_invariant_rhat=1.05,
+                min_label_invariant_ess_bulk_per_chain=50.0,
+                min_label_invariant_ess_tail_per_chain=50.0,
+                max_relabeled_rhat=None,
+                min_relabeled_ess_bulk_per_chain=None,
+                min_relabeled_ess_tail_per_chain=None,
+                max_divergences=5,
+                min_bfmi=0.2,
+                max_tree_depth_hits=10,
+            ),
+        )
+
+
+def test_assert_case_passes_can_gate_on_publication_status() -> None:
+    """Reportability checks should reject only diagnostic failures, not warnings."""
+    warning_result = _make_mixture_result(num_divergences=3)
+    assert_case_passes(warning_result, _reportability_thresholds())
+
+    failing_result = _make_mixture_result(label_invariant_max_rhat=1.06)
+    with pytest.raises(AssertionError, match="publication_status=Fail"):
+        assert_case_passes(failing_result, _reportability_thresholds())
+
+
+def test_assert_case_passes_rejects_nonfinite_predictive_metrics() -> None:
+    """Reportability checks should fail when scalar benchmark metrics are non-finite."""
+    result = _make_mixture_result()
+    result.test_metrics["rmse"] = np.nan
+
+    with pytest.raises(AssertionError, match="test_metrics.rmse is not finite"):
+        assert_case_passes(result, _reportability_thresholds())
+
+
+def test_assert_case_passes_requires_synthetic_truth_metrics_when_requested() -> None:
+    """Synthetic reportability checks should require truth-based metrics to exist."""
+    result = _make_mixture_result()
+
+    with pytest.raises(AssertionError, match="latent test metrics are unavailable"):
+        assert_case_passes(result, _reportability_thresholds(require_truth_metrics=True))

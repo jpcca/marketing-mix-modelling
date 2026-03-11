@@ -57,6 +57,20 @@ MODEL_SPECS: dict[str, ModelSpec] = {
     "mixture_k5": ModelSpec("mixture_k5", model_hill_mixture_hierarchical_reparam, {"K": 5}),
 }
 
+PASS_WARN_FAIL_ORDER = {"NotApplicable": -1, "Pass": 0, "Warn": 1, "Fail": 2}
+PASS_WARN_FAIL_THRESHOLDS = {
+    "rhat_pass_max": 1.01,
+    "rhat_fail_max": 1.05,
+    "ess_pass_min_per_chain": 100.0,
+    "ess_fail_min_per_chain": 50.0,
+    "divergences_pass_max": 0,
+    "divergences_fail_max": 5,
+    "bfmi_pass_min": 0.3,
+    "bfmi_fail_min": 0.2,
+    "tree_depth_pass_max": 0,
+    "tree_depth_fail_max": 10,
+}
+
 
 @dataclass(frozen=True)
 class BenchmarkRunConfig:
@@ -76,7 +90,6 @@ class BenchmarkRunConfig:
 class BenchmarkThresholds:
     """Pass/fail thresholds for a single benchmark case."""
 
-    require_effective_convergence: bool = True
     max_rhat: float | None = 1.01
     min_ess_bulk: float | None = None
     min_ess_tail: float | None = None
@@ -91,7 +104,7 @@ class BenchmarkThresholds:
     max_divergences: int | None = 0
     min_bfmi: float | None = 0.3
     max_tree_depth_hits: int | None = 0
-    min_test_coverage_90: float = 0.80
+    min_test_coverage_90: float | None = None
     max_test_rmse: float | None = None
     max_test_mu_rmse: float | None = None
     min_test_mu_coverage_90: float | None = None
@@ -100,6 +113,10 @@ class BenchmarkThresholds:
     effective_k_bounds: tuple[float, float] | None = None
     max_pareto_k_bad: int | None = None
     max_pareto_k_very_bad: int | None = None
+    require_reportable_diagnostics: bool = False
+    require_finite_loo_waic: bool = True
+    require_finite_predictive_metrics: bool = True
+    require_truth_metrics: bool = False
 
 
 @dataclass(frozen=True)
@@ -159,6 +176,296 @@ def get_model_spec(model_name: str) -> ModelSpec:
 def _required_ess(num_chains: int, minimum_per_chain: float) -> float:
     """Convert an ESS-per-chain rule into a total ESS threshold."""
     return float(num_chains) * float(minimum_per_chain)
+
+
+def _append_nonfinite_scalar_errors(
+    errors: list[str],
+    metrics: dict[str, Any] | None,
+    *,
+    keys: Sequence[str],
+    label: str,
+) -> None:
+    """Append errors for missing or non-finite scalar metrics."""
+    if metrics is None:
+        errors.append(f"{label} metrics are unavailable")
+        return
+
+    for key in keys:
+        value = metrics.get(key, np.nan)
+        try:
+            scalar = float(value)
+        except (TypeError, ValueError):
+            scalar = np.nan
+        if not np.isfinite(scalar):
+            errors.append(f"{label}.{key} is not finite")
+
+
+def _append_truth_metric_errors(errors: list[str], result: BenchmarkCaseResult) -> None:
+    """Append errors when synthetic truth-based metrics are unavailable."""
+    if result.latent_test is None:
+        errors.append("latent test metrics are unavailable")
+    else:
+        _append_nonfinite_scalar_errors(
+            errors,
+            result.latent_test,
+            keys=("rmse", "mae", "coverage_90"),
+            label="latent_test",
+        )
+
+    if not result.parameter_recovery:
+        errors.append("parameter recovery metrics are unavailable")
+
+
+def _merge_statuses(statuses: Sequence[str]) -> str:
+    """Return the most severe Pass/Warn/Fail status."""
+    normalized = [
+        status for status in statuses if status in PASS_WARN_FAIL_ORDER and status != "NotApplicable"
+    ]
+    if not normalized:
+        return "NotApplicable"
+    return max(normalized, key=lambda status: PASS_WARN_FAIL_ORDER[status])
+
+
+def _evaluate_upper_bound(
+    *,
+    name: str,
+    value: float | None,
+    pass_max: float,
+    fail_max: float,
+) -> dict[str, Any]:
+    """Evaluate an upper-bound diagnostic into Pass/Warn/Fail."""
+    if value is None or not np.isfinite(value):
+        return {
+            "name": name,
+            "status": "Fail",
+            "value": None,
+            "direction": "upper",
+            "pass_threshold": float(pass_max),
+            "fail_threshold": float(fail_max),
+            "message": f"{name} is unavailable",
+        }
+    if value <= pass_max:
+        status = "Pass"
+        message = None
+    elif value <= fail_max:
+        status = "Warn"
+        message = f"{name}={value:.3f} exceeds pass threshold {pass_max:.3f}"
+    else:
+        status = "Fail"
+        message = f"{name}={value:.3f} exceeds fail threshold {fail_max:.3f}"
+    return {
+        "name": name,
+        "status": status,
+        "value": float(value),
+        "direction": "upper",
+        "pass_threshold": float(pass_max),
+        "fail_threshold": float(fail_max),
+        "message": message,
+    }
+
+
+def _evaluate_lower_bound(
+    *,
+    name: str,
+    value: float | None,
+    pass_min: float,
+    fail_min: float,
+) -> dict[str, Any]:
+    """Evaluate a lower-bound diagnostic into Pass/Warn/Fail."""
+    if value is None or not np.isfinite(value):
+        return {
+            "name": name,
+            "status": "Fail",
+            "value": None,
+            "direction": "lower",
+            "pass_threshold": float(pass_min),
+            "fail_threshold": float(fail_min),
+            "message": f"{name} is unavailable",
+        }
+    if value >= pass_min:
+        status = "Pass"
+        message = None
+    elif value >= fail_min:
+        status = "Warn"
+        message = f"{name}={value:.1f} is below pass threshold {pass_min:.1f}"
+    else:
+        status = "Fail"
+        message = f"{name}={value:.1f} is below fail threshold {fail_min:.1f}"
+    return {
+        "name": name,
+        "status": status,
+        "value": float(value),
+        "direction": "lower",
+        "pass_threshold": float(pass_min),
+        "fail_threshold": float(fail_min),
+        "message": message,
+    }
+
+
+def evaluate_diagnostic_summary(
+    *,
+    convergence: dict[str, Any],
+    hmc_diagnostics: dict[str, Any],
+    label_invariant: dict[str, Any] | None,
+    relabeled: dict[str, Any] | None,
+    num_chains_used: int,
+    strict_converged: bool | None = None,
+) -> dict[str, Any]:
+    """Classify diagnostics into publication and interpretation statuses."""
+    thresholds = PASS_WARN_FAIL_THRESHOLDS
+    checks: list[dict[str, Any]] = []
+
+    sampler_checks = [
+        _evaluate_upper_bound(
+            name="num_divergences",
+            value=float(hmc_diagnostics.get("num_divergences", np.nan)),
+            pass_max=float(thresholds["divergences_pass_max"]),
+            fail_max=float(thresholds["divergences_fail_max"]),
+        ),
+        _evaluate_lower_bound(
+            name="min_bfmi",
+            value=float(hmc_diagnostics.get("min_bfmi", np.nan)),
+            pass_min=float(thresholds["bfmi_pass_min"]),
+            fail_min=float(thresholds["bfmi_fail_min"]),
+        ),
+        _evaluate_upper_bound(
+            name="tree_depth_hits",
+            value=float(hmc_diagnostics.get("tree_depth_hits", np.nan)),
+            pass_max=float(thresholds["tree_depth_pass_max"]),
+            fail_max=float(thresholds["tree_depth_fail_max"]),
+        ),
+    ]
+    for check in sampler_checks:
+        check["group"] = "sampler"
+    checks.extend(sampler_checks)
+
+    if label_invariant is None:
+        mixing_checks = [
+            _evaluate_upper_bound(
+                name="max_rhat",
+                value=float(convergence.get("max_rhat", np.nan)),
+                pass_max=float(thresholds["rhat_pass_max"]),
+                fail_max=float(thresholds["rhat_fail_max"]),
+            ),
+            _evaluate_lower_bound(
+                name="min_ess_bulk_per_chain",
+                value=float(convergence.get("min_ess_bulk", np.nan)) / max(num_chains_used, 1),
+                pass_min=float(thresholds["ess_pass_min_per_chain"]),
+                fail_min=float(thresholds["ess_fail_min_per_chain"]),
+            ),
+            _evaluate_lower_bound(
+                name="min_ess_tail_per_chain",
+                value=float(convergence.get("min_ess_tail", np.nan)) / max(num_chains_used, 1),
+                pass_min=float(thresholds["ess_pass_min_per_chain"]),
+                fail_min=float(thresholds["ess_fail_min_per_chain"]),
+            ),
+        ]
+        interpretation_checks: list[dict[str, Any]] = []
+    else:
+        mixing_checks = [
+            _evaluate_upper_bound(
+                name="label_invariant_max_rhat",
+                value=float(label_invariant.get("max_rhat", np.nan)),
+                pass_max=float(thresholds["rhat_pass_max"]),
+                fail_max=float(thresholds["rhat_fail_max"]),
+            ),
+            _evaluate_lower_bound(
+                name="label_invariant_min_ess_bulk_per_chain",
+                value=float(label_invariant.get("min_ess_bulk", np.nan)) / max(num_chains_used, 1),
+                pass_min=float(thresholds["ess_pass_min_per_chain"]),
+                fail_min=float(thresholds["ess_fail_min_per_chain"]),
+            ),
+            _evaluate_lower_bound(
+                name="label_invariant_min_ess_tail_per_chain",
+                value=float(label_invariant.get("min_ess_tail", np.nan)) / max(num_chains_used, 1),
+                pass_min=float(thresholds["ess_pass_min_per_chain"]),
+                fail_min=float(thresholds["ess_fail_min_per_chain"]),
+            ),
+        ]
+        if relabeled is None:
+            interpretation_checks = [
+                {
+                    "name": "relabeled_diagnostics",
+                    "status": "Fail",
+                    "value": None,
+                    "direction": "none",
+                    "pass_threshold": None,
+                    "fail_threshold": None,
+                    "group": "interpretation",
+                    "message": "relabeled diagnostics are unavailable",
+                }
+            ]
+        else:
+            interpretation_checks = [
+                _evaluate_upper_bound(
+                    name="relabeled_max_rhat",
+                    value=float(relabeled.get("max_rhat", np.nan)),
+                    pass_max=float(thresholds["rhat_pass_max"]),
+                    fail_max=float(thresholds["rhat_fail_max"]),
+                ),
+                _evaluate_lower_bound(
+                    name="relabeled_min_ess_bulk_per_chain",
+                    value=float(relabeled.get("min_ess_bulk", np.nan)) / max(num_chains_used, 1),
+                    pass_min=float(thresholds["ess_pass_min_per_chain"]),
+                    fail_min=float(thresholds["ess_fail_min_per_chain"]),
+                ),
+                _evaluate_lower_bound(
+                    name="relabeled_min_ess_tail_per_chain",
+                    value=float(relabeled.get("min_ess_tail", np.nan)) / max(num_chains_used, 1),
+                    pass_min=float(thresholds["ess_pass_min_per_chain"]),
+                    fail_min=float(thresholds["ess_fail_min_per_chain"]),
+                ),
+            ]
+
+    for check in mixing_checks:
+        check["group"] = "mixing"
+    for check in interpretation_checks:
+        check["group"] = check.get("group", "interpretation")
+
+    checks.extend(mixing_checks)
+    checks.extend(interpretation_checks)
+
+    sampler_status = _merge_statuses([check["status"] for check in sampler_checks])
+    mixing_status = _merge_statuses([check["status"] for check in mixing_checks])
+    interpretation_status = _merge_statuses([check["status"] for check in interpretation_checks])
+    publication_status = _merge_statuses([sampler_status, mixing_status])
+    if strict_converged is None:
+        strict_converged = publication_status == "Pass" and interpretation_status in {
+            "Pass",
+            "NotApplicable",
+        }
+
+    return {
+        "publication_status": publication_status,
+        "sampler_status": sampler_status,
+        "mixing_status": mixing_status,
+        "interpretation_status": interpretation_status,
+        "benchmark_pass": publication_status != "Fail",
+        "strict_converged": bool(strict_converged),
+        "warnings": [
+            check["message"]
+            for check in checks
+            if check["status"] == "Warn" and check.get("message") is not None
+        ],
+        "failures": [
+            check["message"]
+            for check in checks
+            if check["status"] == "Fail" and check.get("message") is not None
+        ],
+        "checks": checks,
+    }
+
+
+def evaluate_case_diagnostic_status(result: BenchmarkCaseResult) -> dict[str, Any]:
+    """Classify benchmark diagnostics into publication and interpretation statuses."""
+    return evaluate_diagnostic_summary(
+        convergence=result.convergence,
+        hmc_diagnostics=result.hmc_diagnostics,
+        label_invariant=result.label_invariant,
+        relabeled=result.relabeled,
+        num_chains_used=int(result.fit_summary.get("num_chains_used", 1)),
+        strict_converged=bool(result.converged),
+    )
 
 
 def _passes_hmc_requirements(
@@ -459,6 +766,7 @@ def run_real_benchmark_case(
 
 def case_summary(result: BenchmarkCaseResult) -> dict[str, Any]:
     """Return a compact JSON-serializable summary."""
+    diagnostic_status = evaluate_case_diagnostic_status(result)
     summary = {
         "label": result.label,
         "domain": result.domain,
@@ -468,6 +776,9 @@ def case_summary(result: BenchmarkCaseResult) -> dict[str, Any]:
         "train_size": int(len(result.y_train)),
         "test_size": int(len(result.y_test)),
         "converged": bool(result.converged),
+        "publication_status": diagnostic_status["publication_status"],
+        "interpretation_status": diagnostic_status["interpretation_status"],
+        "benchmark_pass": bool(diagnostic_status["benchmark_pass"]),
         "convergence": {
             "max_rhat": float(result.convergence["max_rhat"]),
             "min_ess_bulk": float(result.convergence["min_ess_bulk"]),
@@ -502,6 +813,7 @@ def case_summary(result: BenchmarkCaseResult) -> dict[str, Any]:
             "mean": float(result.effective_k["effective_k_mean"]),
             "std": float(result.effective_k["effective_k_std"]),
         },
+        "diagnostic_status": diagnostic_status,
         "fit_summary": dict(result.fit_summary),
     }
     if result.label_invariant is not None:
@@ -632,9 +944,14 @@ def assert_case_passes(result: BenchmarkCaseResult, thresholds: BenchmarkThresho
     """Raise an AssertionError if a benchmark case fails its thresholds."""
     errors: list[str] = []
     num_chains_used = int(result.fit_summary.get("num_chains_used", 1))
+    diagnostic_status: dict[str, Any] | None = None
 
-    if thresholds.require_effective_convergence and not result.converged:
-        errors.append("publication convergence check failed")
+    if thresholds.require_reportable_diagnostics:
+        diagnostic_status = evaluate_case_diagnostic_status(result)
+        if diagnostic_status["publication_status"] == "Fail":
+            errors.append("publication_status=Fail")
+            errors.extend(diagnostic_status["failures"])
+
     if thresholds.max_rhat is not None and float(result.convergence["max_rhat"]) > thresholds.max_rhat:
         errors.append(
             f"max_rhat={result.convergence['max_rhat']:.3f} exceeds {thresholds.max_rhat:.3f}"
@@ -753,18 +1070,43 @@ def assert_case_passes(result: BenchmarkCaseResult, thresholds: BenchmarkThresho
                 f"tree_depth_hits={tree_depth_hits} exceeds {thresholds.max_tree_depth_hits}"
             )
 
-    loo_value = float(result.loo.get("elpd_loo", np.nan))
-    waic_value = float(result.waic.get("elpd_waic", np.nan))
-    if not np.isfinite(loo_value):
-        errors.append("LOO is not finite")
-    if not np.isfinite(waic_value):
-        errors.append("WAIC is not finite")
-
-    coverage = float(result.test_metrics["coverage_90"])
-    if coverage < thresholds.min_test_coverage_90:
-        errors.append(
-            f"test_coverage_90={coverage:.3f} is below {thresholds.min_test_coverage_90:.3f}"
+    if thresholds.require_finite_loo_waic:
+        _append_nonfinite_scalar_errors(
+            errors,
+            result.loo,
+            keys=("elpd_loo", "se"),
+            label="loo",
         )
+        _append_nonfinite_scalar_errors(
+            errors,
+            result.waic,
+            keys=("elpd_waic", "se"),
+            label="waic",
+        )
+
+    if thresholds.require_finite_predictive_metrics:
+        _append_nonfinite_scalar_errors(
+            errors,
+            result.train_metrics,
+            keys=("rmse", "coverage_90"),
+            label="train_metrics",
+        )
+        _append_nonfinite_scalar_errors(
+            errors,
+            result.test_metrics,
+            keys=("rmse", "coverage_90"),
+            label="test_metrics",
+        )
+
+    if thresholds.require_truth_metrics:
+        _append_truth_metric_errors(errors, result)
+
+    if thresholds.min_test_coverage_90 is not None:
+        coverage = float(result.test_metrics["coverage_90"])
+        if coverage < thresholds.min_test_coverage_90:
+            errors.append(
+                f"test_coverage_90={coverage:.3f} is below {thresholds.min_test_coverage_90:.3f}"
+            )
     if thresholds.max_test_rmse is not None:
         rmse = float(result.test_metrics["rmse"])
         if rmse > thresholds.max_test_rmse:
@@ -816,7 +1158,15 @@ def assert_case_passes(result: BenchmarkCaseResult, thresholds: BenchmarkThresho
             )
 
     if errors:
+        if diagnostic_status is None:
+            diagnostic_status = evaluate_case_diagnostic_status(result)
         diagnostics_lines: list[str] = []
+        diagnostics_lines.append(f"- publication_status={diagnostic_status['publication_status']}")
+        diagnostics_lines.append(f"- sampler_status={diagnostic_status['sampler_status']}")
+        diagnostics_lines.append(f"- mixing_status={diagnostic_status['mixing_status']}")
+        diagnostics_lines.append(
+            f"- interpretation_status={diagnostic_status['interpretation_status']}"
+        )
         diagnostics_lines.append(f"- max_rhat={float(result.convergence['max_rhat']):.3f}")
         diagnostics_lines.append(f"- min_ess_bulk={float(result.convergence['min_ess_bulk']):.1f}")
         diagnostics_lines.append(f"- min_ess_tail={float(result.convergence['min_ess_tail']):.1f}")

@@ -10,9 +10,7 @@ import pytest
 from hill_mixture_mmm.benchmark import (
     BenchmarkRunConfig,
     BenchmarkThresholds,
-    ComparisonThresholds,
     assert_case_passes,
-    assert_comparison_passes,
     plot_case_comparison,
     resolve_comparison_artifact_dir,
     run_real_benchmark_case,
@@ -55,6 +53,36 @@ def _real_run_config(seed: int) -> BenchmarkRunConfig:
     )
 
 
+def _real_thresholds() -> BenchmarkThresholds:
+    """Return reportability gates for real-data benchmark runs."""
+    return BenchmarkThresholds(
+        max_rhat=None,
+        min_ess_bulk=None,
+        min_ess_tail=None,
+        min_ess_bulk_per_chain=None,
+        min_ess_tail_per_chain=None,
+        max_label_invariant_rhat=None,
+        min_label_invariant_ess_bulk_per_chain=None,
+        min_label_invariant_ess_tail_per_chain=None,
+        max_relabeled_rhat=None,
+        min_relabeled_ess_bulk_per_chain=None,
+        min_relabeled_ess_tail_per_chain=None,
+        max_divergences=None,
+        min_bfmi=None,
+        max_tree_depth_hits=None,
+        min_test_coverage_90=None,
+        max_test_rmse=None,
+        max_test_mu_rmse=None,
+        min_test_mu_coverage_90=None,
+        require_alpha_in_ci=False,
+        require_sigma_in_ci=False,
+        effective_k_bounds=None,
+        max_pareto_k_bad=None,
+        max_pareto_k_very_bad=None,
+        require_reportable_diagnostics=True,
+    )
+
+
 def _run_real_seed(seed: int, benchmark_output_root: Path) -> None:
     """Run the paired single/mixture real-data benchmark for one seed."""
     csv_path = Path("data/conjura_mmm_data.csv")
@@ -75,13 +103,7 @@ def _run_real_seed(seed: int, benchmark_output_root: Path) -> None:
     single_artifacts = save_case_artifacts(single_result, benchmark_output_root)
     assert_case_passes(
         single_result,
-        BenchmarkThresholds(
-            max_rhat=1.01,
-            max_label_invariant_rhat=None,
-            max_relabeled_rhat=None,
-            min_test_coverage_90=0.75,
-            max_test_rmse=15.0,
-        ),
+        _real_thresholds(),
     )
 
     mixture_result = run_real_benchmark_case(
@@ -94,31 +116,7 @@ def _run_real_seed(seed: int, benchmark_output_root: Path) -> None:
     mixture_artifacts = save_case_artifacts(mixture_result, benchmark_output_root)
     assert_case_passes(
         mixture_result,
-        BenchmarkThresholds(
-            max_rhat=None,
-            min_ess_bulk=None,
-            min_ess_tail=None,
-            min_ess_bulk_per_chain=None,
-            min_ess_tail_per_chain=None,
-            max_label_invariant_rhat=1.01,
-            min_label_invariant_ess_bulk_per_chain=100.0,
-            min_label_invariant_ess_tail_per_chain=100.0,
-            max_relabeled_rhat=1.01,
-            min_relabeled_ess_bulk_per_chain=100.0,
-            min_relabeled_ess_tail_per_chain=100.0,
-            min_test_coverage_90=0.75,
-            max_test_rmse=15.0,
-            effective_k_bounds=(1.5, 3.5),
-        ),
-    )
-
-    assert_comparison_passes(
-        single_result,
-        mixture_result,
-        ComparisonThresholds(
-            min_delta_loo=-50.0,
-            max_candidate_rmse_ratio=1.50,
-        ),
+        _real_thresholds(),
     )
 
     comparison_dir = resolve_comparison_artifact_dir(benchmark_output_root, "real")

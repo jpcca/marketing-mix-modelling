@@ -41,16 +41,16 @@ import numpyro
 import pandas as pd
 
 from hill_mixture_mmm.baseline import standardized_time_index
+from hill_mixture_mmm.benchmark import evaluate_diagnostic_summary
 from hill_mixture_mmm.data import DGP_CONFIGS, DGPConfig, compute_prior_config, generate_data
 from hill_mixture_mmm.inference import (
     compute_comprehensive_mixture_diagnostics,
     compute_convergence_diagnostics,
-    compute_label_invariant_diagnostics,
+    compute_hmc_diagnostics,
     compute_loo,
     compute_predictions,
     compute_predictive_metrics,
     compute_waic,
-    relabel_samples_by_k,
     run_inference,
 )
 from hill_mixture_mmm.metrics import (
@@ -79,17 +79,6 @@ MODEL_SPECS = [
     ModelSpec("mixture_k3", model_hill_mixture_hierarchical_reparam, {"K": 3}),
     ModelSpec("mixture_k5", model_hill_mixture_hierarchical_reparam, {"K": 5}),
 ]
-
-
-def _is_effectively_converged(
-    convergence: dict, rhat_log_lik: float | None, rhat_threshold: float
-) -> bool:
-    """Evaluate convergence using standard and label-invariant diagnostics."""
-    if bool(convergence["converged"]):
-        return True
-    if rhat_log_lik is None:
-        return False
-    return bool(rhat_log_lik < rhat_threshold)
 
 
 def _prepare_experiment_data(dgp_config: DGPConfig, train_ratio: float) -> dict:
@@ -130,6 +119,7 @@ def _fit_once(
     is_mixture_model = "K" in model_spec.kwargs
     inference_seed = dgp_config.seed
     used_target_accept = 0.90
+    used_max_tree_depth = 10
 
     mcmc = run_inference(
         model_spec.fn,
@@ -142,30 +132,42 @@ def _fit_once(
         prior_config=prior_config,
         t_std=t_std_train,
         target_accept_prob=used_target_accept,
+        max_tree_depth=used_max_tree_depth,
         **model_spec.kwargs,
     )
-    convergence = compute_convergence_diagnostics(mcmc)
+    hmc_diagnostics = compute_hmc_diagnostics(mcmc, max_tree_depth=used_max_tree_depth)
 
-    rhat_log_lik = None
-    rhat_threshold = 1.01
     if is_mixture_model:
-        label_invariant = compute_label_invariant_diagnostics(mcmc, x_train, y_train)
-        rhat_log_lik = float(label_invariant["rhat_log_lik"])
-        rhat_threshold = float(label_invariant["threshold"])
+        mixture_diagnostics = compute_comprehensive_mixture_diagnostics(mcmc, x_train, y_train)
+        convergence = mixture_diagnostics["standard"]
+        label_invariant = mixture_diagnostics["label_invariant"]
+        relabeled = mixture_diagnostics["relabeled"]
+    else:
+        convergence = compute_convergence_diagnostics(mcmc)
+        label_invariant = None
+        relabeled = None
 
-    converged_effective = _is_effectively_converged(convergence, rhat_log_lik, rhat_threshold)
+    diagnostic_status = evaluate_diagnostic_summary(
+        convergence=convergence,
+        hmc_diagnostics=hmc_diagnostics,
+        label_invariant=label_invariant,
+        relabeled=relabeled,
+        num_chains_used=num_chains,
+    )
 
     return {
         "mcmc": mcmc,
         "convergence": convergence,
+        "hmc_diagnostics": hmc_diagnostics,
         "is_mixture_model": is_mixture_model,
-        "rhat_log_lik": rhat_log_lik,
-        "rhat_threshold": rhat_threshold,
-        "converged_effective": converged_effective,
+        "label_invariant": label_invariant,
+        "relabeled": relabeled,
+        "diagnostic_status": diagnostic_status,
         "inference_seed": inference_seed,
         "used_warmup": num_warmup,
         "used_samples": num_samples,
         "used_target_accept": used_target_accept,
+        "used_max_tree_depth": used_max_tree_depth,
     }
 
 
@@ -240,6 +242,7 @@ def run_single_experiment(
 
     mcmc = fit["mcmc"]
     convergence = fit["convergence"]
+    diagnostic_status = fit["diagnostic_status"]
     loo = compute_loo(mcmc)
     waic = compute_waic(mcmc)
     effective_k = compute_effective_k(mcmc)
@@ -274,14 +277,32 @@ def run_single_experiment(
         # Convergence
         "max_rhat": convergence["max_rhat"],
         "min_ess_bulk": convergence["min_ess_bulk"],
+        "min_ess_tail": convergence["min_ess_tail"],
         "converged_standard": convergence["converged"],
-        "rhat_log_lik": fit["rhat_log_lik"],
-        "rhat_threshold": fit["rhat_threshold"] if fit["is_mixture_model"] else None,
-        "converged": fit["converged_effective"],
+        "strict_converged": diagnostic_status["strict_converged"],
+        "converged": diagnostic_status["strict_converged"],
+        "publication_status": diagnostic_status["publication_status"],
+        "sampler_status": diagnostic_status["sampler_status"],
+        "mixing_status": diagnostic_status["mixing_status"],
+        "interpretation_status": diagnostic_status["interpretation_status"],
+        "benchmark_pass": diagnostic_status["benchmark_pass"],
+        "num_divergences": fit["hmc_diagnostics"]["num_divergences"],
+        "min_bfmi": fit["hmc_diagnostics"]["min_bfmi"],
+        "tree_depth_hits": fit["hmc_diagnostics"]["tree_depth_hits"],
+        "rhat_log_lik": (
+            fit["label_invariant"]["rhat_log_lik"] if fit["label_invariant"] is not None else None
+        ),
+        "label_invariant_max_rhat": (
+            fit["label_invariant"]["max_rhat"] if fit["label_invariant"] is not None else None
+        ),
+        "relabeled_max_rhat": (
+            fit["relabeled"]["max_rhat"] if fit["relabeled"] is not None else None
+        ),
         "inference_seed": fit["inference_seed"],
         "num_warmup_used": fit["used_warmup"],
         "num_samples_used": fit["used_samples"],
         "target_accept_prob_used": fit["used_target_accept"],
+        "max_tree_depth_used": fit["used_max_tree_depth"],
         # Model comparison
         "elpd_loo": loo.get("elpd_loo"),
         "loo_se": loo.get("se"),
@@ -433,6 +454,8 @@ def summarize_benchmark(df: pd.DataFrame) -> pd.DataFrame:
         Summary DataFrame with mean +/- std across seeds
     """
     metrics = [
+        "benchmark_pass",
+        "strict_converged",
         "converged",
         "elpd_loo",
         "test_rmse",
@@ -733,27 +756,32 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
 
                     exp_time = time.time() - exp_start
 
-                    # Get samples and apply relabeling for mixture models
                     samples = mcmc.get_samples()
-
                     is_mixture = "k" in samples and len(samples["k"].shape) > 1
                     if is_mixture:
-                        samples = relabel_samples_by_k(samples)
+                        mixture_diag = compute_comprehensive_mixture_diagnostics(mcmc, x_train, y_train)
+                        convergence = mixture_diag["standard"]
+                        label_invariant = mixture_diag["label_invariant"]
+                        relabeled = mixture_diag["relabeled"]
+                        label_switching = mixture_diag["label_switching"]
+                    else:
+                        mixture_diag = None
+                        convergence = compute_convergence_diagnostics(mcmc)
+                        label_invariant = None
+                        relabeled = None
+                        label_switching = None
 
                     # Compute diagnostics
-                    convergence = compute_convergence_diagnostics(mcmc)
+                    hmc_diagnostics = compute_hmc_diagnostics(mcmc)
+                    diagnostic_status = evaluate_diagnostic_summary(
+                        convergence=convergence,
+                        hmc_diagnostics=hmc_diagnostics,
+                        label_invariant=label_invariant,
+                        relabeled=relabeled,
+                        num_chains_used=config.num_chains,
+                    )
                     loo = compute_loo(mcmc)
                     waic = compute_waic(mcmc)
-
-                    # Compute mixture diagnostics for mixture models
-                    mixture_diag = None
-                    if is_mixture:
-                        try:
-                            mixture_diag = compute_comprehensive_mixture_diagnostics(
-                                mcmc, x_train, y_train
-                            )
-                        except Exception as e:
-                            print(f"  WARNING: Mixture diagnostics failed: {e}")
 
                     # Compute predictions
                     pred_train = compute_predictions(
@@ -787,7 +815,18 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
                         # Convergence (standard)
                         "max_rhat": convergence["max_rhat"],
                         "min_ess_bulk": convergence["min_ess_bulk"],
-                        "converged": convergence["converged"],
+                        "min_ess_tail": convergence["min_ess_tail"],
+                        "converged_standard": convergence["converged"],
+                        "strict_converged": diagnostic_status["strict_converged"],
+                        "converged": diagnostic_status["strict_converged"],
+                        "publication_status": diagnostic_status["publication_status"],
+                        "sampler_status": diagnostic_status["sampler_status"],
+                        "mixing_status": diagnostic_status["mixing_status"],
+                        "interpretation_status": diagnostic_status["interpretation_status"],
+                        "benchmark_pass": diagnostic_status["benchmark_pass"],
+                        "num_divergences": hmc_diagnostics["num_divergences"],
+                        "min_bfmi": hmc_diagnostics["min_bfmi"],
+                        "tree_depth_hits": hmc_diagnostics["tree_depth_hits"],
                         # LOO
                         "elpd_loo": loo.get("elpd_loo"),
                         "loo_se": loo.get("se"),
@@ -800,17 +839,16 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
                         "p_waic": waic.get("p_waic"),
                         # Mixture diagnostics (label-invariant)
                         "rhat_log_lik": (
-                            mixture_diag["label_invariant"]["rhat_log_lik"]
-                            if mixture_diag
-                            else None
+                            label_invariant["rhat_log_lik"] if label_invariant is not None else None
                         ),
-                        "rhat_relabeled_max": (
-                            mixture_diag["relabeled"]["max_rhat"] if mixture_diag else None
+                        "label_invariant_max_rhat": (
+                            label_invariant["max_rhat"] if label_invariant is not None else None
+                        ),
+                        "relabeled_max_rhat": (
+                            relabeled["max_rhat"] if relabeled is not None else None
                         ),
                         "switching_rate": (
-                            mixture_diag["label_switching"]["switching_rate"]
-                            if mixture_diag
-                            else None
+                            label_switching["switching_rate"] if label_switching is not None else None
                         ),
                         # Predictions
                         "train_rmse": train_metrics["rmse"],
@@ -887,8 +925,13 @@ def save_results(
     print("=" * 60)
 
     if synthetic_results is not None and len(synthetic_results) > 0:
+        acceptable = synthetic_results["benchmark_pass"] if "benchmark_pass" in synthetic_results else synthetic_results["converged"]
         print(f"\nSynthetic experiments: {len(synthetic_results)}")
-        print(f"  Converged: {synthetic_results['converged'].sum()} / {len(synthetic_results)}")
+        print(f"  Acceptable diagnostics: {acceptable.sum()} / {len(synthetic_results)}")
+        if "strict_converged" in synthetic_results:
+            print(
+                f"  Strict Pass: {synthetic_results['strict_converged'].sum()} / {len(synthetic_results)}"
+            )
         print(f"  Mean ELPD-LOO: {synthetic_results['elpd_loo'].mean():.1f}")
         print(f"  Mean test RMSE: {synthetic_results['test_rmse'].mean():.3f}")
 
@@ -897,7 +940,10 @@ def save_results(
         print(f"\nReal data experiments: {len(real_results)}")
         print(f"  Successful: {len(success)} / {len(real_results)}")
         if len(success) > 0:
-            print(f"  Converged: {success['converged'].sum()} / {len(success)}")
+            acceptable = success["benchmark_pass"] if "benchmark_pass" in success else success["converged"]
+            print(f"  Acceptable diagnostics: {acceptable.sum()} / {len(success)}")
+            if "strict_converged" in success:
+                print(f"  Strict Pass: {success['strict_converged'].sum()} / {len(success)}")
             # Robust summaries: median and mean for key metrics
             elpd_arr = np.array(success["elpd_loo"])
             rmse_arr = np.array(success["test_rmse"])

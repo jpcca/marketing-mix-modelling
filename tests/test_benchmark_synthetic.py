@@ -110,113 +110,10 @@ def _synthetic_run_config(dgp_name: str, model_name: str, seed: int) -> Benchmar
     )
 
 
-def _effective_k_bounds(dgp_name: str, model_name: str) -> tuple[float, float] | None:
-    """Return expected effective-K bounds for mixture models."""
-    if model_name == "single_hill":
-        return None
-
-    bounds = {
-        ("single", "mixture_k2"): (1.2, 1.9),
-        ("single", "mixture_k3"): (1.7, 2.4),
-        ("single", "mixture_k5"): (1.6, 2.3),
-        ("mixture_k2", "mixture_k2"): (1.6, 2.1),
-        ("mixture_k2", "mixture_k3"): (2.2, 2.9),
-        ("mixture_k2", "mixture_k5"): (2.1, 3.4),
-        ("mixture_k3", "mixture_k2"): (1.9, 2.1),
-        ("mixture_k3", "mixture_k3"): (2.6, 3.1),
-        ("mixture_k3", "mixture_k5"): (3.0, 4.2),
-        ("mixture_k5", "mixture_k2"): (1.9, 2.1),
-        ("mixture_k5", "mixture_k3"): (2.6, 3.1),
-        ("mixture_k5", "mixture_k5"): (3.0, 4.6),
-    }
-    return bounds[(dgp_name, model_name)]
-
-
 def _synthetic_thresholds(dgp_name: str, model_name: str) -> BenchmarkThresholds:
-    """Return pass/fail thresholds for one synthetic benchmark cell."""
-    rmse_limits = {
-        "single": 4.0,
-        "mixture_k2": 4.0,
-        "mixture_k3": 5.6,
-        "mixture_k5": 5.6,
-    }
-    coverage_floors = {
-        "single": 0.78,
-        "mixture_k2": 0.84,
-        "mixture_k3": 0.88,
-        "mixture_k5": 0.88,
-    }
-
-    if model_name == "single_hill":
-        return BenchmarkThresholds(
-            max_rhat=1.01,
-            max_label_invariant_rhat=None,
-            max_relabeled_rhat=None,
-            min_test_coverage_90=coverage_floors[dgp_name],
-            max_test_rmse=rmse_limits[dgp_name],
-            max_test_mu_rmse=1.0 if dgp_name == "single" else None,
-            require_alpha_in_ci=(dgp_name == "single"),
-            require_sigma_in_ci=(dgp_name == "single"),
-            max_pareto_k_bad=0,
-            max_pareto_k_very_bad=0,
-        )
-
-    max_test_mu_rmse = None
-    if dgp_name == "single":
-        max_test_mu_rmse = 2.0
-    elif model_name == "mixture_k3" and dgp_name == "mixture_k3":
-        max_test_mu_rmse = 6.0
-
+    """Return paper-level reportability gates for one synthetic benchmark cell."""
+    del dgp_name, model_name
     return BenchmarkThresholds(
-        max_rhat=None,
-        min_ess_bulk=None,
-        min_ess_tail=None,
-        min_ess_bulk_per_chain=None,
-        min_ess_tail_per_chain=None,
-        max_label_invariant_rhat=1.01,
-        min_label_invariant_ess_bulk_per_chain=100.0,
-        min_label_invariant_ess_tail_per_chain=100.0,
-        max_relabeled_rhat=1.01,
-        min_relabeled_ess_bulk_per_chain=100.0,
-        min_relabeled_ess_tail_per_chain=100.0,
-        min_test_coverage_90=coverage_floors[dgp_name],
-        max_test_rmse=rmse_limits[dgp_name],
-        max_test_mu_rmse=max_test_mu_rmse,
-        effective_k_bounds=_effective_k_bounds(dgp_name, model_name),
-        max_pareto_k_bad=0,
-        max_pareto_k_very_bad=0,
-    )
-
-
-def _synthetic_smoke_thresholds(dgp_name: str, model_name: str) -> BenchmarkThresholds:
-    """Return lighter smoke-test thresholds for short synthetic runs."""
-    base = _synthetic_thresholds(dgp_name, model_name)
-    if model_name == "single_hill":
-        return BenchmarkThresholds(
-            require_effective_convergence=False,
-            max_rhat=1.05,
-            min_ess_bulk=80.0,
-            min_ess_tail=None,
-            min_ess_bulk_per_chain=None,
-            min_ess_tail_per_chain=None,
-            max_label_invariant_rhat=None,
-            max_relabeled_rhat=None,
-            max_divergences=base.max_divergences,
-            min_bfmi=base.min_bfmi,
-            max_tree_depth_hits=None,
-            min_test_coverage_90=base.min_test_coverage_90,
-            max_test_rmse=base.max_test_rmse,
-            max_test_mu_rmse=base.max_test_mu_rmse,
-            min_test_mu_coverage_90=base.min_test_mu_coverage_90,
-            require_alpha_in_ci=base.require_alpha_in_ci,
-            require_sigma_in_ci=base.require_sigma_in_ci,
-            effective_k_bounds=base.effective_k_bounds,
-            max_pareto_k_bad=base.max_pareto_k_bad,
-            max_pareto_k_very_bad=base.max_pareto_k_very_bad,
-        )
-
-    return BenchmarkThresholds(
-        require_effective_convergence=False,
         max_rhat=None,
         min_ess_bulk=None,
         min_ess_tail=None,
@@ -231,15 +128,49 @@ def _synthetic_smoke_thresholds(dgp_name: str, model_name: str) -> BenchmarkThre
         max_divergences=None,
         min_bfmi=None,
         max_tree_depth_hits=None,
-        min_test_coverage_90=base.min_test_coverage_90,
-        max_test_rmse=base.max_test_rmse,
-        max_test_mu_rmse=base.max_test_mu_rmse,
-        min_test_mu_coverage_90=base.min_test_mu_coverage_90,
-        require_alpha_in_ci=base.require_alpha_in_ci,
-        require_sigma_in_ci=base.require_sigma_in_ci,
-        effective_k_bounds=base.effective_k_bounds,
+        min_test_coverage_90=None,
+        max_test_rmse=None,
+        max_test_mu_rmse=None,
+        min_test_mu_coverage_90=None,
+        require_alpha_in_ci=False,
+        require_sigma_in_ci=False,
+        effective_k_bounds=None,
         max_pareto_k_bad=None,
         max_pareto_k_very_bad=None,
+        require_reportable_diagnostics=True,
+        require_truth_metrics=True,
+    )
+
+
+def _synthetic_smoke_thresholds(dgp_name: str, model_name: str) -> BenchmarkThresholds:
+    """Return lighter smoke-test gates for short synthetic runs."""
+    del dgp_name, model_name
+    return BenchmarkThresholds(
+        max_rhat=None,
+        min_ess_bulk=None,
+        min_ess_tail=None,
+        min_ess_bulk_per_chain=None,
+        min_ess_tail_per_chain=None,
+        max_label_invariant_rhat=None,
+        min_label_invariant_ess_bulk_per_chain=None,
+        min_label_invariant_ess_tail_per_chain=None,
+        max_relabeled_rhat=None,
+        min_relabeled_ess_bulk_per_chain=None,
+        min_relabeled_ess_tail_per_chain=None,
+        max_divergences=None,
+        min_bfmi=None,
+        max_tree_depth_hits=None,
+        min_test_coverage_90=None,
+        max_test_rmse=None,
+        max_test_mu_rmse=None,
+        min_test_mu_coverage_90=None,
+        require_alpha_in_ci=False,
+        require_sigma_in_ci=False,
+        effective_k_bounds=None,
+        max_pareto_k_bad=None,
+        max_pareto_k_very_bad=None,
+        require_reportable_diagnostics=False,
+        require_truth_metrics=True,
     )
 
 

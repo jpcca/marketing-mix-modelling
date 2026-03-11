@@ -38,6 +38,7 @@ COLORS = {
     "mixture_k5": "#2ca02c",
 }
 DEFAULT_FIGURE_IDS = ("fig0", "fig1", "fig2", "fig3", "fig5")
+RHAT_TEST_PASS_MAX = 1.05
 
 plt.rcParams.update(
     {
@@ -86,11 +87,40 @@ def _normalize_bool(series: pd.Series) -> pd.Series:
     )
 
 
+def _compute_rhat_test_pass(df: pd.DataFrame) -> pd.Series:
+    """Return whether each row passes the R-hat benchmark threshold.
+
+    The full synthetic benchmark uses `max_rhat <= 1.05` for the single-Hill
+    model and `label_invariant_max_rhat <= 1.05` for mixture models.
+    When a raw CSV does not include label-invariant diagnostics, fall back to
+    the available `max_rhat` column so figure generation still works.
+    """
+    if "rhat_test_pass" in df.columns:
+        return _normalize_bool(df["rhat_test_pass"])
+
+    standard_rhat = pd.to_numeric(df.get("max_rhat"), errors="coerce")
+    if "model" not in df.columns:
+        return standard_rhat.le(RHAT_TEST_PASS_MAX).fillna(False)
+
+    mixture_mask = df["model"].astype(str) != "single_hill"
+    if "label_invariant_max_rhat" in df.columns:
+        label_rhat = pd.to_numeric(df["label_invariant_max_rhat"], errors="coerce")
+        rhat_used = standard_rhat.where(~mixture_mask, label_rhat)
+    else:
+        rhat_used = standard_rhat
+    return rhat_used.le(RHAT_TEST_PASS_MAX).fillna(False)
+
+
 def _summary_to_record(summary: dict[str, Any]) -> dict[str, Any]:
     """Project a seed-level synthetic summary JSON into one raw-results record."""
     dgp_name = str(summary["dataset_name"])
     label_invariant = summary.get("label_invariant") or {}
     relabeled = summary.get("relabeled") or {}
+    publication_status = summary.get("publication_status")
+    interpretation_status = summary.get("interpretation_status")
+    benchmark_pass = summary.get("benchmark_pass")
+    if benchmark_pass is None and publication_status is not None:
+        benchmark_pass = str(publication_status).lower() != "fail"
 
     return {
         "dgp": dgp_name,
@@ -98,9 +128,13 @@ def _summary_to_record(summary: dict[str, Any]) -> dict[str, Any]:
         "model": summary["model_name"],
         "seed": int(summary["seed"]),
         "converged": bool(summary["converged"]),
+        "publication_status": publication_status,
+        "interpretation_status": interpretation_status,
+        "benchmark_pass": bool(benchmark_pass) if benchmark_pass is not None else bool(summary["converged"]),
         "max_rhat": _nested_metric(summary, "convergence", "max_rhat"),
         "min_ess_bulk": _nested_metric(summary, "convergence", "min_ess_bulk"),
         "min_ess_tail": _nested_metric(summary, "convergence", "min_ess_tail"),
+        "label_invariant_max_rhat": _safe_float(label_invariant.get("max_rhat")),
         "rhat_log_lik": _safe_float(label_invariant.get("rhat_log_lik")),
         "relabeled_max_rhat": _safe_float(relabeled.get("max_rhat")),
         "num_divergences": _nested_metric(summary, "hmc_diagnostics", "num_divergences"),
@@ -145,6 +179,9 @@ def load_synthetic_results_from_artifacts(
     df = pd.DataFrame(rows_by_case.values())
     if "converged" in df.columns:
         df["converged"] = _normalize_bool(df["converged"])
+    if "benchmark_pass" in df.columns:
+        df["benchmark_pass"] = _normalize_bool(df["benchmark_pass"])
+    df["rhat_test_pass"] = _compute_rhat_test_pass(df)
     return df
 
 
@@ -159,6 +196,9 @@ def load_synthetic_results(
         df = pd.read_csv(results_csv)
         if "converged" in df.columns:
             df["converged"] = _normalize_bool(df["converged"])
+        if "benchmark_pass" in df.columns:
+            df["benchmark_pass"] = _normalize_bool(df["benchmark_pass"])
+        df["rhat_test_pass"] = _compute_rhat_test_pass(df)
         return df
     if artifact_root is None:
         raise ValueError("Pass either results_csv or artifact_root")
@@ -368,9 +408,9 @@ def generate_elpd_delta_figure(df: pd.DataFrame, output_dir: str | Path) -> Path
 
 
 def generate_convergence_heatmap_figure(df: pd.DataFrame, output_dir: str | Path) -> Path:
-    """Render Figure 3: convergence-rate heatmap by DGP and model."""
+    """Render Figure 3: R-hat pass-rate heatmap by DGP and model."""
     output_dir = Path(output_dir)
-    convergence = _normalize_bool(df["converged"])
+    convergence = _compute_rhat_test_pass(df)
     conv_rates = (
         df.assign(converged=convergence)
         .groupby(["dgp", "model"])["converged"]
@@ -383,7 +423,7 @@ def generate_convergence_heatmap_figure(df: pd.DataFrame, output_dir: str | Path
     fig, ax = plt.subplots(figsize=(7, 5))
     im = ax.imshow(conv_rates.values, cmap="RdYlGn", vmin=0, vmax=1, aspect="auto")
     cbar = fig.colorbar(im, ax=ax)
-    cbar.set_label("Convergence Rate")
+    cbar.set_label("R-hat Pass Rate")
 
     ax.set_xticks(np.arange(len(MODEL_ORDER)))
     ax.set_yticks(np.arange(len(DGP_ORDER)))
@@ -406,7 +446,7 @@ def generate_convergence_heatmap_figure(df: pd.DataFrame, output_dir: str | Path
 
     ax.set_xlabel("Model")
     ax.set_ylabel("Data Generating Process")
-    ax.set_title("MCMC Convergence Rate by DGP and Model")
+    ax.set_title("R-hat Threshold Pass Rate by DGP and Model")
 
     plt.tight_layout()
     output_path = output_dir / "fig3_convergence_heatmap.png"
