@@ -43,6 +43,8 @@ DGP_CONFIGS = {
     "mixture_k5": DGPConfig(dgp_type="mixture_k5"),
 }
 
+A_PRIOR_RANGE_FRACTION = 0.5
+
 
 def generate_data(config: DGPConfig) -> tuple[np.ndarray, np.ndarray, dict]:
     """Generate synthetic MMM data from specified DGP.
@@ -222,8 +224,9 @@ def compute_prior_config(x: np.ndarray, y: np.ndarray) -> dict:
         "intercept_loc": float(y_mean),
         "intercept_scale": float(y_std * 2),
         "slope_scale": float(y_std),
-        # A (max effect): expect fraction of y_range
-        "A_loc": float(np.log(y_range * 0.3 + 1e-6)),
+        # A (max effect): center above the old 0.3 * y_range rule to reduce
+        # systematic underestimation of high-effect mixture components.
+        "A_loc": float(np.log(y_range * A_PRIOR_RANGE_FRACTION + 1e-6)),
         "A_scale": 0.8,
         # k (half-saturation): scaled to x
         "k_base_loc": float(np.log(x_median + 1e-6)),

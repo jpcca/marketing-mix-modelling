@@ -15,7 +15,7 @@ from numpyro.infer.reparam import LocScaleReparam
 from .baseline import linear_baseline, standardized_time_index
 from .transforms import adstock_geometric, hill, hill_matrix
 
-DEFAULT_COMPONENT_ANCHOR_STRENGTH = 0.35
+DEFAULT_COMPONENT_ANCHOR_STRENGTH = 0.65
 
 
 def _default_mixture_prior_config() -> dict[str, float]:
@@ -23,7 +23,7 @@ def _default_mixture_prior_config() -> dict[str, float]:
         "intercept_loc": 50.0,
         "intercept_scale": 20.0,
         "slope_scale": 5.0,
-        "A_loc": np.log(30.0),
+        "A_loc": np.log(50.0),
         "A_scale": 0.8,
         "k_scale": 0.7,
         "n_scale": 0.4,
@@ -53,7 +53,7 @@ def model_single_hill(x, y=None, prior_config=None, t_std=None):
             "intercept_loc": 50.0,
             "intercept_scale": 20.0,
             "slope_scale": 5.0,
-            "A_loc": np.log(30.0),
+            "A_loc": np.log(50.0),
             "A_scale": 0.8,
             "k_base_loc": np.log(10.0),
             "k_scale": 0.7,
@@ -155,15 +155,15 @@ def _model_hill_mixture_hierarchical_reparam_inner(
     mu_log_A = numpyro.sample("mu_log_A", dist.Normal(prior_config["A_loc"], 0.5))
     sigma_log_A = numpyro.sample(
         "sigma_log_A",
-        dist.LogNormal(-1.0, 0.5),  # type: ignore[arg-type]
-    )  # median ≈ 0.37, rarely < 0.1
+        dist.LogNormal(-1.2, 0.4),  # type: ignore[arg-type]
+    )  # median ≈ 0.30, informative enough to keep anchored components distinct
 
     # Hyperpriors for Hill exponent n (shared across components)
     mu_log_n = numpyro.sample("mu_log_n", dist.Normal(jnp.log(1.5), 0.3))
     sigma_log_n = numpyro.sample(
         "sigma_log_n",
-        dist.LogNormal(-1.5, 0.5),  # type: ignore[arg-type]
-    )  # median ≈ 0.22, tighter for Hill exponent
+        dist.LogNormal(-1.7, 0.4),  # type: ignore[arg-type]
+    )  # median ≈ 0.18, encourages stable component-specific curvature
 
     # ========== NON-CENTERED COMPONENT PARAMETERS ==========
     # A: amplitude per component (hierarchical, non-centered)
