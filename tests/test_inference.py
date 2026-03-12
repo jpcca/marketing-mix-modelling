@@ -206,6 +206,8 @@ class TestCustomTimeIndex:
             "A_loc": np.log(5.0),
             "A_scale": 0.5,
             "k_scale": 0.5,
+            "n_loc": np.log(1.5),
+            "n_scale": 0.4,
             "sigma_scale": 1.0,
         }
 
@@ -236,6 +238,10 @@ class TestCustomTimeIndex:
             "A_loc": np.log(4.0),
             "A_scale": 0.5,
             "k_scale": 0.5,
+            "sigma_log_A_loc": -1.2,
+            "sigma_log_A_scale": 0.4,
+            "sigma_log_n_loc": -1.7,
+            "sigma_log_n_scale": 0.4,
             "sigma_scale": 1.0,
         }
 

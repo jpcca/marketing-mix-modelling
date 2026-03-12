@@ -26,6 +26,10 @@ def _default_mixture_prior_config() -> dict[str, float]:
         "A_loc": np.log(50.0),
         "A_scale": 0.8,
         "k_scale": 0.7,
+        "sigma_log_A_loc": -1.2,
+        "sigma_log_A_scale": 0.4,
+        "sigma_log_n_loc": -1.7,
+        "sigma_log_n_scale": 0.4,
         "sigma_scale": 10.0,
     }
 
@@ -55,6 +59,8 @@ def model_single_hill(x, y=None, prior_config=None, t_std=None):
             "A_loc": np.log(50.0),
             "A_scale": 0.8,
             "k_scale": 0.7,
+            "n_loc": np.log(1.5),
+            "n_scale": 0.4,
             "sigma_scale": 10.0,
         }
 
@@ -75,7 +81,7 @@ def model_single_hill(x, y=None, prior_config=None, t_std=None):
     s_median = jnp.median(s)
     A = numpyro.sample("A", dist.LogNormal(prior_config["A_loc"], prior_config["A_scale"]))  # type: ignore[arg-type]
     k = numpyro.sample("k", dist.LogNormal(jnp.log(s_median + 1e-6), prior_config["k_scale"]))  # type: ignore[arg-type]
-    n = numpyro.sample("n", dist.LogNormal(jnp.log(1.5), 0.4))  # type: ignore[arg-type]
+    n = numpyro.sample("n", dist.LogNormal(prior_config["n_loc"], prior_config["n_scale"]))  # type: ignore[arg-type]
     sigma = numpyro.sample("sigma", dist.HalfNormal(prior_config["sigma_scale"]))
 
     # Effect and likelihood
@@ -153,15 +159,15 @@ def _model_hill_mixture_hierarchical_reparam_inner(
     mu_log_A = numpyro.sample("mu_log_A", dist.Normal(prior_config["A_loc"], 0.5))
     sigma_log_A = numpyro.sample(
         "sigma_log_A",
-        dist.LogNormal(-1.2, 0.4),  # type: ignore[arg-type]
-    )  # median ≈ 0.30, informative enough to keep anchored components distinct
+        dist.LogNormal(prior_config["sigma_log_A_loc"], prior_config["sigma_log_A_scale"]),  # type: ignore[arg-type]
+    )  # default median ≈ 0.30, informative enough to keep anchored components distinct
 
     # Hyperpriors for Hill exponent n (shared across components)
     mu_log_n = numpyro.sample("mu_log_n", dist.Normal(jnp.log(1.5), 0.3))
     sigma_log_n = numpyro.sample(
         "sigma_log_n",
-        dist.LogNormal(-1.7, 0.4),  # type: ignore[arg-type]
-    )  # median ≈ 0.18, encourages stable component-specific curvature
+        dist.LogNormal(prior_config["sigma_log_n_loc"], prior_config["sigma_log_n_scale"]),  # type: ignore[arg-type]
+    )  # default median ≈ 0.18, encourages stable component-specific curvature
 
     # ========== NON-CENTERED COMPONENT PARAMETERS ==========
     # A: amplitude per component (hierarchical, non-centered)
