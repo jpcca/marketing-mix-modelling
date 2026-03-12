@@ -37,9 +37,7 @@ def _reference_mixture_log_likelihood(
         mu = baseline[:, None] + np.asarray(hill_matrix(s, A, k, n))
 
         sigma_sq = sigma**2
-        log_normal = -0.5 * (
-            log_two_pi + np.log(sigma_sq) + ((y[:, None] - mu) ** 2) / sigma_sq
-        )
+        log_normal = -0.5 * (log_two_pi + np.log(sigma_sq) + ((y[:, None] - mu) ** 2) / sigma_sq)
         log_probs = np.log(pis + 1e-10) + log_normal
         out[i] = np.logaddexp.reduce(log_probs, axis=1).sum()
 
@@ -190,9 +188,7 @@ class TestSequentialPredictions:
         hills = np.asarray(hill_matrix(s_test, samples["A"][0], samples["k"][0], samples["n"][0]))
         expected_mu = baseline + np.sum(samples["pis"][0] * hills, axis=1)
 
-        np.testing.assert_allclose(
-            predictions["mu_expected"][0], expected_mu, rtol=1e-6, atol=1e-6
-        )
+        np.testing.assert_allclose(predictions["mu_expected"][0], expected_mu, rtol=1e-6, atol=1e-6)
 
 
 class TestCustomTimeIndex:
@@ -209,7 +205,6 @@ class TestCustomTimeIndex:
             "slope_scale": 1.0,
             "A_loc": np.log(5.0),
             "A_scale": 0.5,
-            "k_base_loc": np.log(2.0),
             "k_scale": 0.5,
             "sigma_scale": 1.0,
         }

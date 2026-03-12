@@ -26,7 +26,6 @@ def _default_mixture_prior_config() -> dict[str, float]:
         "A_loc": np.log(50.0),
         "A_scale": 0.8,
         "k_scale": 0.7,
-        "n_scale": 0.4,
         "sigma_scale": 10.0,
     }
 
@@ -55,7 +54,6 @@ def model_single_hill(x, y=None, prior_config=None, t_std=None):
             "slope_scale": 5.0,
             "A_loc": np.log(50.0),
             "A_scale": 0.8,
-            "k_base_loc": np.log(10.0),
             "k_scale": 0.7,
             "sigma_scale": 10.0,
         }
