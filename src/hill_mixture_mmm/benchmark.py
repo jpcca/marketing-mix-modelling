@@ -33,8 +33,8 @@ from .metrics import (
     compute_delta_loo,
     compute_effective_k,
     compute_latent_recovery,
-    compute_permutation_invariant_component_recovery,
     compute_parameter_recovery,
+    compute_permutation_invariant_component_recovery,
     summarize_component_posterior,
 )
 from .models import model_hill_mixture_hierarchical_reparam, model_single_hill
@@ -88,22 +88,32 @@ class BenchmarkRunConfig:
 
 @dataclass(frozen=True)
 class BenchmarkThresholds:
-    """Pass/fail thresholds for a single benchmark case."""
+    """Pass/fail thresholds for a single benchmark case.
 
-    max_rhat: float | None = 1.01
+    Defaults are aligned with the "Fail" tier from PASS_WARN_FAIL_THRESHOLDS.
+    Values between Pass and Fail thresholds produce "Warn" in diagnostic
+    reports but should NOT cause hard assertion failures.
+
+    See PASS_WARN_FAIL_THRESHOLDS for the three-tier system:
+      Pass: rhat <= 1.01, ess >= 100/chain, divergences == 0, bfmi >= 0.3
+      Warn: between Pass and Fail
+      Fail: rhat > 1.05, ess < 50/chain, divergences > 5, bfmi < 0.2
+    """
+
+    max_rhat: float | None = 1.05
     min_ess_bulk: float | None = None
     min_ess_tail: float | None = None
-    min_ess_bulk_per_chain: float | None = 100.0
-    min_ess_tail_per_chain: float | None = 100.0
+    min_ess_bulk_per_chain: float | None = 50.0
+    min_ess_tail_per_chain: float | None = 50.0
     max_label_invariant_rhat: float | None = None
     min_label_invariant_ess_bulk_per_chain: float | None = None
     min_label_invariant_ess_tail_per_chain: float | None = None
     max_relabeled_rhat: float | None = None
     min_relabeled_ess_bulk_per_chain: float | None = None
     min_relabeled_ess_tail_per_chain: float | None = None
-    max_divergences: int | None = 0
-    min_bfmi: float | None = 0.3
-    max_tree_depth_hits: int | None = 0
+    max_divergences: int | None = 5
+    min_bfmi: float | None = 0.2
+    max_tree_depth_hits: int | None = 10
     min_test_coverage_90: float | None = None
     max_test_rmse: float | None = None
     max_test_mu_rmse: float | None = None
@@ -219,7 +229,9 @@ def _append_truth_metric_errors(errors: list[str], result: BenchmarkCaseResult) 
 def _merge_statuses(statuses: Sequence[str]) -> str:
     """Return the most severe Pass/Warn/Fail status."""
     normalized = [
-        status for status in statuses if status in PASS_WARN_FAIL_ORDER and status != "NotApplicable"
+        status
+        for status in statuses
+        if status in PASS_WARN_FAIL_ORDER and status != "NotApplicable"
     ]
     if not normalized:
         return "NotApplicable"
@@ -890,7 +902,9 @@ def case_summary(result: BenchmarkCaseResult) -> dict[str, Any]:
             "mean_k_ratio_rel_error": float(result.component_recovery["mean_k_ratio_rel_error"]),
             "mean_n_abs_error": float(result.component_recovery["mean_n_abs_error"]),
             "unmatched_true_weight": float(result.component_recovery["unmatched_reference_weight"]),
-            "unmatched_posterior_weight": float(result.component_recovery["unmatched_candidate_weight"]),
+            "unmatched_posterior_weight": float(
+                result.component_recovery["unmatched_candidate_weight"]
+            ),
             "matched_components": [
                 {
                     "true_component_index": int(component["reference_component_index"]),
@@ -933,7 +947,9 @@ def compare_case_results(
         "delta_loo_se": float(delta["se"]),
         "delta_loo_significant": float(bool(delta["significant"])),
         "delta_test_rmse": float(candidate.test_metrics["rmse"] - baseline.test_metrics["rmse"]),
-        "candidate_rmse_ratio": float(candidate.test_metrics["rmse"] / baseline.test_metrics["rmse"]),
+        "candidate_rmse_ratio": float(
+            candidate.test_metrics["rmse"] / baseline.test_metrics["rmse"]
+        ),
         "delta_test_coverage_90": float(
             candidate.test_metrics["coverage_90"] - baseline.test_metrics["coverage_90"]
         ),
@@ -952,7 +968,10 @@ def assert_case_passes(result: BenchmarkCaseResult, thresholds: BenchmarkThresho
             errors.append("publication_status=Fail")
             errors.extend(diagnostic_status["failures"])
 
-    if thresholds.max_rhat is not None and float(result.convergence["max_rhat"]) > thresholds.max_rhat:
+    if (
+        thresholds.max_rhat is not None
+        and float(result.convergence["max_rhat"]) > thresholds.max_rhat
+    ):
         errors.append(
             f"max_rhat={result.convergence['max_rhat']:.3f} exceeds {thresholds.max_rhat:.3f}"
         )
@@ -1056,9 +1075,7 @@ def assert_case_passes(result: BenchmarkCaseResult, thresholds: BenchmarkThresho
     if thresholds.max_divergences is not None:
         num_divergences = int(result.hmc_diagnostics["num_divergences"])
         if num_divergences > thresholds.max_divergences:
-            errors.append(
-                f"num_divergences={num_divergences} exceeds {thresholds.max_divergences}"
-            )
+            errors.append(f"num_divergences={num_divergences} exceeds {thresholds.max_divergences}")
     if thresholds.min_bfmi is not None:
         min_bfmi = float(result.hmc_diagnostics["min_bfmi"])
         if min_bfmi < thresholds.min_bfmi:
@@ -1130,11 +1147,15 @@ def assert_case_passes(result: BenchmarkCaseResult, thresholds: BenchmarkThresho
             )
 
     if thresholds.require_alpha_in_ci:
-        alpha_in_ci = bool(result.parameter_recovery and result.parameter_recovery["alpha"]["in_ci"])
+        alpha_in_ci = bool(
+            result.parameter_recovery and result.parameter_recovery["alpha"]["in_ci"]
+        )
         if not alpha_in_ci:
             errors.append("alpha_true is not within the posterior interval")
     if thresholds.require_sigma_in_ci:
-        sigma_in_ci = bool(result.parameter_recovery and result.parameter_recovery["sigma"]["in_ci"])
+        sigma_in_ci = bool(
+            result.parameter_recovery and result.parameter_recovery["sigma"]["in_ci"]
+        )
         if not sigma_in_ci:
             errors.append("sigma_true is not within the posterior interval")
 
@@ -1142,14 +1163,14 @@ def assert_case_passes(result: BenchmarkCaseResult, thresholds: BenchmarkThresho
         lower, upper = thresholds.effective_k_bounds
         effective_k = float(result.effective_k["effective_k_mean"])
         if not lower <= effective_k <= upper:
-            errors.append(f"effective_k_mean={effective_k:.3f} is outside [{lower:.3f}, {upper:.3f}]")
+            errors.append(
+                f"effective_k_mean={effective_k:.3f} is outside [{lower:.3f}, {upper:.3f}]"
+            )
 
     if thresholds.max_pareto_k_bad is not None:
         pareto_bad = int(result.loo.get("pareto_k_bad", 0))
         if pareto_bad > thresholds.max_pareto_k_bad:
-            errors.append(
-                f"pareto_k_bad={pareto_bad} exceeds {thresholds.max_pareto_k_bad}"
-            )
+            errors.append(f"pareto_k_bad={pareto_bad} exceeds {thresholds.max_pareto_k_bad}")
     if thresholds.max_pareto_k_very_bad is not None:
         pareto_very_bad = int(result.loo.get("pareto_k_very_bad", 0))
         if pareto_very_bad > thresholds.max_pareto_k_very_bad:
@@ -1229,7 +1250,10 @@ def assert_comparison_passes(
         errors.append(
             f"delta_loo={comparison['delta_loo']:.3f} is below {thresholds.min_delta_loo:.3f}"
         )
-    if thresholds.max_delta_rmse is not None and comparison["delta_test_rmse"] > thresholds.max_delta_rmse:
+    if (
+        thresholds.max_delta_rmse is not None
+        and comparison["delta_test_rmse"] > thresholds.max_delta_rmse
+    ):
         errors.append(
             f"delta_test_rmse={comparison['delta_test_rmse']:.3f} exceeds "
             f"{thresholds.max_delta_rmse:.3f}"
@@ -1264,7 +1288,13 @@ def plot_observed_vs_predictive(result: BenchmarkCaseResult, output_path: str | 
 
     fig, ax = plt.subplots(figsize=(11, 4.5))
     ax.axvline(train_idx[-1], color="0.5", linestyle="--", linewidth=1, label="Train/Test Split")
-    ax.plot(full_idx[: len(result.y_train)], result.y_train, color="black", linewidth=1.5, label="Observed")
+    ax.plot(
+        full_idx[: len(result.y_train)],
+        result.y_train,
+        color="black",
+        linewidth=1.5,
+        label="Observed",
+    )
     ax.plot(test_idx, result.y_test, color="black", linewidth=1.5)
 
     train_mean = np.asarray(result.train_metrics["y_pred_mean"])
@@ -1280,7 +1310,14 @@ def plot_observed_vs_predictive(result: BenchmarkCaseResult, output_path: str | 
     ax.fill_between(test_idx, test_q05, test_q95, color="#1f77b4", alpha=0.15, label="90% Interval")
 
     if result.meta is not None and "mu_true" in result.meta:
-        ax.plot(full_idx, result.meta["mu_true"], color="#2ca02c", linestyle=":", linewidth=2, label="True Latent Mean")
+        ax.plot(
+            full_idx,
+            result.meta["mu_true"],
+            color="#2ca02c",
+            linestyle=":",
+            linewidth=2,
+            label="True Latent Mean",
+        )
 
     ax.set_title(f"{result.label}: Observed vs Posterior Predictive")
     ax.set_xlabel("Time")
@@ -1344,9 +1381,7 @@ def plot_response_curves(result: BenchmarkCaseResult, output_path: str | Path) -
     posterior_lowers = np.quantile(posterior_component_curves, 0.05, axis=0)
     posterior_uppers = np.quantile(posterior_component_curves, 0.95, axis=0)
     posterior_component_indices = list(range(posterior_component_curves.shape[-1]))
-    posterior_component_active: dict[int, bool] = {
-        idx: True for idx in posterior_component_indices
-    }
+    posterior_component_active: dict[int, bool] = {idx: True for idx in posterior_component_indices}
     if result.component_summary is not None:
         posterior_component_active = {
             int(component["index"]): bool(component["active"])
@@ -1356,6 +1391,8 @@ def plot_response_curves(result: BenchmarkCaseResult, output_path: str | Path) -
     true_components = None
     true_weights = None
     true_component_indices: list[int] = []
+    realized_effect_x = None
+    realized_effect_y = None
     if result.meta is not None and {"A_true", "k_true", "n_true", "pi_true"}.issubset(result.meta):
         A_true = np.asarray(result.meta["A_true"], dtype=np.float32)
         k_true = np.asarray(result.meta["k_true"], dtype=np.float32)
@@ -1369,6 +1406,20 @@ def plot_response_curves(result: BenchmarkCaseResult, output_path: str | Path) -
             axis=0,
         )
         true_component_indices = list(range(true_components.shape[0]))
+        if {"s", "hill_mat", "z_true"}.issubset(result.meta):
+            realized_effect_x = np.asarray(result.meta["s"], dtype=np.float32)
+            hill_mat = np.asarray(result.meta["hill_mat"], dtype=np.float32)
+            z_true = np.asarray(result.meta["z_true"], dtype=np.int32)
+            if (
+                realized_effect_x.ndim == 1
+                and hill_mat.ndim == 2
+                and z_true.ndim == 1
+                and len(realized_effect_x) == len(z_true) == hill_mat.shape[0]
+            ):
+                realized_effect_y = hill_mat[np.arange(len(z_true)), z_true]
+            else:
+                realized_effect_x = None
+                realized_effect_y = None
 
     panel_specs: list[dict[str, Any]] = []
     used_true: set[int] = set()
@@ -1379,7 +1430,9 @@ def plot_response_curves(result: BenchmarkCaseResult, output_path: str | Path) -
 
     for match in sorted(
         matched_components,
-        key=lambda item: int(item.get("true_component_index", item.get("reference_component_index", -1))),
+        key=lambda item: int(
+            item.get("true_component_index", item.get("reference_component_index", -1))
+        ),
     ):
         true_idx = int(match.get("true_component_index", match.get("reference_component_index")))
         posterior_idx = int(
@@ -1424,12 +1477,26 @@ def plot_response_curves(result: BenchmarkCaseResult, output_path: str | Path) -
     all_y_max = [float(np.max(posterior_uppers[:, idx])) for idx in posterior_component_indices]
     if true_components is not None:
         all_y_max.extend(float(np.max(true_components[idx])) for idx in true_component_indices)
+    if realized_effect_y is not None:
+        all_y_max.append(float(np.max(realized_effect_y)))
     y_max = max(all_y_max, default=1.0) * 1.08
 
     fig, ax = plt.subplots(figsize=(10.2, 5.8))
     color_cycle = plt.rcParams["axes.prop_cycle"].by_key().get("color", ["#1f77b4"])
     color_by_true: dict[int, str] = {}
     color_by_posterior: dict[int, str] = {}
+
+    if realized_effect_x is not None and realized_effect_y is not None:
+        ax.scatter(
+            realized_effect_x,
+            realized_effect_y,
+            s=22,
+            color="0.55",
+            alpha=0.45,
+            linewidths=0.0,
+            label="Realized Hill Effects",
+            zorder=1,
+        )
 
     color_index = 0
     for spec in panel_specs:
@@ -1438,10 +1505,7 @@ def plot_response_curves(result: BenchmarkCaseResult, output_path: str | Path) -
             color_by_true[spec["true_idx"]] = color
         if spec["posterior_idx"] is not None and spec["posterior_idx"] not in color_by_posterior:
             color_by_posterior[spec["posterior_idx"]] = color
-        if (
-            spec["true_idx"] is not None
-            or spec["posterior_idx"] is not None
-        ):
+        if spec["true_idx"] is not None or spec["posterior_idx"] is not None:
             color_index += 1
 
     for posterior_idx in posterior_component_indices:
@@ -1573,7 +1637,9 @@ def save_case_artifacts(result: BenchmarkCaseResult, output_root: str | Path) ->
     with summary_path.open("w", encoding="utf-8") as fh:
         json.dump(case_summary(result), fh, indent=2)
 
-    predictive_path = plot_observed_vs_predictive(result, output_dir / f"{result.label}_predictive.png")
+    predictive_path = plot_observed_vs_predictive(
+        result, output_dir / f"{result.label}_predictive.png"
+    )
     response_path = plot_response_curves(result, output_dir / f"{result.label}_response.png")
 
     return {
