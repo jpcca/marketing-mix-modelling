@@ -270,6 +270,14 @@ def relabel_samples_by_k(samples: dict[str, np.ndarray]) -> dict[str, np.ndarray
     For each sample, components are reordered so that k[0] < k[1] < ... < k[K-1].
     All component-specific parameters (A, k, n, pis) are permuted consistently.
 
+    Note — Ordering convention:
+        ``model_hill_mixture_hierarchical_reparam`` already enforces
+        k[0] <= k[1] <= ... <= k[K-1] structurally via
+        ``jnp.abs(increments) + cumsum`` in log-space (see models.py).
+        For that model this function is effectively a **no-op**; it is
+        retained as a robustness guard for potential unconstrained model
+        variants and numerical edge cases.
+
     Args:
         samples: Dict of MCMC samples with keys including 'k', 'A', 'n', 'pis'
                  Each array has shape (n_samples,) or (n_samples, K)
@@ -279,7 +287,7 @@ def relabel_samples_by_k(samples: dict[str, np.ndarray]) -> dict[str, np.ndarray
         by k values. Non-component parameters are passed through unchanged.
 
     Example:
-        >>> mcmc = run_inference(model_hill_mixture_unconstrained, x, y)
+        >>> mcmc = run_inference(model_hill_mixture_hierarchical_reparam, x, y, K=3)
         >>> samples = mcmc.get_samples()
         >>> relabeled = relabel_samples_by_k(samples)
         >>> # Now k[:, 0] < k[:, 1] < k[:, 2] for all samples
@@ -317,6 +325,12 @@ def check_label_switching(samples: dict[str, np.ndarray], param: str = "k") -> d
 
     Checks how often the ordering of components (by the specified parameter)
     changes across MCMC samples. High switching rates indicate label switching.
+
+    Note — Expected behavior with ordered models:
+        When used with ``model_hill_mixture_hierarchical_reparam``, k is
+        structurally ordered (see models.py), so ``switching_rate`` should
+        be ~0 and ``mode_ordering`` should be ``(0, 1, ..., K-1)``.
+        Non-trivial switching rates on k would indicate a model bug.
 
     Args:
         samples: Dict of MCMC samples
