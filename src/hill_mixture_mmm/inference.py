@@ -210,9 +210,7 @@ def compute_hmc_diagnostics(
     diverging = np.asarray(extra_fields.get("diverging", np.zeros((1, 0), dtype=bool)))
     energy = np.asarray(extra_fields.get("energy", np.zeros((diverging.shape[0], 0))))
     num_steps = np.asarray(extra_fields.get("num_steps", np.zeros_like(diverging, dtype=int)))
-    accept_prob = np.asarray(
-        extra_fields.get("accept_prob", np.zeros_like(diverging, dtype=float))
-    )
+    accept_prob = np.asarray(extra_fields.get("accept_prob", np.zeros_like(diverging, dtype=float)))
 
     tree_depth = np.floor(np.log2(np.maximum(num_steps, 1))).astype(int) + 1
     bfmi_by_chain = np.asarray(az.bfmi(energy), dtype=float) if energy.size else np.array([np.nan])
@@ -434,7 +432,9 @@ def _compute_predictive_from_samples(
     baseline = linear_baseline(intercept[:, None], slope[:, None], t_std[None, :])
 
     if "pis" not in samples:
-        effect = A[:, None] * (s**n[:, None]) / (k[:, None] ** n[:, None] + s**n[:, None] + 1e-12)
+        effect = (
+            A[:, None] * (s ** n[:, None]) / (k[:, None] ** n[:, None] + s ** n[:, None] + 1e-12)
+        )
         mu = baseline + effect
         y = rng.normal(loc=mu, scale=sigma[:, None]).astype(np.float32)
         return {
@@ -863,20 +863,25 @@ def compute_comprehensive_mixture_diagnostics(
     # Check if relabeled parameters also converged
     relabeled_converged = relabeled["converged"]
 
-    # High switching rate suggests label switching is occurring
-    # (Used in recommendation logic below)
-    _significant_switching = switching["switching_rate"] > 0.1
-
     # Recommendation
+    significant_switching = switching["switching_rate"] > 0.1
+
     if primary_converged and relabeled_converged:
         status = "converged"
         recommendation = "Chains have converged. Safe to use posterior samples."
+    elif primary_converged and not relabeled_converged and significant_switching:
+        status = "partial"
+        recommendation = (
+            "Log-likelihood converged but component parameters show high R-hat "
+            "with significant label switching (rate={:.1%}). "
+            "Use label-invariant summaries (e.g., mixture density, predictive)."
+        ).format(switching["switching_rate"])
     elif primary_converged and not relabeled_converged:
         status = "partial"
         recommendation = (
-            "Log-likelihood converged but component parameters show high R-hat. "
-            "This may indicate residual label switching. Consider longer chains "
-            "or use label-invariant summaries (e.g., mixture density, predictive)."
+            "Log-likelihood converged but component parameters show high R-hat "
+            "without significant label switching. Consider longer chains "
+            "or reparameterization."
         )
     else:
         status = "not_converged"
