@@ -261,7 +261,9 @@ def summarize_component_posterior(
     }
 
 
-def _summarize_true_components(meta: dict[str, Any], weight_threshold: float = 0.05) -> dict[str, Any]:
+def _summarize_true_components(
+    meta: dict[str, Any], weight_threshold: float = 0.05
+) -> dict[str, Any]:
     """Build a component summary from synthetic DGP metadata."""
     scale_reference = float(max(meta.get("s_median", 1.0), 1e-6))
     A_true = np.asarray(meta["A_true"], dtype=np.float64)
@@ -362,7 +364,10 @@ def _pair_metrics(
             / max(abs(float(reference_component["A_mean"])), 1e-6)
         ),
         "k_ratio_rel_error": float(
-            abs(float(reference_component["k_ratio_mean"]) - float(candidate_component["k_ratio_mean"]))
+            abs(
+                float(reference_component["k_ratio_mean"])
+                - float(candidate_component["k_ratio_mean"])
+            )
             / max(abs(float(reference_component["k_ratio_mean"])), 1e-6)
         ),
         "n_abs_error": float(
@@ -416,13 +421,17 @@ def compute_component_set_alignment(
     if len(reference_components) <= len(candidate_components):
         assignment_iter = (
             list(zip(range(len(reference_components)), candidate_order, strict=True))
-            for candidate_choice in combinations(range(len(candidate_components)), len(reference_components))
+            for candidate_choice in combinations(
+                range(len(candidate_components)), len(reference_components)
+            )
             for candidate_order in permutations(candidate_choice)
         )
     else:
         assignment_iter = (
             list(zip(reference_order, range(len(candidate_components)), strict=True))
-            for reference_choice in combinations(range(len(reference_components)), len(candidate_components))
+            for reference_choice in combinations(
+                range(len(reference_components)), len(candidate_components)
+            )
             for reference_order in permutations(reference_choice)
         )
 
@@ -481,17 +490,11 @@ def compute_component_set_alignment(
             "matched_weight": float(matched_avg_weight),
             "unmatched_reference_weight": float(unmatched_reference_weight),
             "unmatched_candidate_weight": float(unmatched_candidate_weight),
-            "weighted_curve_rmse": float(
-                weighted_curve_rmse / max(matched_avg_weight, 1e-6)
-            ),
-            "weighted_curve_nrmse": float(
-                weighted_curve_nrmse / max(matched_avg_weight, 1e-6)
-            ),
+            "weighted_curve_rmse": float(weighted_curve_rmse / max(matched_avg_weight, 1e-6)),
+            "weighted_curve_nrmse": float(weighted_curve_nrmse / max(matched_avg_weight, 1e-6)),
             "mean_curve_rmse": float(np.mean(mean_curve_rmse)) if mean_curve_rmse else 0.0,
             "mean_curve_nrmse": float(np.mean(mean_curve_nrmse)) if mean_curve_nrmse else 0.0,
-            "weighted_pi_abs_error": float(
-                weighted_pi_abs_error / max(matched_avg_weight, 1e-6)
-            ),
+            "weighted_pi_abs_error": float(weighted_pi_abs_error / max(matched_avg_weight, 1e-6)),
             "mean_pi_abs_error": float(np.mean(mean_pi_abs_error)) if mean_pi_abs_error else 0.0,
             "mean_A_rel_error": float(np.mean(mean_A_rel_error)) if mean_A_rel_error else 0.0,
             "mean_k_ratio_rel_error": float(np.mean(mean_k_ratio_rel_error))
@@ -503,7 +506,31 @@ def compute_component_set_alignment(
         if best_result is None or result["assignment_cost"] < best_result["assignment_cost"]:
             best_result = result
 
-    assert best_result is not None
+    if best_result is None:
+        # One side has active components but the other has none —
+        # no valid assignment exists.  Return a zero-metric result.
+        return {
+            "reference_label": reference_label,
+            "candidate_label": candidate_label,
+            "reference_seed": reference_seed,
+            "candidate_seed": candidate_seed,
+            "reference_active_k": len(reference_components),
+            "candidate_active_k": len(candidate_components),
+            "matched_components": [],
+            "matched_weight": 0.0,
+            "unmatched_reference_weight": float(reference_weight_total),
+            "unmatched_candidate_weight": float(candidate_weight_total),
+            "weighted_curve_rmse": 0.0,
+            "weighted_curve_nrmse": 0.0,
+            "mean_curve_rmse": 0.0,
+            "mean_curve_nrmse": 0.0,
+            "weighted_pi_abs_error": 0.0,
+            "mean_pi_abs_error": 0.0,
+            "mean_A_rel_error": 0.0,
+            "mean_k_ratio_rel_error": 0.0,
+            "mean_n_abs_error": 0.0,
+            "assignment_cost": float(reference_weight_total + candidate_weight_total),
+        }
     return best_result
 
 
