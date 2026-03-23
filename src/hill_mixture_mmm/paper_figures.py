@@ -231,61 +231,87 @@ def generate_graphical_model_figure(output_dir: str | Path) -> Path:
 
     pgm = daft.PGM(dpi=150)
 
-    y_prior = 5
-    y_segment = 3
-    y_time = 1.5
-    y_outcome = 0
+    y_top = 5.75
+    y_hyper_mid = 4.85
+    y_component = 3.2
+    y_time = 1.4
+    y_hill = 2.2
+    y_outcome = 0.45
 
-    pgm.add_node("alpha", r"$\alpha$", 1, y_prior)
-    pgm.add_node("mu0", r"$\mu_0$", 2.5, y_prior)  # type: ignore[arg-type]
-    pgm.add_node("beta", r"$\beta$", 4, y_prior)
-    pgm.add_node("sigma", r"$\sigma$", 5.5, y_prior)  # type: ignore[arg-type]
-    pgm.add_node("pi", r"$\boldsymbol{\pi}$", 7, y_prior)
+    # Global scalar parameters
+    pgm.add_node("alpha", r"$\alpha$", 0.9, y_top)
+    pgm.add_node("mu0", r"$\mu_0$", 2.2, y_top)  # type: ignore[arg-type]
+    pgm.add_node("beta", r"$\beta$", 3.5, y_top)
+    pgm.add_node("sigma", r"$\sigma$", 4.8, y_top)
+    pgm.add_node("stick", r"$v_j$", 6.3, y_top)
 
-    pgm.add_node("A_k", r"$A_k$", 7, y_segment)  # type: ignore[arg-type]
-    pgm.add_node("lambda_k", r"$\lambda_k$", 8.5, y_segment)  # type: ignore[arg-type]
-    pgm.add_node("n_k", r"$n_k$", 10, y_segment)  # type: ignore[arg-type]
+    # Hierarchical / ordered component construction
+    pgm.add_node("mu_log_A", r"$\mu_{\log A}$", 7.8, y_top + 0.15)  # type: ignore[arg-type]
+    pgm.add_node("sigma_log_A", r"$\sigma_{\log A}$", 9.2, y_top + 0.15)  # type: ignore[arg-type]
+    pgm.add_node("mu_log_n", r"$\mu_{\log n}$", 7.2, y_hyper_mid)  # type: ignore[arg-type]
+    pgm.add_node("sigma_log_n", r"$\sigma_{\log n}$", 8.6, y_hyper_mid)  # type: ignore[arg-type]
+    pgm.add_node("log_k_base", r"$\log k_0$", 10.4, y_top + 0.15)  # type: ignore[arg-type]
+    pgm.add_node("log_k_step", r"$\Delta \log k_k$", 11.9, y_top + 0.15)  # type: ignore[arg-type]
 
-    pgm.add_node("x_t", r"$x_t$", 1, y_time, observed=True)  # type: ignore[arg-type]
-    pgm.add_node("s_t", r"$s_t$", 2.5, y_time)  # type: ignore[arg-type]
-    pgm.add_node("f_k_t", r"$f_k(s_t)$", 5.5, y_time)  # type: ignore[arg-type]
-    pgm.add_node("y_t", r"$y_t$", 5.5, y_outcome, observed=True)  # type: ignore[arg-type]
+    # Time-indexed quantities
+    pgm.add_node("x_t", r"$x_t$", 1.0, y_time, observed=True)  # type: ignore[arg-type]
+    pgm.add_node("s_t", r"$s_t$", 2.3, y_time)  # type: ignore[arg-type]
+    pgm.add_node("b_t", r"$b_t$", 3.8, y_time)  # type: ignore[arg-type]
+    pgm.add_node("h_tk", r"$h_{t,k}$", 5.3, y_hill)  # type: ignore[arg-type]
+    pgm.add_node("y_t", r"$y_t$", 5.3, y_outcome, observed=True)  # type: ignore[arg-type]
 
+    # Component-indexed quantities
+    pgm.add_node("A_k", r"$A_k$", 7.6, y_component)  # type: ignore[arg-type]
+    pgm.add_node("n_k", r"$n_k$", 9.1, y_component)  # type: ignore[arg-type]
+    pgm.add_node("k_k", r"$k_k$", 10.7, y_component)  # type: ignore[arg-type]
+    pgm.add_node("pi_k", r"$\pi_k$", 12.2, y_component)  # type: ignore[arg-type]
+
+    # Global -> time
     pgm.add_edge("x_t", "s_t")
     pgm.add_edge("alpha", "s_t")
-    pgm.add_edge("s_t", "f_k_t")
-    pgm.add_edge("A_k", "f_k_t")
-    pgm.add_edge("lambda_k", "f_k_t")
-    pgm.add_edge("n_k", "f_k_t")
-    pgm.add_edge("f_k_t", "y_t")
-    pgm.add_edge("mu0", "y_t")
-    pgm.add_edge("beta", "y_t")
+    pgm.add_edge("mu0", "b_t")
+    pgm.add_edge("beta", "b_t")
+    pgm.add_edge("b_t", "y_t")
     pgm.add_edge("sigma", "y_t")
-    pgm.add_edge("pi", "y_t")
 
-    pgm.add_plate(
-        [6.3, 2.4, 4.4, 1.2],
-        label=r"$k = 1, \ldots, K$" + "\n(Latent Segments)",
-        shift=-0.1,  # type: ignore[arg-type]
-    )
-    pgm.add_plate(
-        [0.3, -0.6, 6.0, 2.8],
-        label=r"$t = 1, \ldots, T$" + "\n(Time Periods)",
-        shift=-0.1,  # type: ignore[arg-type]
-    )
+    # Hyperpriors / ordered construction -> component parameters
+    pgm.add_edge("mu_log_A", "A_k")
+    pgm.add_edge("sigma_log_A", "A_k")
+    pgm.add_edge("mu_log_n", "n_k")
+    pgm.add_edge("sigma_log_n", "n_k")
+    pgm.add_edge("log_k_base", "k_k")
+    pgm.add_edge("log_k_step", "k_k")
+    pgm.add_edge("stick", "pi_k")
 
-    pgm.add_text(1, y_prior + 0.7, "Adstock\nDecay", fontsize=8)  # type: ignore[arg-type]
-    pgm.add_text(2.5, y_prior + 0.7, "Baseline", fontsize=8)  # type: ignore[arg-type]
-    pgm.add_text(4, y_prior + 0.7, "Trend", fontsize=8)  # type: ignore[arg-type]
-    pgm.add_text(5.5, y_prior + 0.7, "Noise", fontsize=8)  # type: ignore[arg-type]
-    pgm.add_text(7, y_prior + 0.7, "Mixture\nWeights", fontsize=8)  # type: ignore[arg-type]
-    pgm.add_text(7, y_segment + 0.7, "Max\nEffect", fontsize=7)  # type: ignore[arg-type]
-    pgm.add_text(8.5, y_segment + 0.7, "Half-\nSaturation", fontsize=7)  # type: ignore[arg-type]
-    pgm.add_text(10, y_segment + 0.7, "Steepness", fontsize=7)  # type: ignore[arg-type]
-    pgm.add_text(1, y_time - 0.7, "Spend", fontsize=8)  # type: ignore[arg-type]
-    pgm.add_text(2.5, y_time - 0.7, "Adstocked\nSpend", fontsize=7)  # type: ignore[arg-type]
-    pgm.add_text(6.5, y_time, "Hill\nResponse", fontsize=7)  # type: ignore[arg-type]
-    pgm.add_text(5.5, y_outcome - 0.7, "Observed\nOutcome", fontsize=8)  # type: ignore[arg-type]
+    # Component parameters + adstocked spend -> Hill response -> observation
+    pgm.add_edge("s_t", "h_tk")
+    pgm.add_edge("A_k", "h_tk")
+    pgm.add_edge("n_k", "h_tk")
+    pgm.add_edge("k_k", "h_tk")
+    pgm.add_edge("h_tk", "y_t")
+    pgm.add_edge("pi_k", "y_t")
+
+    # Plates with a small overlap so h_{t,k} is indexed by both t and k.
+    pgm.add_plate([4.8, 1.9, 8.0, 2.25], label="", shift=-0.1)  # type: ignore[arg-type]
+    pgm.add_plate([0.35, -0.2, 5.5, 2.95], label="", shift=-0.1)  # type: ignore[arg-type]
+
+    pgm.add_text(0.9, y_top + 0.75, "Adstock\nDecay", fontsize=8)  # type: ignore[arg-type]
+    pgm.add_text(2.2, y_top + 0.75, "Intercept", fontsize=8)  # type: ignore[arg-type]
+    pgm.add_text(3.5, y_top + 0.75, "Trend", fontsize=8)  # type: ignore[arg-type]
+    pgm.add_text(4.8, y_top + 0.75, "Noise", fontsize=8)  # type: ignore[arg-type]
+    pgm.add_text(6.3, y_top + 0.75, "Stick-\nbreaking", fontsize=8)  # type: ignore[arg-type]
+    pgm.add_text(8.45, y_top + 1.0, "Hierarchical priors", fontsize=8)  # type: ignore[arg-type]
+    pgm.add_text(11.15, y_top + 1.0, "Ordered half-saturation", fontsize=8)  # type: ignore[arg-type]
+    pgm.add_text(8.35, 4.35, "Anchored log priors", fontsize=7)  # type: ignore[arg-type]
+    pgm.add_text(10.75, 4.35, "Ordered $k$", fontsize=7)  # type: ignore[arg-type]
+    pgm.add_text(12.2, 4.35, "Mixture weight", fontsize=7)  # type: ignore[arg-type]
+    pgm.add_text(4.95, 4.35, r"$k = 1, \ldots, K$  (component construction)", fontsize=8)  # type: ignore[arg-type]
+    pgm.add_text(0.45, -0.05, r"$t = 1, \ldots, T$  (time periods)", fontsize=8)  # type: ignore[arg-type]
+    pgm.add_text(1.0, y_time - 0.72, "Spend", fontsize=8)  # type: ignore[arg-type]
+    pgm.add_text(2.3, y_time - 0.72, "Adstocked\nspend", fontsize=7)  # type: ignore[arg-type]
+    pgm.add_text(3.8, y_time - 0.72, "Linear\nbaseline", fontsize=7)  # type: ignore[arg-type]
+    pgm.add_text(6.15, y_hill + 0.08, "Hill component", fontsize=7)  # type: ignore[arg-type]
+    pgm.add_text(5.3, y_outcome - 0.68, "Observed\noutcome", fontsize=8)  # type: ignore[arg-type]
 
     pgm.render()
     output_path = output_dir / "fig0_graphical_model.png"
