@@ -204,6 +204,20 @@ MAE     = (1 / T) * sum_t |mu_hat_t - mu_true_t|
 Coverage_90 = fraction of mu_true_t within [q_0.05, q_0.95]
 ```
 
+### 5.3.1 Interpretation for Mixture DGPs
+
+For mixture models, the benchmark intentionally separates two predictive targets:
+
+- **Observed-outcome prediction** asks whether the posterior predictive distribution matches the realized noisy observations `y_t`.
+- **Latent-mean recovery** asks whether the fitted response surface matches the noise-free ground truth `mu_true_t`.
+
+These are not interchangeable in synthetic mixture settings. The DGP samples one latent component per time step, while the fitted mixture model also exposes a marginal soft expectation across components. As a result:
+
+- Posterior predictive `MAPE` on `y_t` is best interpreted as **marginal predictive fit**.
+- Latent-mean `MAPE_mu` is best interpreted as **recovery of the underlying response function**.
+
+The headline K=2 synthetic quality gate uses latent-mean `MAPE_mu` rather than observed-outcome `MAPE`. This keeps the benchmark aligned with the scientific question for the paper: whether the model recovers the underlying heterogeneous Hill response, not whether a single point forecast reproduces the realized per-time latent draw.
+
 ### 5.4 Parameter Recovery
 
 For scalar parameters (alpha, sigma, intercept, slope): checks whether the true value falls within the 95% credible interval.
@@ -303,7 +317,7 @@ After full benchmark completion:
 | 3 DGPs x 3 models | Focuses the headline benchmark on the single, K=2, and K=3 cases used in the paper |
 | T = 200 | Balances statistical power with realistic sample size |
 | Observed-support `k` quantiles for K=2 | Ensures the headline K=2 mixture DGP is identifiable on the spend range that is actually sampled |
-| Latent-mean MAPE gate for K=2 | Aligns the synthetic quality gate with the mixture DGP's noise-free ground truth instead of penalizing latent per-time component draws |
+| Latent-mean MAPE gate for K=2 | Aligns the synthetic quality gate with the mixture DGP's noise-free ground truth instead of conflating response-function recovery with realized latent-regime draws |
 | k-ordering constraint | Resolves label switching in mixture components |
 | Hierarchical priors | Partial pooling prevents component collapse |
 | Non-centered parameterization | Avoids Neal's funnel geometry in hierarchical models |
