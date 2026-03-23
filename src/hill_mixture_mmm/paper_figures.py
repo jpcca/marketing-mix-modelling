@@ -223,100 +223,112 @@ def _lookup_metric(metric_frame: pd.DataFrame, dgp_name: str, model_name: str) -
 
 
 def generate_graphical_model_figure(output_dir: str | Path) -> Path:
-    """Render Figure 0: plate notation for the Hill mixture model."""
-    import daft
+    """Render Figure 0: conceptual overview of the Hill mixture model."""
+    from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    pgm = daft.PGM(dpi=150)
+    fig, ax = plt.subplots(figsize=(11, 6))
+    ax.set_xlim(0, 14)
+    ax.set_ylim(0, 8)
+    ax.axis("off")
 
-    y_top = 5.75
-    y_hyper_mid = 4.85
-    y_component = 3.2
-    y_time = 1.4
-    y_hill = 2.2
-    y_outcome = 0.45
+    edge = "#1f2937"
+    text = "#111827"
+    panel_fill = "#f8fafc"
+    latent_fill = "#ffffff"
+    observed_fill = "#d1d5db"
 
-    # Global scalar parameters
-    pgm.add_node("alpha", r"$\alpha$", 0.9, y_top)
-    pgm.add_node("mu0", r"$\mu_0$", 2.2, y_top)  # type: ignore[arg-type]
-    pgm.add_node("beta", r"$\beta$", 3.5, y_top)
-    pgm.add_node("sigma", r"$\sigma$", 4.8, y_top)
-    pgm.add_node("stick", r"$v_j$", 6.3, y_top)
+    def add_panel(x: float, y: float, w: float, h: float, title: str, subtitle: str) -> None:
+        patch = FancyBboxPatch(
+            (x, y),
+            w,
+            h,
+            boxstyle="round,pad=0.18,rounding_size=0.15",
+            linewidth=1.4,
+            edgecolor=edge,
+            facecolor=panel_fill,
+        )
+        ax.add_patch(patch)
+        ax.text(x + 0.2, y + h - 0.25, title, ha="left", va="top", fontsize=12, color=text, weight="bold")
+        ax.text(x + 0.2, y + h - 0.6, subtitle, ha="left", va="top", fontsize=9, color="#4b5563")
 
-    # Hierarchical / ordered component construction
-    pgm.add_node("mu_log_A", r"$\mu_{\log A}$", 7.8, y_top + 0.15)  # type: ignore[arg-type]
-    pgm.add_node("sigma_log_A", r"$\sigma_{\log A}$", 9.2, y_top + 0.15)  # type: ignore[arg-type]
-    pgm.add_node("mu_log_n", r"$\mu_{\log n}$", 7.2, y_hyper_mid)  # type: ignore[arg-type]
-    pgm.add_node("sigma_log_n", r"$\sigma_{\log n}$", 8.6, y_hyper_mid)  # type: ignore[arg-type]
-    pgm.add_node("log_k_base", r"$\log k_0$", 10.4, y_top + 0.15)  # type: ignore[arg-type]
-    pgm.add_node("log_k_step", r"$\Delta \log k_k$", 11.9, y_top + 0.15)  # type: ignore[arg-type]
+    def add_node(
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        label: str,
+        *,
+        observed: bool = False,
+        fontsize: int = 14,
+    ) -> None:
+        patch = FancyBboxPatch(
+            (x, y),
+            w,
+            h,
+            boxstyle="round,pad=0.05,rounding_size=0.12",
+            linewidth=1.5,
+            edgecolor=edge,
+            facecolor=observed_fill if observed else latent_fill,
+        )
+        ax.add_patch(patch)
+        ax.text(x + w / 2, y + h / 2, label, ha="center", va="center", fontsize=fontsize, color=text)
 
-    # Time-indexed quantities
-    pgm.add_node("x_t", r"$x_t$", 1.0, y_time, observed=True)  # type: ignore[arg-type]
-    pgm.add_node("s_t", r"$s_t$", 2.3, y_time)  # type: ignore[arg-type]
-    pgm.add_node("b_t", r"$b_t$", 3.8, y_time)  # type: ignore[arg-type]
-    pgm.add_node("h_tk", r"$h_{t,k}$", 5.3, y_hill)  # type: ignore[arg-type]
-    pgm.add_node("y_t", r"$y_t$", 5.3, y_outcome, observed=True)  # type: ignore[arg-type]
+    def add_arrow(start: tuple[float, float], end: tuple[float, float]) -> None:
+        arrow = FancyArrowPatch(
+            start,
+            end,
+            arrowstyle="-|>",
+            mutation_scale=12,
+            linewidth=1.6,
+            color=edge,
+            shrinkA=8,
+            shrinkB=8,
+        )
+        ax.add_patch(arrow)
 
-    # Component-indexed quantities
-    pgm.add_node("A_k", r"$A_k$", 7.6, y_component)  # type: ignore[arg-type]
-    pgm.add_node("n_k", r"$n_k$", 9.1, y_component)  # type: ignore[arg-type]
-    pgm.add_node("k_k", r"$k_k$", 10.7, y_component)  # type: ignore[arg-type]
-    pgm.add_node("pi_k", r"$\pi_k$", 12.2, y_component)  # type: ignore[arg-type]
+    add_panel(0.7, 2.0, 4.2, 3.5, "Temporal structure", r"$t = 1, \ldots, T$")
+    add_panel(5.4, 2.0, 3.4, 3.5, "Segment structure", r"$k = 1, \ldots, K$")
+    add_panel(9.3, 2.0, 3.7, 3.5, "Observation model", "Mixture over segment responses")
 
-    # Global -> time
-    pgm.add_edge("x_t", "s_t")
-    pgm.add_edge("alpha", "s_t")
-    pgm.add_edge("mu0", "b_t")
-    pgm.add_edge("beta", "b_t")
-    pgm.add_edge("b_t", "y_t")
-    pgm.add_edge("sigma", "y_t")
+    add_node(1.0, 4.35, 0.9, 0.6, r"$\alpha$")
+    add_node(1.0, 3.2, 1.0, 0.65, r"$x_t$", observed=True)
+    add_node(2.45, 3.2, 1.0, 0.65, r"$s_t$")
+    add_node(3.75, 4.35, 1.25, 0.6, r"$\mu_0,\beta$")
+    add_node(3.95, 2.75, 0.9, 0.65, r"$b_t$")
 
-    # Hyperpriors / ordered construction -> component parameters
-    pgm.add_edge("mu_log_A", "A_k")
-    pgm.add_edge("sigma_log_A", "A_k")
-    pgm.add_edge("mu_log_n", "n_k")
-    pgm.add_edge("sigma_log_n", "n_k")
-    pgm.add_edge("log_k_base", "k_k")
-    pgm.add_edge("log_k_step", "k_k")
-    pgm.add_edge("stick", "pi_k")
+    add_node(6.05, 4.35, 1.1, 0.6, r"$\theta_k$")
+    add_node(5.9, 3.0, 1.4, 0.75, r"$h_{t,k}$")
 
-    # Component parameters + adstocked spend -> Hill response -> observation
-    pgm.add_edge("s_t", "h_tk")
-    pgm.add_edge("A_k", "h_tk")
-    pgm.add_edge("n_k", "h_tk")
-    pgm.add_edge("k_k", "h_tk")
-    pgm.add_edge("h_tk", "y_t")
-    pgm.add_edge("pi_k", "y_t")
+    add_node(9.8, 4.35, 1.0, 0.6, r"$\pi_k$")
+    add_node(11.35, 4.35, 1.0, 0.6, r"$\sigma$")
+    add_node(10.5, 3.0, 1.25, 0.75, r"$y_t$", observed=True)
 
-    # Plates with a small overlap so h_{t,k} is indexed by both t and k.
-    pgm.add_plate([4.8, 1.9, 8.0, 2.25], label="", shift=-0.1)  # type: ignore[arg-type]
-    pgm.add_plate([0.35, -0.2, 5.5, 2.95], label="", shift=-0.1)  # type: ignore[arg-type]
+    add_arrow((1.45, 4.35), (2.95, 3.55))
+    add_arrow((2.0, 3.52), (2.45, 3.52))
+    add_arrow((3.45, 3.52), (5.9, 3.38))
+    add_arrow((4.38, 4.35), (4.38, 3.35))
+    add_arrow((4.85, 3.05), (10.5, 3.3))
+    add_arrow((6.6, 4.35), (6.6, 3.75))
+    add_arrow((7.3, 3.38), (10.5, 3.38))
+    add_arrow((10.3, 4.35), (11.0, 3.75))
+    add_arrow((11.85, 4.35), (11.25, 3.75))
 
-    pgm.add_text(0.9, y_top + 0.75, "Adstock\nDecay", fontsize=8)  # type: ignore[arg-type]
-    pgm.add_text(2.2, y_top + 0.75, "Intercept", fontsize=8)  # type: ignore[arg-type]
-    pgm.add_text(3.5, y_top + 0.75, "Trend", fontsize=8)  # type: ignore[arg-type]
-    pgm.add_text(4.8, y_top + 0.75, "Noise", fontsize=8)  # type: ignore[arg-type]
-    pgm.add_text(6.3, y_top + 0.75, "Stick-\nbreaking", fontsize=8)  # type: ignore[arg-type]
-    pgm.add_text(8.45, y_top + 1.0, "Hierarchical priors", fontsize=8)  # type: ignore[arg-type]
-    pgm.add_text(11.15, y_top + 1.0, "Ordered half-saturation", fontsize=8)  # type: ignore[arg-type]
-    pgm.add_text(8.35, 4.35, "Anchored log priors", fontsize=7)  # type: ignore[arg-type]
-    pgm.add_text(10.75, 4.35, "Ordered $k$", fontsize=7)  # type: ignore[arg-type]
-    pgm.add_text(12.2, 4.35, "Mixture weight", fontsize=7)  # type: ignore[arg-type]
-    pgm.add_text(4.95, 4.35, r"$k = 1, \ldots, K$  (component construction)", fontsize=8)  # type: ignore[arg-type]
-    pgm.add_text(0.45, -0.05, r"$t = 1, \ldots, T$  (time periods)", fontsize=8)  # type: ignore[arg-type]
-    pgm.add_text(1.0, y_time - 0.72, "Spend", fontsize=8)  # type: ignore[arg-type]
-    pgm.add_text(2.3, y_time - 0.72, "Adstocked\nspend", fontsize=7)  # type: ignore[arg-type]
-    pgm.add_text(3.8, y_time - 0.72, "Linear\nbaseline", fontsize=7)  # type: ignore[arg-type]
-    pgm.add_text(6.15, y_hill + 0.08, "Hill component", fontsize=7)  # type: ignore[arg-type]
-    pgm.add_text(5.3, y_outcome - 0.68, "Observed\noutcome", fontsize=8)  # type: ignore[arg-type]
+    ax.text(1.45, 2.55, "spend", ha="center", fontsize=10, color="#374151")
+    ax.text(2.95, 2.55, "geometric adstock", ha="center", fontsize=10, color="#374151")
+    ax.text(4.4, 2.1, "linear baseline", ha="center", fontsize=10, color="#374151")
+    ax.text(6.6, 2.55, r"segment parameters $(A_k, k_k, n_k)$", ha="center", fontsize=10, color="#374151")
+    ax.text(6.6, 2.22, "Hill response for segment k", ha="center", fontsize=10, color="#374151")
+    ax.text(10.3, 2.55, "stick-breaking weights", ha="center", fontsize=10, color="#374151")
+    ax.text(11.85, 2.55, "Gaussian noise", ha="center", fontsize=10, color="#374151")
+    ax.text(11.1, 2.2, r"$y_t \sim \sum_k \pi_k \,\mathcal{N}(b_t + h_{t,k}, \sigma^2)$", ha="center", fontsize=10, color=text)
 
-    pgm.render()
+    fig.tight_layout()
     output_path = output_dir / "fig0_graphical_model.png"
-    plt.savefig(output_path, dpi=300, bbox_inches="tight")
-    plt.close("all")
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
     return output_path
 
 
