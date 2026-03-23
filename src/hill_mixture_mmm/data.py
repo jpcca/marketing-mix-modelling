@@ -6,7 +6,6 @@ fair model evaluation:
 1. single: Single Hill curve (tests overfitting)
 2. mixture_k2: 2-component mixture
 3. mixture_k3: 3-component mixture
-4. mixture_k5: 5-component mixture (tests sparse discovery)
 
 The benchmark-facing mixture DGPs anchor their half-saturation points to
 quantiles of the realized adstocked spend support. This keeps the synthetic
@@ -28,7 +27,7 @@ from .transforms import adstock_geometric, hill, hill_matrix
 class DGPConfig:
     """Configuration for data generating process."""
 
-    dgp_type: Literal["single", "mixture_k2", "mixture_k3", "mixture_k5"]
+    dgp_type: Literal["single", "mixture_k2", "mixture_k3"]
     T: int = 200
     sigma: float = 3.0
     alpha: float = 0.5  # adstock decay
@@ -45,7 +44,6 @@ DGP_CONFIGS = {
     "single": DGPConfig(dgp_type="single"),
     "mixture_k2": DGPConfig(dgp_type="mixture_k2"),
     "mixture_k3": DGPConfig(dgp_type="mixture_k3"),
-    "mixture_k5": DGPConfig(dgp_type="mixture_k5"),
 }
 
 A_PRIOR_RANGE_FRACTION = 0.5
@@ -82,8 +80,6 @@ def generate_data(config: DGPConfig) -> tuple[np.ndarray, np.ndarray, dict]:
         return _generate_mixture(config, K=2)
     elif config.dgp_type == "mixture_k3":
         return _generate_mixture(config, K=3)
-    elif config.dgp_type == "mixture_k5":
-        return _generate_mixture(config, K=5)
     else:
         raise ValueError(f"Unknown DGP type: {config.dgp_type}")
 
@@ -168,23 +164,6 @@ def _generate_mixture(config: DGPConfig, K: int) -> tuple[np.ndarray, np.ndarray
         k_true = np.array([s_median * 0.4, s_median * 1.0, s_median * 1.8], dtype=np.float32)
         A_true = np.array([15.0, 30.0, 60.0], dtype=np.float32)
         n_true = np.array([2.0, 1.5, 1.0], dtype=np.float32)
-
-    elif K == 5:
-        pi_true = np.array([0.30, 0.25, 0.20, 0.15, 0.10], dtype=np.float32)
-        # The three highest-effect components are intentionally spread out on the
-        # observed spend scale so identifiability checks are not driven by near-ties.
-        k_true = np.array(
-            [
-                s_median * 0.3,
-                s_median * 0.55,
-                s_median * 0.95,
-                s_median * 2.8,
-                s_median * 4.0,
-            ],
-            dtype=np.float32,
-        )
-        A_true = np.array([10.0, 20.0, 38.0, 55.0, 95.0], dtype=np.float32)
-        n_true = np.array([2.5, 2.0, 1.7, 1.2, 0.75], dtype=np.float32)
 
     else:
         raise ValueError(f"Unsupported K={K}")

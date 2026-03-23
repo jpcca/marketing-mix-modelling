@@ -1,5 +1,7 @@
 # Hierarchical Hyperprior Design for Hill Mixture MMM
 
+> Historical note: This design memo predates the March 2026 benchmark refresh. Predictive comparisons in this file use earlier RMSE-era summaries and should not be read as the current benchmark standard.
+
 **Date**: 2026-02-05  
 **Status**: LogNormal hyperpriors validated, production-ready
 

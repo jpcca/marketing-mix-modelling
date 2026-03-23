@@ -1,5 +1,7 @@
 # Hill Mixture MMM Validation Summary Report
 
+> Historical note: This report predates the March 2026 synthetic benchmark refresh. It reflects earlier synthetic DGP parameters and RMSE-centered validation summaries, and should be treated as implementation history rather than the current benchmark specification.
+
 **Date**: 2026-02-06  
 **Status**: Comprehensive validation completed  
 **Key Finding**: Mixture K=2 converges on real data; K=3 does not

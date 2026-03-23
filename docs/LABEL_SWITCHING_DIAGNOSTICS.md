@@ -1,5 +1,7 @@
 # Label Switching and Convergence Diagnostics for Mixture Models
 
+> Historical note: This document is still useful for diagnostic implementation details, but its predictive examples were written before the March 2026 synthetic benchmark refresh and use earlier RMSE-based summaries.
+
 **Date**: 2026-02-06 (Updated)  
 **Status**: Label-invariant diagnostics implemented and validated
 

@@ -1,5 +1,7 @@
 # Hill Mixture MMM Convergence Experiments - Handover Document
 
+> Historical note: This handover memo summarizes earlier convergence experiments. It references pre-refresh benchmark settings, including `mixture_k5`, and should be treated as historical context rather than current benchmark guidance.
+
 **Date**: 2026-02-05  
 **Status**: Preliminary experiments completed, robust validation needed
 

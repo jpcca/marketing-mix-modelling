@@ -1,5 +1,7 @@
 # Real Data Validation Progress Report
 
+> Historical note: This progress log predates the current paper-facing synthetic benchmark. It retains earlier RMSE-based checkpoints and exploratory real-data notes for implementation history only.
+
 ## Summary
 
 This document tracks progress on validating Hill mixture MMM models using real Conjura eCommerce dataset.

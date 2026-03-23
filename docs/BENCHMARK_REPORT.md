@@ -1,5 +1,7 @@
 # Benchmark Evaluation for Hill Mixture MMM
 
+> Historical note: This report is kept for experiment history. It predates the March 2026 synthetic benchmark refresh, uses RMSE-era summaries, and includes `mixture_k5` / `sparse_k5` configurations that are no longer part of the default headline benchmark. Do not use it for current paper claims.
+
 ## Abstract
 This report summarizes one full benchmark execution of Hill Mixture MMM, run on **February 7, 2026** (timestamp: `20260207_061725`). The goal is to evaluate predictive performance and inferential reliability under the same protocol for synthetic and real MMM data.
 

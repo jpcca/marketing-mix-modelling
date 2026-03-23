@@ -1,5 +1,7 @@
 # HalfNormal Hyperprior Convergence Experiments
 
+> Historical note: This experiment memo predates the March 2026 benchmark refresh and is retained for prior-design history. Any predictive metrics here reflect earlier RMSE-era validation runs.
+
 **Session Reference**: 240ae953-da14-40d4-a722-137f211ba976  
 **Date**: 2026-02-05  
 **Status**: Completed - Led to LogNormal solution

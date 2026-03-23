@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-The default synthetic benchmark evaluates two model families against three Data Generating Processes (DGPs) in a fully crossed design. Each cell of the DGP x Model matrix is run across multiple random seeds to assess robustness. The benchmark is implemented as a pytest test suite (`tests/test_benchmark_synthetic.py`) with two tiers: **smoke** (single seed) and **full** (multi-seed). The older `mixture_k5` DGP is retained as an auxiliary stress test for sparse discovery, but it is no longer part of the default benchmark matrix.
+The default synthetic benchmark evaluates two model families against three Data Generating Processes (DGPs) in a fully crossed design. Each cell of the DGP x Model matrix is run across multiple random seeds to assess robustness. The benchmark is implemented as a pytest test suite (`tests/test_benchmark_synthetic.py`) with two tiers: **smoke** (single seed) and **full** (multi-seed).
 
 ```
 Default test matrix:  3 DGPs  x  3 Models  x  {1, 5} seeds  =  {9, 45} cells
@@ -64,18 +64,6 @@ Three-component mixture. Tests recovery with more components.
 
 The K=3 case remains the harder benchmark with partial overlap between neighboring components.
 
-### 2.4 Mixture K=5 (`mixture_k5`)
-
-Five-component mixture. Tests sparse component discovery with a long tail of small-weight components. This DGP is kept for auxiliary recovery checks and is not included in the default benchmark matrix.
-
-| Component | pi   | A    | k / median(s) | n    |
-|-----------|------|------|---------------|------|
-| 1         | 0.30 | 10.0 | 0.30          | 2.5  |
-| 2         | 0.25 | 20.0 | 0.55          | 2.0  |
-| 3         | 0.20 | 38.0 | 0.95          | 1.7  |
-| 4         | 0.15 | 55.0 | 2.80          | 1.2  |
-| 5         | 0.10 | 95.0 | 4.00          | 0.75 |
-
 All DGPs use T = 200 observations and sigma = 3.0.
 
 For `mixture_k2`, the half-saturation points are tied to quantiles of the realized adstocked spend support instead of fixed multiples of `median(s)`. This makes the headline K=2 benchmark easier to justify in the paper: the DGP is intentionally identifiable on the support that is actually observed, rather than only on a hypothetical wider spend range.
@@ -98,9 +86,9 @@ sigma ~ HalfNormal(sigma_scale)
 y_t   = baseline_t + A * s_t^n / (k^n + s_t^n) + eps_t
 ```
 
-### 3.2 Hierarchical Mixture (`mixture_k2`, `mixture_k3`, `mixture_k5`)
+### 3.2 Hierarchical Mixture (`mixture_k2`, `mixture_k3`)
 
-All mixture variants use the same model function with K in {2, 3, 5}.
+All mixture variants use the same model function with K in {2, 3}.
 
 **Mixture weights** (stick-breaking):
 
@@ -151,14 +139,14 @@ Key reparameterizations applied: `LocScaleReparam(centered=0)` on intercept, slo
 
 ## 4. Inference Configuration
 
-| Setting          | Single Hill | Mixture (K=2,3) | Mixture (K=5) | Exception                     |
-|------------------|-------------|-----------------|---------------|-------------------------------|
-| Warmup           | 400         | 450             | 500           | Single on K3/K5 DGP: 500     |
-| Samples          | = warmup    | = warmup        | 500           |                               |
-| Chains           | 2           | 2               | 2             | Env var `HILL_MMM_SYNTHETIC_CHAINS` |
-| Target accept    | 0.90        | 0.90            | 0.90          |                               |
-| Max tree depth   | 10          | 10              | 10            |                               |
-| Train/test split | 75% / 25%   | 75% / 25%       | 75% / 25%     |                               |
+| Setting          | Single Hill | Mixture (K=2,3) | Exception                          |
+|------------------|-------------|-----------------|------------------------------------|
+| Warmup           | 400         | 450             | Single on K3 DGP: 500              |
+| Samples          | = warmup    | = warmup        |                                    |
+| Chains           | 2           | 2               | Env var `HILL_MMM_SYNTHETIC_CHAINS` |
+| Target accept    | 0.90        | 0.90            |                                    |
+| Max tree depth   | 10          | 10              |                                    |
+| Train/test split | 75% / 25%   | 75% / 25%       |                                    |
 
 **Seeds**: Smoke = `[0]`, Full = `[0, 1, 2, 3, 4]`.
 
