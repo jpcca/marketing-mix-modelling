@@ -88,7 +88,7 @@ def _synthetic_run_config(dgp_name: str, model_name: str, seed: int) -> Benchmar
     """Return an inference configuration suitable for one synthetic benchmark cell."""
     num_chains = int(os.getenv("HILL_MMM_SYNTHETIC_CHAINS", "2"))
     if model_name == "single_hill":
-        warmup = 500 if dgp_name == "mixture_k3" else 400
+        warmup = 800 if dgp_name == "mixture_k3" else 600
         samples = warmup
         return BenchmarkRunConfig(
             seed=seed,
@@ -98,8 +98,8 @@ def _synthetic_run_config(dgp_name: str, model_name: str, seed: int) -> Benchmar
             progress_bar=False,
         )
 
-    warmup = 450
-    samples = 450
+    warmup = 1200 if model_name == "mixture_k3" else 900
+    samples = warmup
 
     return BenchmarkRunConfig(
         seed=seed,

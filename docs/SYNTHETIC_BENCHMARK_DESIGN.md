@@ -139,14 +139,14 @@ Key reparameterizations applied: `LocScaleReparam(centered=0)` on intercept, slo
 
 ## 4. Inference Configuration
 
-| Setting          | Single Hill | Mixture (K=2,3) | Exception                          |
-|------------------|-------------|-----------------|------------------------------------|
-| Warmup           | 400         | 450             | Single on K3 DGP: 500              |
-| Samples          | = warmup    | = warmup        |                                    |
-| Chains           | 2           | 2               | Env var `HILL_MMM_SYNTHETIC_CHAINS` |
-| Target accept    | 0.90        | 0.90            |                                    |
-| Max tree depth   | 10          | 10              |                                    |
-| Train/test split | 75% / 25%   | 75% / 25%       |                                    |
+| Setting          | Single Hill | Mixture K=2     | Mixture K=3     | Exception                          |
+|------------------|-------------|-----------------|-----------------|------------------------------------|
+| Warmup           | 600         | 900             | 1200            | Single on K3 DGP: 800              |
+| Samples          | = warmup    | = warmup        | = warmup        |                                    |
+| Chains           | 2           | 2               | 2               | Env var `HILL_MMM_SYNTHETIC_CHAINS` |
+| Target accept    | 0.90        | 0.90            | 0.90            |                                    |
+| Max tree depth   | 10          | 10              | 10              |                                    |
+| Train/test split | 75% / 25%   | 75% / 25%       | 75% / 25%       |                                    |
 
 **Seeds**: Smoke = `[0]`, Full = `[0, 1, 2, 3, 4]`.
 
