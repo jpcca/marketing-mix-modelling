@@ -294,7 +294,7 @@ Per DGP x Model (full only):
 
 After full benchmark completion:
 
-- Publication figures (`fig0`--`fig3`, `fig5`) regenerated from fresh summaries
+- Publication figures (`fig0`--`fig4`) regenerated from fresh summaries
 
 ---
 

@@ -34,7 +34,7 @@ COLORS = {
     "mixture_k2": "#9467bd",
     "mixture_k3": "#ff7f0e",
 }
-DEFAULT_FIGURE_IDS = ("fig0", "fig1", "fig2", "fig3", "fig5")
+DEFAULT_FIGURE_IDS = ("fig0", "fig1", "fig2", "fig3", "fig4")
 RHAT_TEST_PASS_MAX = 1.05
 
 plt.rcParams.update(
@@ -349,63 +349,66 @@ def generate_elpd_comparison_figure(df: pd.DataFrame, output_dir: str | Path) ->
     return output_path
 
 
-def generate_elpd_delta_figure(df: pd.DataFrame, output_dir: str | Path) -> Path:
-    """Render Figure 2: ELPD improvement over the single-Hill baseline."""
+def generate_mape_comparison_figure(df: pd.DataFrame, output_dir: str | Path) -> Path:
+    """Render Figure 2: holdout test MAPE comparison across DGPs and models."""
     output_dir = Path(output_dir)
-    metric_frame = _metric_frame(df, "elpd_loo")
+    metric_frame = _metric_frame(df, "test_mape")
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    y_pos = 0.0
-    y_ticks: list[float] = []
-    y_labels: list[str] = []
+    fig, ax = plt.subplots(figsize=(10, 6))
+    x = np.arange(len(DGP_ORDER))
+    width = min(0.28, 0.8 / max(len(MODEL_ORDER), 1))
 
-    for dgp_name in DGP_ORDER:
-        baseline_mean, _ = _lookup_metric(metric_frame, dgp_name, "single_hill")
-        if np.isnan(baseline_mean):
-            continue
-
-        for model_name in [name for name in MODEL_ORDER if name != "single_hill"]:
+    max_height = 0.0
+    for idx, model_name in enumerate(MODEL_ORDER):
+        means: list[float] = []
+        stds: list[float] = []
+        for dgp_name in DGP_ORDER:
             mean, std = _lookup_metric(metric_frame, dgp_name, model_name)
-            if np.isnan(mean):
-                continue
+            means.append(mean)
+            stds.append(std)
+            if not np.isnan(mean):
+                max_height = max(max_height, mean + (0.0 if np.isnan(std) else std))
 
-            delta = mean - baseline_mean
-            ax.barh(
-                y_pos,
-                delta,
-                xerr=0.0 if np.isnan(std) else std,
-                color=COLORS[model_name],
-                alpha=0.8,
-                capsize=3,
-                height=0.6,
-            )
-            y_ticks.append(y_pos)
-            y_labels.append(f"{DGP_LABELS[dgp_name]}\n{MODEL_LABELS[model_name]}")
-            y_pos += 1.0
+        offset = (idx - (len(MODEL_ORDER) - 1) / 2) * width
+        ax.bar(
+            x + offset,
+            means,
+            width,
+            yerr=stds,
+            label=MODEL_LABELS[model_name],
+            color=COLORS[model_name],
+            capsize=3,
+            alpha=0.85,
+            edgecolor="white",
+            linewidth=0.5,
+        )
 
-        y_pos += 0.5
-
-    ax.axvline(x=0, color="black", linewidth=1)
-    ax.set_yticks(y_ticks)
-    ax.set_yticklabels(y_labels, fontsize=9)
-    ax.set_xlabel("ΔELPD-LOO (vs Single Hill)\n(Error bars: ±1 SD across seeds)")
-    ax.set_title("ELPD Improvement Over Single Hill Baseline")
-
-    left, right = ax.get_xlim()
-    ax.axvspan(0, right, alpha=0.1, color="green")
-    ax.axvspan(left, 0, alpha=0.1, color="red")
-    ax.text(right * 0.7, max(y_pos - 1.0, 0.0), "Better", fontsize=10, color="green")
-    ax.text(left * 0.7, max(y_pos - 1.0, 0.0), "Worse", fontsize=10, color="red")
+    ax.set_xlabel("Data Generating Process")
+    ax.set_ylabel("Test MAPE (%)")
+    ax.set_title("Model Comparison: Holdout Test MAPE (Lower Is Better)")
+    ax.set_xticks(x)
+    ax.set_xticklabels([DGP_LABELS[dgp_name] for dgp_name in DGP_ORDER])
+    ax.legend(title="Model")
+    ax.set_ylim(0, max(1.0, max_height * 1.15))
+    ax.annotate(
+        "Lower is better; error bars: ±1 std across random seeds",
+        xy=(0.98, 0.94),
+        xycoords="axes fraction",
+        ha="right",
+        va="top",
+        fontsize=8,
+        color="gray",
+    )
 
     plt.tight_layout()
-    output_path = output_dir / "fig2_elpd_delta.png"
+    output_path = output_dir / "fig2_mape_comparison.png"
     fig.savefig(output_path)
     plt.close(fig)
     return output_path
 
 
 def generate_convergence_heatmap_figure(df: pd.DataFrame, output_dir: str | Path) -> Path:
-    """Render Figure 3: R-hat pass-rate heatmap by DGP and model."""
+    """Render Figure 4: R-hat pass-rate heatmap by DGP and model."""
     output_dir = Path(output_dir)
     convergence = _compute_rhat_test_pass(df)
     conv_rates = (
@@ -446,14 +449,14 @@ def generate_convergence_heatmap_figure(df: pd.DataFrame, output_dir: str | Path
     ax.set_title("R-hat Threshold Pass Rate by DGP and Model")
 
     plt.tight_layout()
-    output_path = output_dir / "fig3_convergence_heatmap.png"
+    output_path = output_dir / "fig4_convergence_heatmap.png"
     fig.savefig(output_path)
     plt.close(fig)
     return output_path
 
 
 def generate_coverage_figure(df: pd.DataFrame, output_dir: str | Path) -> Path:
-    """Render Figure 5: train/test 90% interval coverage."""
+    """Render Figure 3: train/test 90% interval coverage."""
     output_dir = Path(output_dir)
     coverage = (
         df.groupby(["dgp", "model"], as_index=False)
@@ -524,7 +527,7 @@ def generate_coverage_figure(df: pd.DataFrame, output_dir: str | Path) -> Path:
     )
 
     plt.tight_layout()
-    output_path = output_dir / "fig5_coverage.png"
+    output_path = output_dir / "fig3_coverage_comparison.png"
     fig.savefig(output_path)
     plt.close(fig)
     return output_path
@@ -563,9 +566,9 @@ def generate_publication_figures(
 
     generators = {
         "fig1": generate_elpd_comparison_figure,
-        "fig2": generate_elpd_delta_figure,
-        "fig3": generate_convergence_heatmap_figure,
-        "fig5": generate_coverage_figure,
+        "fig2": generate_mape_comparison_figure,
+        "fig3": generate_coverage_figure,
+        "fig4": generate_convergence_heatmap_figure,
     }
     for figure_id in data_figures:
         generated[figure_id] = generators[figure_id](df, output_dir)
@@ -580,7 +583,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output-dir",
         type=Path,
         default=Path("paper/figures"),
-        help="Directory to receive fig0/1/2/3/5 outputs.",
+        help="Directory to receive fig0/1/2/3/4 outputs.",
     )
     parser.add_argument(
         "--results-csv",
