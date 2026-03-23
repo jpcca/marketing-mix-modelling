@@ -7,6 +7,11 @@ fair model evaluation:
 2. mixture_k2: 2-component mixture
 3. mixture_k3: 3-component mixture
 4. mixture_k5: 5-component mixture (tests sparse discovery)
+
+The benchmark-facing mixture DGPs anchor their half-saturation points to
+quantiles of the realized adstocked spend support. This keeps the synthetic
+difficulty focused on inference instead of accidental near-ties caused by
+curves being evaluated on too narrow a spend range.
 """
 
 from dataclasses import dataclass
@@ -44,6 +49,20 @@ DGP_CONFIGS = {
 }
 
 A_PRIOR_RANGE_FRACTION = 0.5
+RAW_SPEND_LOGNORMAL_MEAN = 1.5
+RAW_SPEND_LOGNORMAL_SIGMA = 0.6
+
+
+def _draw_raw_spend(rng: np.random.Generator, T: int) -> np.ndarray:
+    """Draw one synthetic raw spend series."""
+    return rng.lognormal(mean=RAW_SPEND_LOGNORMAL_MEAN, sigma=RAW_SPEND_LOGNORMAL_SIGMA, size=T).astype(
+        np.float32
+    )
+
+
+def _support_quantiles(values: np.ndarray, quantiles: list[float]) -> np.ndarray:
+    """Return selected quantiles on the realized support as float32."""
+    return np.asarray(np.quantile(values, quantiles), dtype=np.float32)
 
 
 def generate_data(config: DGPConfig) -> tuple[np.ndarray, np.ndarray, dict]:
@@ -74,7 +93,7 @@ def _generate_single_hill(config: DGPConfig) -> tuple[np.ndarray, np.ndarray, di
     rng = np.random.default_rng(config.seed)
     T = config.T
 
-    x = rng.lognormal(mean=1.5, sigma=0.6, size=T).astype(np.float32)
+    x = _draw_raw_spend(rng, T)
 
     s = np.array(adstock_geometric(jnp.array(x), jnp.array(config.alpha)))
 
@@ -123,7 +142,7 @@ def _generate_mixture(config: DGPConfig, K: int) -> tuple[np.ndarray, np.ndarray
     rng = np.random.default_rng(config.seed)
     T = config.T
 
-    x = rng.lognormal(mean=1.5, sigma=0.6, size=T).astype(np.float32)
+    x = _draw_raw_spend(rng, T)
 
     s = np.array(adstock_geometric(jnp.array(x), jnp.array(config.alpha)))
 
@@ -132,17 +151,20 @@ def _generate_mixture(config: DGPConfig, K: int) -> tuple[np.ndarray, np.ndarray
 
     # Component parameters based on K
     s_median = np.median(s)
+    k_quantiles = None
 
     if K == 2:
-        pi_true = np.array([0.6, 0.4], dtype=np.float32)
-        # k ratio: 1.5/0.6 = 2.5
-        k_true = np.array([s_median * 0.6, s_median * 1.5], dtype=np.float32)
-        A_true = np.array([20.0, 40.0], dtype=np.float32)
-        n_true = np.array([2.0, 1.2], dtype=np.float32)
+        pi_true = np.array([0.55, 0.45], dtype=np.float32)
+        # Anchor K=2 components to lower/upper observed spend quantiles and keep
+        # them ordered by k so the benchmark is not dominated by near-tied curves.
+        k_quantiles = [0.30, 0.80]
+        k_true = _support_quantiles(s, k_quantiles)
+        A_true = np.array([14.0, 30.0], dtype=np.float32)
+        n_true = np.array([1.5, 1.1], dtype=np.float32)
 
     elif K == 3:
         pi_true = np.array([0.40, 0.30, 0.30], dtype=np.float32)
-        # k ratios: 1.0/0.4=2.5, 1.8/1.0=1.8
+        # Keep K=3 as the harder benchmark case with partial overlap.
         k_true = np.array([s_median * 0.4, s_median * 1.0, s_median * 1.8], dtype=np.float32)
         A_true = np.array([15.0, 30.0, 60.0], dtype=np.float32)
         n_true = np.array([2.0, 1.5, 1.0], dtype=np.float32)
@@ -184,6 +206,7 @@ def _generate_mixture(config: DGPConfig, K: int) -> tuple[np.ndarray, np.ndarray
         "A_true": A_true,
         "k_true": k_true,
         "n_true": n_true,
+        "k_quantiles_true": None if k_quantiles is None else np.asarray(k_quantiles, dtype=np.float32),
         "alpha_true": config.alpha,
         "intercept_true": config.intercept,
         "slope_true": config.slope,

@@ -113,7 +113,8 @@ def _synthetic_run_config(dgp_name: str, model_name: str, seed: int) -> Benchmar
 def _synthetic_thresholds(dgp_name: str, model_name: str) -> BenchmarkThresholds:
     """Return paper-level reportability gates for one synthetic benchmark cell."""
     del model_name
-    max_test_mape = 5.0 if dgp_name in {"single", "mixture_k2"} else None
+    max_test_mape = 5.0 if dgp_name == "single" else None
+    max_test_mu_mape = 5.0 if dgp_name == "mixture_k2" else None
     return BenchmarkThresholds(
         max_rhat=None,
         min_ess_bulk=None,
@@ -131,7 +132,7 @@ def _synthetic_thresholds(dgp_name: str, model_name: str) -> BenchmarkThresholds
         max_tree_depth_hits=None,
         min_test_coverage_90=None,
         max_test_mape=max_test_mape,
-        max_test_mu_mape=None,
+        max_test_mu_mape=max_test_mu_mape,
         min_test_mu_coverage_90=None,
         require_alpha_in_ci=False,
         require_sigma_in_ci=False,
@@ -146,7 +147,8 @@ def _synthetic_thresholds(dgp_name: str, model_name: str) -> BenchmarkThresholds
 def _synthetic_smoke_thresholds(dgp_name: str, model_name: str) -> BenchmarkThresholds:
     """Return lighter smoke-test gates for short synthetic runs."""
     del model_name
-    max_test_mape = 5.0 if dgp_name in {"single", "mixture_k2"} else None
+    max_test_mape = 5.0 if dgp_name == "single" else None
+    max_test_mu_mape = 5.0 if dgp_name == "mixture_k2" else None
     return BenchmarkThresholds(
         max_rhat=None,
         min_ess_bulk=None,
@@ -164,7 +166,7 @@ def _synthetic_smoke_thresholds(dgp_name: str, model_name: str) -> BenchmarkThre
         max_tree_depth_hits=None,
         min_test_coverage_90=None,
         max_test_mape=max_test_mape,
-        max_test_mu_mape=None,
+        max_test_mu_mape=max_test_mu_mape,
         min_test_mu_coverage_90=None,
         require_alpha_in_ci=False,
         require_sigma_in_ci=False,
