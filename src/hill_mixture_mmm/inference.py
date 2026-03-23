@@ -230,24 +230,27 @@ def compute_hmc_diagnostics(
 
 
 def compute_predictive_metrics(y_true: np.ndarray, y_samples: np.ndarray) -> dict[str, float]:
-    """Compute RMSE and coverage metrics.
+    """Compute MAPE and coverage metrics.
 
     Args:
         y_true: (T,) true observations
         y_samples: (n_samples, T) posterior predictive samples
 
     Returns:
-        Dict with rmse, coverage_90, mean predictions
+        Dict with mape (percentage points), coverage_90, and predictive summaries
     """
+    y_true = np.asarray(y_true, dtype=np.float64)
+    y_samples = np.asarray(y_samples, dtype=np.float64)
     y_pred_mean = y_samples.mean(axis=0)
     q05 = np.quantile(y_samples, 0.05, axis=0)
     q95 = np.quantile(y_samples, 0.95, axis=0)
 
-    rmse = float(np.sqrt(np.mean((y_pred_mean - y_true) ** 2)))
+    denom = np.maximum(np.abs(y_true), 1e-8)
+    mape = float(np.mean(np.abs((y_pred_mean - y_true) / denom)) * 100.0)
     coverage = float(np.mean((y_true >= q05) & (y_true <= q95)))
 
     return {
-        "rmse": rmse,
+        "mape": mape,
         "coverage_90": coverage,
         "y_pred_mean": y_pred_mean,
         "q05": q05,

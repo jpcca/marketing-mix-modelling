@@ -77,7 +77,6 @@ MODEL_SPECS = [
     ModelSpec("single_hill", model_single_hill, {}),
     ModelSpec("mixture_k2", model_hill_mixture_hierarchical_reparam, {"K": 2}),
     ModelSpec("mixture_k3", model_hill_mixture_hierarchical_reparam, {"K": 3}),
-    ModelSpec("mixture_k5", model_hill_mixture_hierarchical_reparam, {"K": 5}),
 ]
 
 
@@ -310,12 +309,12 @@ def run_single_experiment(
         "elpd_waic": waic.get("elpd_waic"),
         "waic_se": waic.get("se"),
         # Predictive
-        "train_rmse": train_metrics["rmse"],
-        "test_rmse": test_metrics["rmse"],
+        "train_mape": train_metrics["mape"],
+        "test_mape": test_metrics["mape"],
         "train_coverage_90": train_metrics["coverage_90"],
         "test_coverage_90": test_metrics["coverage_90"],
-        "train_mu_rmse": train_latent["rmse"],
-        "test_mu_rmse": test_latent["rmse"],
+        "train_mu_mape": train_latent["mape"],
+        "test_mu_mape": test_latent["mape"],
         "train_mu_coverage_90": train_latent["coverage_90"],
         "test_mu_coverage_90": test_latent["coverage_90"],
         # Effective K
@@ -458,11 +457,11 @@ def summarize_benchmark(df: pd.DataFrame) -> pd.DataFrame:
         "strict_converged",
         "converged",
         "elpd_loo",
-        "test_rmse",
-        "train_rmse",
+        "test_mape",
+        "train_mape",
         "test_coverage_90",
-        "test_mu_rmse",
-        "train_mu_rmse",
+        "test_mu_mape",
+        "train_mu_mape",
         "test_mu_coverage_90",
         "effective_k_mean",
         "alpha_in_ci",
@@ -494,21 +493,21 @@ def print_benchmark_table(df: pd.DataFrame) -> None:
         dgp_data = df[df["dgp"] == dgp]
 
         print(
-            f"{'Model':<15} {'LOO':>10} {'Test RMSE':>12} {'Cov 90%':>10} {'Eff K':>8} {'\u0394LOO':>10}"
+            f"{'Model':<15} {'LOO':>10} {'Test MAPE':>12} {'Cov 90%':>10} {'Eff K':>8} {'\u0394LOO':>10}"
         )
         print("-" * 60)
 
         for model in dgp_data["model"].unique():  # type: ignore[union-attr]
             model_data = dgp_data[dgp_data["model"] == model]
             loo = model_data["elpd_loo"].mean()
-            test_rmse = model_data["test_rmse"].mean()
+            test_mape = model_data["test_mape"].mean()
             cov = model_data["test_coverage_90"].mean()
             eff_k = model_data["effective_k_mean"].mean()
             delta = model_data["delta_loo"].mean()
 
             delta_str = f"{delta:+.1f}" if not pd.isna(delta) else "N/A"  # type: ignore[arg-type]
             print(
-                f"{model:<15} {loo:>10.1f} {test_rmse:>12.3f} "
+                f"{model:<15} {loo:>10.1f} {test_mape:>12.3f} "
                 f"{cov:>10.1%} {eff_k:>8.2f} {delta_str:>10}"
             )
 
@@ -600,9 +599,9 @@ class BenchmarkConfig:
 def get_default_config() -> BenchmarkConfig:
     """Get default full experiment configuration."""
     return BenchmarkConfig(
-        # Synthetic: 4 DGPs x 4 models x 5 seeds = 80 experiments
-        synthetic_dgps=["single", "mixture_k2", "mixture_k3", "mixture_k5"],
-        synthetic_models=["single_hill", "mixture_k2", "mixture_k3", "mixture_k5"],
+        # Synthetic: 3 DGPs x 3 models x 5 seeds = 45 experiments
+        synthetic_dgps=["single", "mixture_k2", "mixture_k3"],
+        synthetic_models=["single_hill", "mixture_k2", "mixture_k3"],
         synthetic_seeds=[0, 1, 2, 3, 4],
         # Real: 10 orgs x 3 models x 3 seeds = 90 experiments
         real_n_orgs=10,
@@ -851,8 +850,8 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
                             label_switching["switching_rate"] if label_switching is not None else None
                         ),
                         # Predictions
-                        "train_rmse": train_metrics["rmse"],
-                        "test_rmse": test_metrics["rmse"],
+                        "train_mape": train_metrics["mape"],
+                        "test_mape": test_metrics["mape"],
                         "train_coverage_90": train_metrics["coverage_90"],
                         "test_coverage_90": test_metrics["coverage_90"],
                         # Computation
@@ -933,7 +932,7 @@ def save_results(
                 f"  Strict Pass: {synthetic_results['strict_converged'].sum()} / {len(synthetic_results)}"
             )
         print(f"  Mean ELPD-LOO: {synthetic_results['elpd_loo'].mean():.1f}")
-        print(f"  Mean test RMSE: {synthetic_results['test_rmse'].mean():.3f}")
+        print(f"  Mean test MAPE: {synthetic_results['test_mape'].mean():.3f}%")
 
     if real_results is not None and len(real_results) > 0:
         success = real_results[real_results["status"] == "success"]
@@ -946,12 +945,12 @@ def save_results(
                 print(f"  Strict Pass: {success['strict_converged'].sum()} / {len(success)}")
             # Robust summaries: median and mean for key metrics
             elpd_arr = np.array(success["elpd_loo"])
-            rmse_arr = np.array(success["test_rmse"])
+            mape_arr = np.array(success["test_mape"])
             print(
                 f"  ELPD-LOO - Mean: {np.nanmean(elpd_arr):.1f}, Median: {np.nanmedian(elpd_arr):.1f}"
             )
             print(
-                f"  Test RMSE - Mean: {np.nanmean(rmse_arr):.3f}, Median: {np.nanmedian(rmse_arr):.3f}"
+                f"  Test MAPE - Mean: {np.nanmean(mape_arr):.3f}%, Median: {np.nanmedian(mape_arr):.3f}%"
             )
             # WAIC if available
             if "elpd_waic" in success.columns:

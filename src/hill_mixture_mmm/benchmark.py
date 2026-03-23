@@ -54,7 +54,6 @@ MODEL_SPECS: dict[str, ModelSpec] = {
     "single_hill": ModelSpec("single_hill", model_single_hill, {}),
     "mixture_k2": ModelSpec("mixture_k2", model_hill_mixture_hierarchical_reparam, {"K": 2}),
     "mixture_k3": ModelSpec("mixture_k3", model_hill_mixture_hierarchical_reparam, {"K": 3}),
-    "mixture_k5": ModelSpec("mixture_k5", model_hill_mixture_hierarchical_reparam, {"K": 5}),
 }
 
 PASS_WARN_FAIL_ORDER = {"NotApplicable": -1, "Pass": 0, "Warn": 1, "Fail": 2}
@@ -115,8 +114,8 @@ class BenchmarkThresholds:
     min_bfmi: float | None = 0.2
     max_tree_depth_hits: int | None = 10
     min_test_coverage_90: float | None = None
-    max_test_rmse: float | None = None
-    max_test_mu_rmse: float | None = None
+    max_test_mape: float | None = None
+    max_test_mu_mape: float | None = None
     min_test_mu_coverage_90: float | None = None
     require_alpha_in_ci: bool = False
     require_sigma_in_ci: bool = False
@@ -134,8 +133,8 @@ class ComparisonThresholds:
     """Pass/fail thresholds for comparing two benchmark cases."""
 
     min_delta_loo: float | None = None
-    max_delta_rmse: float | None = None
-    max_candidate_rmse_ratio: float | None = None
+    max_delta_mape: float | None = None
+    max_candidate_mape_ratio: float | None = None
 
 
 @dataclass
@@ -218,7 +217,7 @@ def _append_truth_metric_errors(errors: list[str], result: BenchmarkCaseResult) 
         _append_nonfinite_scalar_errors(
             errors,
             result.latent_test,
-            keys=("rmse", "mae", "coverage_90"),
+            keys=("mape", "mae", "coverage_90"),
             label="latent_test",
         )
 
@@ -814,11 +813,11 @@ def case_summary(result: BenchmarkCaseResult) -> dict[str, Any]:
             "se": float(result.waic.get("se", np.nan)),
         },
         "train_metrics": {
-            "rmse": float(result.train_metrics["rmse"]),
+            "mape": float(result.train_metrics["mape"]),
             "coverage_90": float(result.train_metrics["coverage_90"]),
         },
         "test_metrics": {
-            "rmse": float(result.test_metrics["rmse"]),
+            "mape": float(result.test_metrics["mape"]),
             "coverage_90": float(result.test_metrics["coverage_90"]),
         },
         "effective_k": {
@@ -946,9 +945,9 @@ def compare_case_results(
         "delta_loo": float(delta["delta_loo"]),
         "delta_loo_se": float(delta["se"]),
         "delta_loo_significant": float(bool(delta["significant"])),
-        "delta_test_rmse": float(candidate.test_metrics["rmse"] - baseline.test_metrics["rmse"]),
-        "candidate_rmse_ratio": float(
-            candidate.test_metrics["rmse"] / baseline.test_metrics["rmse"]
+        "delta_test_mape": float(candidate.test_metrics["mape"] - baseline.test_metrics["mape"]),
+        "candidate_mape_ratio": float(
+            candidate.test_metrics["mape"] / baseline.test_metrics["mape"]
         ),
         "delta_test_coverage_90": float(
             candidate.test_metrics["coverage_90"] - baseline.test_metrics["coverage_90"]
@@ -1105,13 +1104,13 @@ def assert_case_passes(result: BenchmarkCaseResult, thresholds: BenchmarkThresho
         _append_nonfinite_scalar_errors(
             errors,
             result.train_metrics,
-            keys=("rmse", "coverage_90"),
+            keys=("mape", "coverage_90"),
             label="train_metrics",
         )
         _append_nonfinite_scalar_errors(
             errors,
             result.test_metrics,
-            keys=("rmse", "coverage_90"),
+            keys=("mape", "coverage_90"),
             label="test_metrics",
         )
 
@@ -1124,18 +1123,18 @@ def assert_case_passes(result: BenchmarkCaseResult, thresholds: BenchmarkThresho
             errors.append(
                 f"test_coverage_90={coverage:.3f} is below {thresholds.min_test_coverage_90:.3f}"
             )
-    if thresholds.max_test_rmse is not None:
-        rmse = float(result.test_metrics["rmse"])
-        if rmse > thresholds.max_test_rmse:
-            errors.append(f"test_rmse={rmse:.3f} exceeds {thresholds.max_test_rmse:.3f}")
+    if thresholds.max_test_mape is not None:
+        mape = float(result.test_metrics["mape"])
+        if mape > thresholds.max_test_mape:
+            errors.append(f"test_mape={mape:.3f} exceeds {thresholds.max_test_mape:.3f}")
 
-    if thresholds.max_test_mu_rmse is not None:
+    if thresholds.max_test_mu_mape is not None:
         if result.latent_test is None:
             errors.append("latent test metrics are unavailable")
-        elif float(result.latent_test["rmse"]) > thresholds.max_test_mu_rmse:
+        elif float(result.latent_test["mape"]) > thresholds.max_test_mu_mape:
             errors.append(
-                f"test_mu_rmse={result.latent_test['rmse']:.3f} exceeds "
-                f"{thresholds.max_test_mu_rmse:.3f}"
+                f"test_mu_mape={result.latent_test['mape']:.3f} exceeds "
+                f"{thresholds.max_test_mu_mape:.3f}"
             )
     if thresholds.min_test_mu_coverage_90 is not None:
         if result.latent_test is None:
@@ -1251,20 +1250,20 @@ def assert_comparison_passes(
             f"delta_loo={comparison['delta_loo']:.3f} is below {thresholds.min_delta_loo:.3f}"
         )
     if (
-        thresholds.max_delta_rmse is not None
-        and comparison["delta_test_rmse"] > thresholds.max_delta_rmse
+        thresholds.max_delta_mape is not None
+        and comparison["delta_test_mape"] > thresholds.max_delta_mape
     ):
         errors.append(
-            f"delta_test_rmse={comparison['delta_test_rmse']:.3f} exceeds "
-            f"{thresholds.max_delta_rmse:.3f}"
+            f"delta_test_mape={comparison['delta_test_mape']:.3f} exceeds "
+            f"{thresholds.max_delta_mape:.3f}"
         )
     if (
-        thresholds.max_candidate_rmse_ratio is not None
-        and comparison["candidate_rmse_ratio"] > thresholds.max_candidate_rmse_ratio
+        thresholds.max_candidate_mape_ratio is not None
+        and comparison["candidate_mape_ratio"] > thresholds.max_candidate_mape_ratio
     ):
         errors.append(
-            f"candidate_rmse_ratio={comparison['candidate_rmse_ratio']:.3f} exceeds "
-            f"{thresholds.max_candidate_rmse_ratio:.3f}"
+            f"candidate_mape_ratio={comparison['candidate_mape_ratio']:.3f} exceeds "
+            f"{thresholds.max_candidate_mape_ratio:.3f}"
         )
 
     if errors:
@@ -1326,7 +1325,7 @@ def plot_observed_vs_predictive(result: BenchmarkCaseResult, output_path: str | 
     ax.text(
         0.99,
         0.02,
-        f"test RMSE={result.test_metrics['rmse']:.2f}, coverage={result.test_metrics['coverage_90']:.1%}",
+        f"test MAPE={result.test_metrics['mape']:.2f}%, coverage={result.test_metrics['coverage_90']:.1%}",
         transform=ax.transAxes,
         ha="right",
         va="bottom",
@@ -1594,13 +1593,13 @@ def plot_case_comparison(
 
     labels = [result.model_name for result in results]
     loo_values = [float(result.loo.get("elpd_loo", np.nan)) for result in results]
-    rmse_values = [float(result.test_metrics["rmse"]) for result in results]
+    mape_values = [float(result.test_metrics["mape"]) for result in results]
     coverage_values = [float(result.test_metrics["coverage_90"]) for result in results]
 
     fig, axes = plt.subplots(1, 3, figsize=(11, 4.2))
     metrics = [
         ("ELPD-LOO", loo_values, "#1f77b4"),
-        ("Test RMSE", rmse_values, "#ff7f0e"),
+        ("Test MAPE (%)", mape_values, "#ff7f0e"),
         ("Test Coverage 90%", coverage_values, "#2ca02c"),
     ]
 

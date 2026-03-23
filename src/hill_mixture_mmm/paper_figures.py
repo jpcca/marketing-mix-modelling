@@ -16,26 +16,23 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
-DGP_ORDER = ["single", "mixture_k2", "mixture_k3", "mixture_k5"]
-DGP_K_TRUE = {"single": 1, "mixture_k2": 2, "mixture_k3": 3, "mixture_k5": 5}
+DGP_ORDER = ["single", "mixture_k2", "mixture_k3"]
+DGP_K_TRUE = {"single": 1, "mixture_k2": 2, "mixture_k3": 3}
 DGP_LABELS = {
     "single": "Single (K=1)",
     "mixture_k2": "Mixture (K=2)",
     "mixture_k3": "Mixture (K=3)",
-    "mixture_k5": "Mixture (K=5)",
 }
-MODEL_ORDER = ["single_hill", "mixture_k2", "mixture_k3", "mixture_k5"]
+MODEL_ORDER = ["single_hill", "mixture_k2", "mixture_k3"]
 MODEL_LABELS = {
     "single_hill": "Single Hill",
     "mixture_k2": "Mixture (K=2)",
     "mixture_k3": "Mixture (K=3)",
-    "mixture_k5": "Mixture (K=5)",
 }
 COLORS = {
     "single_hill": "#1f77b4",
     "mixture_k2": "#9467bd",
     "mixture_k3": "#ff7f0e",
-    "mixture_k5": "#2ca02c",
 }
 DEFAULT_FIGURE_IDS = ("fig0", "fig1", "fig2", "fig3", "fig5")
 RHAT_TEST_PASS_MAX = 1.05
@@ -143,8 +140,8 @@ def _summary_to_record(summary: dict[str, Any]) -> dict[str, Any]:
         "elpd_loo": _nested_metric(summary, "loo", "elpd_loo"),
         "pareto_k_bad": _nested_metric(summary, "loo", "pareto_k_bad"),
         "pareto_k_very_bad": _nested_metric(summary, "loo", "pareto_k_very_bad"),
-        "train_rmse": _nested_metric(summary, "train_metrics", "rmse"),
-        "test_rmse": _nested_metric(summary, "test_metrics", "rmse"),
+        "train_mape": _nested_metric(summary, "train_metrics", "mape"),
+        "test_mape": _nested_metric(summary, "test_metrics", "mape"),
         "train_coverage_90": _nested_metric(summary, "train_metrics", "coverage_90"),
         "test_coverage_90": _nested_metric(summary, "test_metrics", "coverage_90"),
         "effective_k_mean": _nested_metric(summary, "effective_k", "mean"),
@@ -304,7 +301,7 @@ def generate_elpd_comparison_figure(df: pd.DataFrame, output_dir: str | Path) ->
 
     fig, ax = plt.subplots(figsize=(10, 6))
     x = np.arange(len(DGP_ORDER))
-    width = 0.18
+    width = min(0.28, 0.8 / max(len(MODEL_ORDER), 1))
 
     for idx, model_name in enumerate(MODEL_ORDER):
         means: list[float] = []
@@ -367,7 +364,7 @@ def generate_elpd_delta_figure(df: pd.DataFrame, output_dir: str | Path) -> Path
         if np.isnan(baseline_mean):
             continue
 
-        for model_name in ["mixture_k3", "mixture_k5"]:
+        for model_name in [name for name in MODEL_ORDER if name != "single_hill"]:
             mean, std = _lookup_metric(metric_frame, dgp_name, model_name)
             if np.isnan(mean):
                 continue
@@ -472,7 +469,7 @@ def generate_coverage_figure(df: pd.DataFrame, output_dir: str | Path) -> Path:
     fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
     dgp_spacing = 0.3
     n_models = len(MODEL_ORDER)
-    width = 0.18
+    width = min(0.28, 0.8 / max(n_models, 1))
 
     for axis_index, (prefix, title) in enumerate([("train", "Training Set"), ("test", "Test Set")]):
         ax = axes[axis_index]

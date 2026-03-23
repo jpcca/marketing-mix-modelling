@@ -24,6 +24,8 @@ DEFAULT_REAL_ORG_ID = "72a86a208d24d68b80be0e44a8a4872d"
 # Match scripts/run_benchmark.py: quick=[0], default=[0,1,2]
 SMOKE_REAL_SEEDS = [0]
 FULL_REAL_SEEDS = [0, 1, 2]
+SMOKE_REAL_MODELS = ["single_hill", "mixture_k2"]
+FULL_REAL_MODELS = ["single_hill", "mixture_k2", "mixture_k3"]
 
 
 def _require_real_benchmark() -> None:
@@ -71,8 +73,8 @@ def _real_thresholds() -> BenchmarkThresholds:
         min_bfmi=None,
         max_tree_depth_hits=None,
         min_test_coverage_90=None,
-        max_test_rmse=None,
-        max_test_mu_rmse=None,
+        max_test_mape=None,
+        max_test_mu_mape=None,
         min_test_mu_coverage_90=None,
         require_alpha_in_ci=False,
         require_sigma_in_ci=False,
@@ -83,8 +85,8 @@ def _real_thresholds() -> BenchmarkThresholds:
     )
 
 
-def _run_real_seed(seed: int, benchmark_output_root: Path) -> None:
-    """Run the paired single/mixture real-data benchmark for one seed."""
+def _run_real_seed(seed: int, benchmark_output_root: Path, model_names: list[str]) -> None:
+    """Run the selected real-data benchmark models for one seed."""
     csv_path = Path("data/conjura_mmm_data.csv")
     org_id = os.getenv("HILL_MMM_REAL_BENCHMARK_ORG", DEFAULT_REAL_ORG_ID)
     timeseries_config = TimeSeriesConfig(
@@ -93,40 +95,28 @@ def _run_real_seed(seed: int, benchmark_output_root: Path) -> None:
         min_series_length=200,
     )
 
-    single_result = run_real_benchmark_case(
-        csv_path=csv_path,
-        timeseries_config=timeseries_config,
-        model_name="single_hill",
-        config=_real_run_config(seed),
-        label=f"real_single_hill_seed{seed}",
-    )
-    single_artifacts = save_case_artifacts(single_result, benchmark_output_root)
-    assert_case_passes(
-        single_result,
-        _real_thresholds(),
-    )
-
-    mixture_result = run_real_benchmark_case(
-        csv_path=csv_path,
-        timeseries_config=timeseries_config,
-        model_name="mixture_k3",
-        config=_real_run_config(seed),
-        label=f"real_mixture_k3_seed{seed}",
-    )
-    mixture_artifacts = save_case_artifacts(mixture_result, benchmark_output_root)
-    assert_case_passes(
-        mixture_result,
-        _real_thresholds(),
-    )
+    results = []
+    artifact_paths = []
+    for model_name in model_names:
+        result = run_real_benchmark_case(
+            csv_path=csv_path,
+            timeseries_config=timeseries_config,
+            model_name=model_name,
+            config=_real_run_config(seed),
+            label=f"real_{model_name}_seed{seed}",
+        )
+        artifact_paths.extend(save_case_artifacts(result, benchmark_output_root).values())
+        assert_case_passes(result, _real_thresholds())
+        results.append(result)
 
     comparison_dir = resolve_comparison_artifact_dir(benchmark_output_root, "real")
     comparison_path = plot_case_comparison(
-        [single_result, mixture_result],
+        results,
         comparison_dir / f"real_model_comparison_seed{seed}.png",
         title=f"Real Benchmark Comparison ({org_id}, seed={seed})",
     )
 
-    for path in [*single_artifacts.values(), *mixture_artifacts.values(), comparison_path]:
+    for path in [*artifact_paths, comparison_path]:
         assert path.exists(), f"Expected real benchmark artifact at {path}"
 
 
@@ -136,7 +126,7 @@ def _run_real_seed(seed: int, benchmark_output_root: Path) -> None:
 def test_real_data_benchmark_smoke(seed: int, benchmark_output_root: Path) -> None:
     """Quick real-data benchmark smoke test using the original quick seed."""
     _require_real_benchmark()
-    _run_real_seed(seed, benchmark_output_root)
+    _run_real_seed(seed, benchmark_output_root, SMOKE_REAL_MODELS)
 
 
 @pytest.mark.slow
@@ -145,4 +135,4 @@ def test_real_data_benchmark_smoke(seed: int, benchmark_output_root: Path) -> No
 def test_real_data_benchmark_full(seed: int, benchmark_output_root: Path) -> None:
     """Full real-data benchmark using the original multi-seed schedule."""
     _require_full_real_benchmark()
-    _run_real_seed(seed, benchmark_output_root)
+    _run_real_seed(seed, benchmark_output_root, FULL_REAL_MODELS)

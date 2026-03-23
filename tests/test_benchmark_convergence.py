@@ -7,8 +7,11 @@ import pytest
 
 from hill_mixture_mmm.benchmark import (
     BenchmarkCaseResult,
+    ComparisonThresholds,
     BenchmarkThresholds,
+    assert_comparison_passes,
     assert_case_passes,
+    compare_case_results,
     evaluate_case_diagnostic_status,
 )
 from hill_mixture_mmm.inference import compute_hmc_diagnostics
@@ -48,8 +51,8 @@ def _make_mixture_result(
         y_test=np.array([1.0], dtype=np.float32),
         dates_train=None,
         dates_test=None,
-        train_metrics={"rmse": 1.0, "coverage_90": 0.9, "y_pred_mean": np.array([1.0])},
-        test_metrics={"rmse": 1.0, "coverage_90": 0.9, "y_pred_mean": np.array([1.0])},
+        train_metrics={"mape": 1.0, "coverage_90": 0.9, "y_pred_mean": np.array([1.0])},
+        test_metrics={"mape": 1.0, "coverage_90": 0.9, "y_pred_mean": np.array([1.0])},
         loo={"elpd_loo": -1.0, "se": 0.1, "pareto_k_bad": 0, "pareto_k_very_bad": 0},
         waic={"elpd_waic": -1.0, "se": 0.1},
         convergence={
@@ -141,8 +144,8 @@ def _reportability_thresholds(*, require_truth_metrics: bool = False) -> Benchma
         min_bfmi=None,
         max_tree_depth_hits=None,
         min_test_coverage_90=None,
-        max_test_rmse=None,
-        max_test_mu_rmse=None,
+        max_test_mape=None,
+        max_test_mu_mape=None,
         min_test_mu_coverage_90=None,
         require_alpha_in_ci=False,
         require_sigma_in_ci=False,
@@ -317,9 +320,9 @@ def test_assert_case_passes_can_gate_on_publication_status() -> None:
 def test_assert_case_passes_rejects_nonfinite_predictive_metrics() -> None:
     """Reportability checks should fail when scalar benchmark metrics are non-finite."""
     result = _make_mixture_result()
-    result.test_metrics["rmse"] = np.nan
+    result.test_metrics["mape"] = np.nan
 
-    with pytest.raises(AssertionError, match="test_metrics.rmse is not finite"):
+    with pytest.raises(AssertionError, match="test_metrics.mape is not finite"):
         assert_case_passes(result, _reportability_thresholds())
 
 
@@ -329,3 +332,52 @@ def test_assert_case_passes_requires_synthetic_truth_metrics_when_requested() ->
 
     with pytest.raises(AssertionError, match="latent test metrics are unavailable"):
         assert_case_passes(result, _reportability_thresholds(require_truth_metrics=True))
+
+
+def test_assert_case_passes_enforces_max_test_mape() -> None:
+    """Benchmark thresholds should fail once test MAPE exceeds the configured cap."""
+    passing_result = _make_mixture_result()
+    passing_result.test_metrics["mape"] = 4.9
+    assert_case_passes(passing_result, BenchmarkThresholds(max_test_mape=5.0))
+
+    failing_result = _make_mixture_result()
+    failing_result.test_metrics["mape"] = 5.1
+    with pytest.raises(AssertionError, match="test_mape=5.100 exceeds 5.000"):
+        assert_case_passes(failing_result, BenchmarkThresholds(max_test_mape=5.0))
+
+
+def test_comparison_thresholds_use_mape_delta_and_ratio() -> None:
+    """Model comparisons should apply their predictive gates to MAPE, not RMSE."""
+    baseline = _make_mixture_result()
+    baseline.label = "baseline"
+    baseline.test_metrics["mape"] = 4.0
+    baseline.loo["elpd_loo"] = -10.0
+    baseline.loo["se"] = 1.0
+
+    candidate = _make_mixture_result()
+    candidate.label = "candidate"
+    candidate.test_metrics["mape"] = 4.5
+    candidate.loo["elpd_loo"] = -8.5
+    candidate.loo["se"] = 1.0
+
+    comparison = compare_case_results(baseline, candidate)
+    assert comparison["delta_test_mape"] == 0.5
+    assert comparison["candidate_mape_ratio"] == 1.125
+
+    assert_comparison_passes(
+        baseline,
+        candidate,
+        ComparisonThresholds(
+            min_delta_loo=1.0,
+            max_delta_mape=0.6,
+            max_candidate_mape_ratio=1.2,
+        ),
+    )
+
+    candidate.test_metrics["mape"] = 5.0
+    with pytest.raises(AssertionError, match="candidate_mape_ratio=1.250 exceeds 1.200"):
+        assert_comparison_passes(
+            baseline,
+            candidate,
+            ComparisonThresholds(max_candidate_mape_ratio=1.2),
+        )

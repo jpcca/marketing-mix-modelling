@@ -231,6 +231,14 @@ def compute_prior_config(x: np.ndarray, y: np.ndarray) -> dict:
         # k (half-saturation): scaled to x
         "k_base_loc": float(np.log(x_median + 1e-6)),
         "k_scale": 0.7,
+        # Single-Hill exponent prior
+        "n_loc": float(np.log(1.5)),
+        "n_scale": 0.4,
+        # Hierarchical-mixture shrinkage priors
+        "sigma_log_A_loc": -1.2,
+        "sigma_log_A_scale": 0.4,
+        "sigma_log_n_loc": -1.7,
+        "sigma_log_n_scale": 0.4,
         "sigma_scale": float(y_std),
         # Reference values
         "x_median": float(x_median),

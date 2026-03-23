@@ -153,10 +153,10 @@ def compute_latent_recovery(mu_true: np.ndarray, mu_samples: np.ndarray) -> dict
         mu_samples: (n_samples, T) posterior samples of the latent mean
 
     Returns:
-        Dict with RMSE, MAE, and 90% interval coverage of the true mean
+        Dict with MAPE (percentage points), MAE, and 90% interval coverage
     """
-    mu_true = np.asarray(mu_true)
-    mu_samples = np.asarray(mu_samples)
+    mu_true = np.asarray(mu_true, dtype=np.float64)
+    mu_samples = np.asarray(mu_samples, dtype=np.float64)
 
     if mu_samples.ndim != 2:
         raise ValueError("mu_samples must have shape (n_samples, T)")
@@ -166,9 +166,10 @@ def compute_latent_recovery(mu_true: np.ndarray, mu_samples: np.ndarray) -> dict
     mu_mean = mu_samples.mean(axis=0)
     q05 = np.quantile(mu_samples, 0.05, axis=0)
     q95 = np.quantile(mu_samples, 0.95, axis=0)
+    denom = np.maximum(np.abs(mu_true), 1e-8)
 
     return {
-        "rmse": float(np.sqrt(np.mean((mu_mean - mu_true) ** 2))),
+        "mape": float(np.mean(np.abs((mu_mean - mu_true) / denom)) * 100.0),
         "mae": float(np.mean(np.abs(mu_mean - mu_true))),
         "coverage_90": float(np.mean((mu_true >= q05) & (mu_true <= q95))),
     }
@@ -684,8 +685,8 @@ def summarize_results(results: dict) -> str:
 
     # Predictive
     lines.append(
-        f"Train RMSE: {results.get('train_rmse', np.nan):.3f}, "
-        f"Test RMSE: {results.get('test_rmse', np.nan):.3f}"
+        f"Train MAPE: {results.get('train_mape', np.nan):.3f}%, "
+        f"Test MAPE: {results.get('test_mape', np.nan):.3f}%"
     )
     lines.append(f"90% Coverage: {results.get('coverage_90', np.nan):.1%}")
 

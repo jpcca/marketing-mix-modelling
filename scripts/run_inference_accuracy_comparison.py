@@ -4,7 +4,7 @@
 Compares predictive performance using real data (Conjura dataset):
 - Train/test split (80/20)
 - LOO-CV and WAIC
-- Test RMSE, MAE
+- Test MAPE, MAE
 - 90% CI coverage
 
 Usage:
@@ -93,8 +93,9 @@ def compute_inference_metrics(
     else:
         y_pred_mean = np.zeros_like(y_test)
 
-    # RMSE and MAE
-    rmse = float(np.sqrt(np.mean((y_test - y_pred_mean) ** 2)))
+    # MAPE and MAE
+    denom = np.maximum(np.abs(y_test), 1e-8)
+    mape = float(np.mean(np.abs((y_test - y_pred_mean) / denom)) * 100.0)
     mae = float(np.mean(np.abs(y_test - y_pred_mean)))
 
     # 90% CI coverage using quantiles
@@ -117,7 +118,7 @@ def compute_inference_metrics(
         "loo_se": loo_se,
         "waic": waic_score,
         "waic_se": waic_se,
-        "test_rmse": rmse,
+        "test_mape": mape,
         "test_mae": mae,
         "coverage_90": coverage_90,
         "coverage_50": coverage_50,
@@ -206,7 +207,7 @@ def run_inference_comparison(
             status = "✓" if metrics["converged"] else "✗"
             print(
                 f"  Result: R-hat={metrics['max_rhat']:.3f}, "
-                f"Test RMSE={metrics['test_rmse']:.2f}, "
+                f"Test MAPE={metrics['test_mape']:.2f}%, "
                 f"90% Coverage={metrics['coverage_90']:.1%} {status}"
             )
 
@@ -225,7 +226,7 @@ def run_inference_comparison(
                 "loo_se": None,
                 "waic": None,
                 "waic_se": None,
-                "test_rmse": None,
+                "test_mape": None,
                 "test_mae": None,
                 "coverage_90": None,
                 "coverage_50": None,
@@ -251,20 +252,20 @@ def print_summary(df: pd.DataFrame) -> None:
         return
 
     print(
-        f"\n{'Org ID':<16} | {'RMSE':>8} | {'MAE':>8} | {'90% Cov':>8} | {'LOO':>10} | {'Conv':>6}"
+        f"\n{'Org ID':<16} | {'MAPE':>8} | {'MAE':>8} | {'90% Cov':>8} | {'LOO':>10} | {'Conv':>6}"
     )
     print("-" * 80)
 
     for _, row in valid.iterrows():
         conv = "✓" if bool(row["converged"]) else "✗"
         print(
-            f"{row['org_id'][:14]:<16} | {row['test_rmse']:>8.2f} | {row['test_mae']:>8.2f} | "
+            f"{row['org_id'][:14]:<16} | {row['test_mape']:>8.2f} | {row['test_mae']:>8.2f} | "
             f"{row['coverage_90']:>7.1%} | {row['loo']:>10.1f} | {conv:>6}"
         )
 
     print("-" * 80)
     print("\nAGGREGATE METRICS:")
-    print(f"  Mean Test RMSE:    {valid['test_rmse'].mean():.2f} (±{valid['test_rmse'].std():.2f})")
+    print(f"  Mean Test MAPE:    {valid['test_mape'].mean():.2f}% (±{valid['test_mape'].std():.2f})")
     print(f"  Mean Test MAE:     {valid['test_mae'].mean():.2f} (±{valid['test_mae'].std():.2f})")
     print(f"  Mean 90% Coverage: {valid['coverage_90'].mean():.1%} (target: 90%)")
     print(f"  Mean 50% Coverage: {valid['coverage_50'].mean():.1%} (target: 50%)")

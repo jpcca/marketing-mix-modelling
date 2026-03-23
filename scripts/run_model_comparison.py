@@ -1,8 +1,5 @@
 #!/usr/bin/env python
-"""Compare single Hill vs mixture models on real Conjura data.
-
-Runs all 3 model types and compares their LOO-CV scores.
-"""
+"""Compare benchmark-aligned Hill MMM variants on real Conjura data."""
 
 import os
 import sys
@@ -44,7 +41,6 @@ MODEL_SPECS = [
     ModelSpec("single_hill", model_single_hill, {}),
     ModelSpec("mixture_k2", model_hill_mixture_hierarchical_reparam, {"K": 2}),
     ModelSpec("mixture_k3", model_hill_mixture_hierarchical_reparam, {"K": 3}),
-    ModelSpec("mixture_k5", model_hill_mixture_hierarchical_reparam, {"K": 5}),
 ]
 
 
@@ -92,7 +88,7 @@ def main():
 
     results = []
 
-    # Run all 3 models
+    # Run the benchmark-aligned model set
     for spec in MODEL_SPECS:
         print(f"\n[3] Running {spec.name}...")
 
@@ -146,8 +142,8 @@ def main():
                     "model": spec.name,
                     "elpd_loo": loo_result["elpd_loo"],
                     "p_loo": loo_result["p_loo"],
-                    "train_rmse": metrics_train["rmse"],
-                    "test_rmse": metrics_test["rmse"],
+                    "train_mape": metrics_train["mape"],
+                    "test_mape": metrics_test["mape"],
                     "train_coverage": metrics_train["coverage_90"],
                     "test_coverage": metrics_test["coverage_90"],
                     "converged": diag["converged"],
@@ -156,7 +152,7 @@ def main():
             )
 
             print(f"    ELPD-LOO: {loo_result['elpd_loo']:.1f}")
-            print(f"    Test RMSE: {metrics_test['rmse']:.2f}")
+            print(f"    Test MAPE: {metrics_test['mape']:.2f}%")
 
         except Exception as e:
             import traceback
@@ -168,8 +164,8 @@ def main():
                     "model": spec.name,
                     "elpd_loo": np.nan,
                     "p_loo": np.nan,
-                    "train_rmse": np.nan,
-                    "test_rmse": np.nan,
+                    "train_mape": np.nan,
+                    "test_mape": np.nan,
                     "train_coverage": np.nan,
                     "test_coverage": np.nan,
                     "converged": False,

@@ -4,7 +4,11 @@ import numpy as np
 from numpyro.handlers import seed, trace
 
 from hill_mixture_mmm.baseline import linear_baseline, standardized_time_index
-from hill_mixture_mmm.inference import compute_mixture_log_likelihood, compute_predictions
+from hill_mixture_mmm.inference import (
+    compute_mixture_log_likelihood,
+    compute_predictions,
+    compute_predictive_metrics,
+)
 from hill_mixture_mmm.models import model_hill_mixture_hierarchical_reparam, model_single_hill
 from hill_mixture_mmm.transforms import adstock_geometric, hill_matrix
 
@@ -264,3 +268,49 @@ class TestCustomTimeIndex:
             default_trace["mu_expected"]["value"],
             shifted_trace["mu_expected"]["value"],
         )
+
+
+class TestPredictiveMetrics:
+    """Tests for predictive-summary metrics."""
+
+    def test_mape_is_zero_when_posterior_mean_matches_targets(self):
+        """Perfect posterior-mean predictions should report zero MAPE."""
+        y_true = np.array([20.0, 40.0, 80.0], dtype=np.float32)
+        y_samples = np.tile(y_true, (3, 1))
+
+        metrics = compute_predictive_metrics(y_true, y_samples)
+
+        assert metrics["mape"] == 0.0
+        assert metrics["coverage_90"] == 1.0
+
+    def test_mape_is_reported_in_percentage_points(self):
+        """MAPE should be computed from the posterior predictive mean."""
+        y_true = np.array([100.0, 200.0], dtype=np.float32)
+        y_samples = np.array(
+            [
+                [90.0, 150.0],
+                [110.0, 180.0],
+                [130.0, 210.0],
+            ],
+            dtype=np.float32,
+        )
+
+        metrics = compute_predictive_metrics(y_true, y_samples)
+
+        assert metrics["mape"] == 10.0
+        assert metrics["coverage_90"] == 1.0
+
+    def test_mape_handles_zero_targets_without_nan(self):
+        """Zero observations should use a finite denominator guard."""
+        y_true = np.array([0.0, 100.0], dtype=np.float32)
+        y_samples = np.array(
+            [
+                [0.0, 100.0],
+                [0.0, 110.0],
+            ],
+            dtype=np.float32,
+        )
+
+        metrics = compute_predictive_metrics(y_true, y_samples)
+
+        assert np.isfinite(metrics["mape"])

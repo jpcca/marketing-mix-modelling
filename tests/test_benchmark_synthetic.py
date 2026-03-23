@@ -25,13 +25,17 @@ from hill_mixture_mmm.data import DGPConfig
 from hill_mixture_mmm.metrics import compute_across_seed_component_stability
 
 
-DGP_NAMES = ["single", "mixture_k2", "mixture_k3", "mixture_k5"]
-MODEL_NAMES = ["single_hill", "mixture_k2", "mixture_k3", "mixture_k5"]
+SMOKE_DGP_NAMES = ["single", "mixture_k2"]
+SMOKE_MODEL_NAMES = ["single_hill", "mixture_k2"]
+FULL_DGP_NAMES = ["single", "mixture_k2", "mixture_k3"]
+FULL_MODEL_NAMES = ["single_hill", "mixture_k2", "mixture_k3"]
 
 # Match scripts/run_benchmark.py: quick=[0], default=[0,1,2,3,4]
 SMOKE_SYNTHETIC_SEEDS = [0]
 FULL_SYNTHETIC_SEEDS = [0, 1, 2, 3, 4]
-FULL_SYNTHETIC_EXPECTED_CASES = len(DGP_NAMES) * len(MODEL_NAMES) * len(FULL_SYNTHETIC_SEEDS)
+FULL_SYNTHETIC_EXPECTED_CASES = (
+    len(FULL_DGP_NAMES) * len(FULL_MODEL_NAMES) * len(FULL_SYNTHETIC_SEEDS)
+)
 PAPER_FIGURES_DIR = Path(__file__).parent.parent / "paper" / "figures"
 
 
@@ -84,7 +88,7 @@ def _synthetic_run_config(dgp_name: str, model_name: str, seed: int) -> Benchmar
     """Return an inference configuration suitable for one synthetic benchmark cell."""
     num_chains = int(os.getenv("HILL_MMM_SYNTHETIC_CHAINS", "2"))
     if model_name == "single_hill":
-        warmup = 500 if dgp_name in {"mixture_k3", "mixture_k5"} else 400
+        warmup = 500 if dgp_name == "mixture_k3" else 400
         samples = warmup
         return BenchmarkRunConfig(
             seed=seed,
@@ -94,12 +98,8 @@ def _synthetic_run_config(dgp_name: str, model_name: str, seed: int) -> Benchmar
             progress_bar=False,
         )
 
-    if model_name == "mixture_k5":
-        warmup = 500
-        samples = 500
-    else:
-        warmup = 450
-        samples = 450
+    warmup = 450
+    samples = 450
 
     return BenchmarkRunConfig(
         seed=seed,
@@ -112,7 +112,8 @@ def _synthetic_run_config(dgp_name: str, model_name: str, seed: int) -> Benchmar
 
 def _synthetic_thresholds(dgp_name: str, model_name: str) -> BenchmarkThresholds:
     """Return paper-level reportability gates for one synthetic benchmark cell."""
-    del dgp_name, model_name
+    del model_name
+    max_test_mape = 5.0 if dgp_name in {"single", "mixture_k2"} else None
     return BenchmarkThresholds(
         max_rhat=None,
         min_ess_bulk=None,
@@ -129,8 +130,8 @@ def _synthetic_thresholds(dgp_name: str, model_name: str) -> BenchmarkThresholds
         min_bfmi=None,
         max_tree_depth_hits=None,
         min_test_coverage_90=None,
-        max_test_rmse=None,
-        max_test_mu_rmse=None,
+        max_test_mape=max_test_mape,
+        max_test_mu_mape=None,
         min_test_mu_coverage_90=None,
         require_alpha_in_ci=False,
         require_sigma_in_ci=False,
@@ -144,7 +145,8 @@ def _synthetic_thresholds(dgp_name: str, model_name: str) -> BenchmarkThresholds
 
 def _synthetic_smoke_thresholds(dgp_name: str, model_name: str) -> BenchmarkThresholds:
     """Return lighter smoke-test gates for short synthetic runs."""
-    del dgp_name, model_name
+    del model_name
+    max_test_mape = 5.0 if dgp_name in {"single", "mixture_k2"} else None
     return BenchmarkThresholds(
         max_rhat=None,
         min_ess_bulk=None,
@@ -161,8 +163,8 @@ def _synthetic_smoke_thresholds(dgp_name: str, model_name: str) -> BenchmarkThre
         min_bfmi=None,
         max_tree_depth_hits=None,
         min_test_coverage_90=None,
-        max_test_rmse=None,
-        max_test_mu_rmse=None,
+        max_test_mape=max_test_mape,
+        max_test_mu_mape=None,
         min_test_mu_coverage_90=None,
         require_alpha_in_ci=False,
         require_sigma_in_ci=False,
@@ -214,8 +216,8 @@ def _case_summary_path(
 @pytest.mark.slow
 @pytest.mark.benchmark_smoke
 @pytest.mark.parametrize("seed", SMOKE_SYNTHETIC_SEEDS)
-@pytest.mark.parametrize("dgp_name", DGP_NAMES)
-@pytest.mark.parametrize("model_name", MODEL_NAMES)
+@pytest.mark.parametrize("dgp_name", SMOKE_DGP_NAMES)
+@pytest.mark.parametrize("model_name", SMOKE_MODEL_NAMES)
 def test_synthetic_benchmark_smoke_matrix(
     dgp_name: str,
     model_name: str,
@@ -235,8 +237,8 @@ def test_synthetic_benchmark_smoke_matrix(
 @pytest.mark.slow
 @pytest.mark.benchmark_full
 @pytest.mark.parametrize("seed", FULL_SYNTHETIC_SEEDS)
-@pytest.mark.parametrize("dgp_name", DGP_NAMES)
-@pytest.mark.parametrize("model_name", MODEL_NAMES)
+@pytest.mark.parametrize("dgp_name", FULL_DGP_NAMES)
+@pytest.mark.parametrize("model_name", FULL_MODEL_NAMES)
 def test_synthetic_benchmark_full_matrix(
     dgp_name: str,
     model_name: str,
@@ -256,8 +258,8 @@ def test_synthetic_benchmark_full_matrix(
 
 @pytest.mark.slow
 @pytest.mark.benchmark_full
-@pytest.mark.parametrize("dgp_name", DGP_NAMES)
-@pytest.mark.parametrize("model_name", MODEL_NAMES)
+@pytest.mark.parametrize("dgp_name", FULL_DGP_NAMES)
+@pytest.mark.parametrize("model_name", FULL_MODEL_NAMES)
 def test_synthetic_benchmark_full_across_seed_stability(
     dgp_name: str,
     model_name: str,

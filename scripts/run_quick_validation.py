@@ -121,8 +121,8 @@ def main():
     train_metrics = compute_predictive_metrics(y_train, pred_train["y"])
     test_metrics = compute_predictive_metrics(y_test, pred_test["y"])
 
-    print(f"    Train RMSE: {train_metrics['rmse']:.2f}")
-    print(f"    Test RMSE: {test_metrics['rmse']:.2f}")
+    print(f"    Train MAPE: {train_metrics['mape']:.2f}%")
+    print(f"    Test MAPE: {test_metrics['mape']:.2f}%")
     print(f"    Train Coverage 90%: {train_metrics['coverage_90']:.1%}")
     print(f"    Test Coverage 90%: {test_metrics['coverage_90']:.1%}")
 

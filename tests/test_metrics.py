@@ -31,7 +31,7 @@ class TestLatentRecovery:
 
         metrics = compute_latent_recovery(mu_true, mu_samples)
 
-        assert metrics["rmse"] == 0.0
+        assert metrics["mape"] == 0.0
         assert metrics["mae"] == 0.0
         assert metrics["coverage_90"] == 1.0
 
