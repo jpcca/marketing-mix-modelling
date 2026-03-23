@@ -252,7 +252,7 @@ def generate_graphical_model_figure(output_dir: str | Path) -> Path:
         )
         ax.add_patch(patch)
         ax.text(x + 0.2, y + h - 0.25, title, ha="left", va="top", fontsize=12, color=text, weight="bold")
-        ax.text(x + 0.2, y + h - 0.6, subtitle, ha="left", va="top", fontsize=9, color="#4b5563")
+        ax.text(x + w - 0.2, y + h - 0.58, subtitle, ha="right", va="top", fontsize=9, color="#4b5563")
 
     def add_node(
         x: float,
@@ -293,37 +293,37 @@ def generate_graphical_model_figure(output_dir: str | Path) -> Path:
     add_panel(5.4, 2.0, 3.4, 3.5, "Segment structure", r"$k = 1, \ldots, K$")
     add_panel(9.3, 2.0, 3.7, 3.5, "Observation model", "Mixture over segment responses")
 
-    add_node(1.0, 4.35, 0.9, 0.6, r"$\alpha$")
+    add_node(1.0, 4.0, 0.9, 0.6, r"$\alpha$")
     add_node(1.0, 3.2, 1.0, 0.65, r"$x_t$", observed=True)
     add_node(2.45, 3.2, 1.0, 0.65, r"$s_t$")
-    add_node(3.75, 4.35, 1.25, 0.6, r"$\mu_0,\beta$")
+    add_node(3.75, 4.0, 1.25, 0.6, r"$\mu_0,\beta$")
     add_node(3.95, 2.75, 0.9, 0.65, r"$b_t$")
 
-    add_node(6.05, 4.35, 1.1, 0.6, r"$\theta_k$")
+    add_node(6.05, 4.0, 1.1, 0.6, r"$\theta_k$")
     add_node(5.9, 3.0, 1.4, 0.75, r"$h_{t,k}$")
 
-    add_node(9.8, 4.35, 1.0, 0.6, r"$\pi_k$")
-    add_node(11.35, 4.35, 1.0, 0.6, r"$\sigma$")
+    add_node(9.8, 4.0, 1.0, 0.6, r"$\pi_k$")
+    add_node(11.35, 4.0, 1.0, 0.6, r"$\sigma$")
     add_node(10.5, 3.0, 1.25, 0.75, r"$y_t$", observed=True)
 
-    add_arrow((1.45, 4.35), (2.95, 3.55))
+    add_arrow((1.45, 4.0), (2.95, 3.55))
     add_arrow((2.0, 3.52), (2.45, 3.52))
     add_arrow((3.45, 3.52), (5.9, 3.38))
-    add_arrow((4.38, 4.35), (4.38, 3.35))
+    add_arrow((4.38, 4.0), (4.38, 3.35))
     add_arrow((4.85, 3.05), (10.5, 3.3))
-    add_arrow((6.6, 4.35), (6.6, 3.75))
+    add_arrow((6.6, 4.0), (6.6, 3.75))
     add_arrow((7.3, 3.38), (10.5, 3.38))
-    add_arrow((10.3, 4.35), (11.0, 3.75))
-    add_arrow((11.85, 4.35), (11.25, 3.75))
+    add_arrow((10.3, 4.0), (11.0, 3.75))
+    add_arrow((11.85, 4.0), (11.25, 3.75))
 
     ax.text(1.45, 2.55, "spend", ha="center", fontsize=10, color="#374151")
     ax.text(2.95, 2.55, "geometric adstock", ha="center", fontsize=10, color="#374151")
     ax.text(4.4, 2.1, "linear baseline", ha="center", fontsize=10, color="#374151")
     ax.text(6.6, 2.55, r"segment parameters $(A_k, k_k, n_k)$", ha="center", fontsize=10, color="#374151")
     ax.text(6.6, 2.22, "Hill response for segment k", ha="center", fontsize=10, color="#374151")
-    ax.text(10.3, 2.55, "stick-breaking weights", ha="center", fontsize=10, color="#374151")
-    ax.text(11.85, 2.55, "Gaussian noise", ha="center", fontsize=10, color="#374151")
-    ax.text(11.1, 2.2, r"$y_t \sim \sum_k \pi_k \,\mathcal{N}(b_t + h_{t,k}, \sigma^2)$", ha="center", fontsize=10, color=text)
+    ax.text(10.25, 2.62, "stick-breaking\nweights", ha="center", va="center", fontsize=9.5, color="#374151")
+    ax.text(11.85, 2.62, "Gaussian\nnoise", ha="center", va="center", fontsize=9.5, color="#374151")
+    ax.text(11.1, 2.12, r"$y_t \sim \sum_k \pi_k \,\mathcal{N}(b_t + h_{t,k}, \sigma^2)$", ha="center", fontsize=10, color=text)
 
     fig.tight_layout()
     output_path = output_dir / "fig0_graphical_model.png"
