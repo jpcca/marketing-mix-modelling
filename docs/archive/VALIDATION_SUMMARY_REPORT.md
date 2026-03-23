@@ -99,7 +99,7 @@ We implemented multiple diagnostic approaches for mixture models:
 | Relabeled R-hat | `compute_diagnostics_on_relabeled()` | Post-hoc sorted components |
 | Label switching rate | `check_label_switching()` | Detect permutation jumping |
 
-**Key insight**: Standard R-hat is fundamentally inappropriate for mixture models due to label switching. We developed label-invariant diagnostics (see `docs/LABEL_SWITCHING_DIAGNOSTICS.md`).
+**Key insight**: Standard R-hat is fundamentally inappropriate for mixture models due to label switching. We developed label-invariant diagnostics (see `LABEL_SWITCHING_DIAGNOSTICS.md`).
 
 ---
 
@@ -335,11 +335,11 @@ cd /Users/shohei/Documents/repo/mmm-experiment-longer-chains
 
 | File | Description |
 |------|-------------|
-| `docs/research-summary.md` | Literature review and project motivation |
-| `docs/LABEL_SWITCHING_DIAGNOSTICS.md` | Label switching investigation |
-| `docs/HALFNORMAL_CONVERGENCE_EXPERIMENTS.md` | HalfNormal hyperprior experiments |
-| `docs/HYPERPRIOR_DESIGN.md` | Hyperprior design rationale |
-| `docs/CONVERGENCE_EXPERIMENTS_HANDOVER.md` | Convergence experiment handover |
+| `../research-summary.md` | Literature review and project motivation |
+| `LABEL_SWITCHING_DIAGNOSTICS.md` | Label switching investigation |
+| `HALFNORMAL_CONVERGENCE_EXPERIMENTS.md` | HalfNormal hyperprior experiments |
+| `HYPERPRIOR_DESIGN.md` | Hyperprior design rationale |
+| `CONVERGENCE_EXPERIMENTS_HANDOVER.md` | Convergence experiment handover |
 
 ### Source Code
 

@@ -302,7 +302,7 @@ sigma_log_A = numpyro.sample("sigma_log_A", dist.LogNormal(-1.0, 0.5))
 sigma_log_n = numpyro.sample("sigma_log_n", dist.LogNormal(-1.5, 0.5))
 ```
 
-See `docs/HYPERPRIOR_DESIGN.md` for the full LogNormal solution.
+See `HYPERPRIOR_DESIGN.md` for the full LogNormal solution.
 
 ---
 
@@ -379,7 +379,7 @@ def model_hill_mixture_halfnormal_tight(x, y=None, K=3, prior_config=None):
     """Hill Mixture with tight HalfNormal hyperpriors (FOR TESTING ONLY).
     
     WARNING: This configuration sacrifices model flexibility for convergence.
-    Do not use in production. See docs/HALFNORMAL_CONVERGENCE_EXPERIMENTS.md.
+    Do not use in production. See `HALFNORMAL_CONVERGENCE_EXPERIMENTS.md`.
     """
     # ... (standard setup)
     

@@ -30,7 +30,7 @@ This is a **Bayesian Marketing Mix Modeling** research project implementing a mi
 | `paper/` | Git submodule with research paper (LaTeX, figures, bibliography) |
 | `scripts/` | Executable scripts (benchmark runners, validation, diagnostics) |
 | `data/` | Dataset files and data dictionary |
-| `docs/` | Research documentation and literature review |
+| `docs/` | Current project docs plus `docs/archive/` for historical experiment notes |
 | `results/` | Experiment outputs (CSVs, summary markdown) |
 
 ## Key Source Files (`src/hill_mixture_mmm/`)
@@ -39,7 +39,7 @@ This is a **Bayesian Marketing Mix Modeling** research project implementing a mi
 |------|------|
 | `models.py` | NumPyro model definitions: `model_single_hill` and `model_hill_mixture_hierarchical_reparam` |
 | `transforms.py` | Core math: `adstock_geometric()` (carryover decay), `hill()` / `hill_matrix()` (saturation) |
-| `data.py` | Synthetic data generation with 4 DGP scenarios: single, mixture_k2, mixture_k3, mixture_k5 |
+| `data.py` | Synthetic data generation with 3 benchmark DGP scenarios: single, mixture_k2, mixture_k3 |
 | `data_loader.py` | Real dataset loading and time-series selection utilities |
 | `inference.py` | MCMC utilities, predictive metrics, convergence diagnostics, and label-invariant diagnostics |
 | `metrics.py` | Evaluation metrics: `compute_effective_k()`, `compute_parameter_recovery()`, `compute_latent_recovery()`, `compute_delta_loo()` |
@@ -183,7 +183,7 @@ git commit -m "Various changes"  # Don't do this
 ### When modifying models
 - Models are in `src/hill_mixture_mmm/models.py` using NumPyro syntax
 - Each model follows pattern: priors → transforms → likelihood
-- Mixture variants (`mixture_k2`, `mixture_k3`, `mixture_k5`) are benchmark configurations of the same function: `model_hill_mixture_hierarchical_reparam(..., K=...)`
+- The benchmark-facing mixture variants are `mixture_k2` and `mixture_k3`, both using `model_hill_mixture_hierarchical_reparam(..., K=...)`
 - Run `pytest tests/test_parameter_recovery.py` to verify inference still works
 
 ### When modifying transforms
