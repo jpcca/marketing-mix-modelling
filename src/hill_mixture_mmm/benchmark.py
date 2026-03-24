@@ -1426,20 +1426,14 @@ def plot_response_curves(result: BenchmarkCaseResult, output_path: str | Path) -
             axis=0,
         )
         true_component_indices = list(range(true_components.shape[0]))
-        if {"s", "hill_mat", "z_true"}.issubset(result.meta):
+        if {"s", "baseline"}.issubset(result.meta):
             realized_effect_x = np.asarray(result.meta["s"], dtype=np.float32)
-            hill_mat = np.asarray(result.meta["hill_mat"], dtype=np.float32)
-            z_true = np.asarray(result.meta["z_true"], dtype=np.int32)
-            if (
-                realized_effect_x.ndim == 1
-                and hill_mat.ndim == 2
-                and z_true.ndim == 1
-                and len(realized_effect_x) == len(z_true) == hill_mat.shape[0]
-            ):
-                realized_effect_y = hill_mat[np.arange(len(z_true)), z_true]
+            baseline = np.asarray(result.meta["baseline"], dtype=np.float32)
+            y_full = np.concatenate([result.y_train, result.y_test])
+            if len(realized_effect_x) == len(y_full) == len(baseline):
+                realized_effect_y = y_full - baseline
             else:
                 realized_effect_x = None
-                realized_effect_y = None
 
     panel_specs: list[dict[str, Any]] = []
     used_true: set[int] = set()
@@ -1514,7 +1508,7 @@ def plot_response_curves(result: BenchmarkCaseResult, output_path: str | Path) -
             color="0.55",
             alpha=0.45,
             linewidths=0.0,
-            label="Realized Hill Effects",
+            label="Observations",
             zorder=1,
         )
 
@@ -1534,7 +1528,7 @@ def plot_response_curves(result: BenchmarkCaseResult, output_path: str | Path) -
             color_cycle[posterior_idx % len(color_cycle)],
         )
         is_active = posterior_component_active.get(posterior_idx, True)
-        label_suffix = f" (pi={posterior_weights[posterior_idx]:.2f})"
+        label_suffix = f" (π={posterior_weights[posterior_idx]:.2f})"
         if not is_active:
             label_suffix += ", inactive"
         ax.fill_between(
@@ -1550,7 +1544,7 @@ def plot_response_curves(result: BenchmarkCaseResult, output_path: str | Path) -
             color=color,
             linewidth=2.2,
             alpha=1.0 if is_active else 0.55,
-            label=f"Posterior {posterior_idx + 1}{label_suffix}",
+            label=f"Estimated {posterior_idx + 1}{label_suffix}",
         )
 
     if true_components is not None:
@@ -1558,7 +1552,7 @@ def plot_response_curves(result: BenchmarkCaseResult, output_path: str | Path) -
             color = color_by_true.get(true_idx, color_cycle[true_idx % len(color_cycle)])
             label_suffix = ""
             if true_weights is not None:
-                label_suffix = f" (pi={true_weights[true_idx]:.2f})"
+                label_suffix = f" (π={true_weights[true_idx]:.2f})"
             ax.plot(
                 grid,
                 true_components[true_idx],
@@ -1590,9 +1584,9 @@ def plot_response_curves(result: BenchmarkCaseResult, output_path: str | Path) -
             bbox={"facecolor": "white", "alpha": 0.85, "edgecolor": "none"},
         )
 
-    ax.set_title(f"{result.label}: Component Response Recovery")
+    ax.set_title(f"{result.label}: Response Curve Recovery")
     ax.set_xlabel(x_label)
-    ax.set_ylabel("Component Effect")
+    ax.set_ylabel("Response (y − baseline)")
     ax.grid(True, alpha=0.25)
     ax.set_xlim(0.0, grid_max)
     ax.set_ylim(0.0, y_max)

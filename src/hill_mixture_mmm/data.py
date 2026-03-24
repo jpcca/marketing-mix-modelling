@@ -53,9 +53,9 @@ RAW_SPEND_LOGNORMAL_SIGMA = 0.6
 
 def _draw_raw_spend(rng: np.random.Generator, T: int) -> np.ndarray:
     """Draw one synthetic raw spend series."""
-    return rng.lognormal(mean=RAW_SPEND_LOGNORMAL_MEAN, sigma=RAW_SPEND_LOGNORMAL_SIGMA, size=T).astype(
-        np.float32
-    )
+    return rng.lognormal(
+        mean=RAW_SPEND_LOGNORMAL_MEAN, sigma=RAW_SPEND_LOGNORMAL_SIGMA, size=T
+    ).astype(np.float32)
 
 
 def _support_quantiles(values: np.ndarray, quantiles: list[float]) -> np.ndarray:
@@ -152,12 +152,13 @@ def _generate_mixture(config: DGPConfig, K: int) -> tuple[np.ndarray, np.ndarray
 
     if K == 2:
         pi_true = np.array([0.55, 0.45], dtype=np.float32)
-        # Anchor K=2 components to lower/upper observed spend quantiles and keep
-        # them ordered by k so the benchmark is not dominated by near-tied curves.
-        k_quantiles = [0.30, 0.80]
+        # Anchor K=2 components to lower/upper observed spend quantiles.
+        # Use wide A separation (5x ratio) and distinct curvatures so the
+        # mixture is clearly identifiable above observation noise (sigma=3).
+        k_quantiles = [0.25, 0.85]
         k_true = _support_quantiles(s, k_quantiles)
-        A_true = np.array([14.0, 30.0], dtype=np.float32)
-        n_true = np.array([1.5, 1.1], dtype=np.float32)
+        A_true = np.array([10.0, 50.0], dtype=np.float32)
+        n_true = np.array([2.0, 0.8], dtype=np.float32)
 
     elif K == 3:
         pi_true = np.array([0.40, 0.30, 0.30], dtype=np.float32)
@@ -188,7 +189,9 @@ def _generate_mixture(config: DGPConfig, K: int) -> tuple[np.ndarray, np.ndarray
         "A_true": A_true,
         "k_true": k_true,
         "n_true": n_true,
-        "k_quantiles_true": None if k_quantiles is None else np.asarray(k_quantiles, dtype=np.float32),
+        "k_quantiles_true": None
+        if k_quantiles is None
+        else np.asarray(k_quantiles, dtype=np.float32),
         "alpha_true": config.alpha,
         "intercept_true": config.intercept,
         "slope_true": config.slope,
@@ -246,10 +249,10 @@ def compute_prior_config(x: np.ndarray, y: np.ndarray) -> dict:
         "n_loc": float(np.log(1.5)),
         "n_scale": 0.4,
         # Hierarchical-mixture shrinkage priors
-        "sigma_log_A_loc": -1.2,
-        "sigma_log_A_scale": 0.4,
-        "sigma_log_n_loc": -1.7,
-        "sigma_log_n_scale": 0.4,
+        "sigma_log_A_loc": 0.0,
+        "sigma_log_A_scale": 0.8,
+        "sigma_log_n_loc": -0.5,
+        "sigma_log_n_scale": 0.8,
         "sigma_scale": float(y_std),
         # Reference values
         "x_median": float(x_median),
