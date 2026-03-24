@@ -80,6 +80,15 @@ MODEL_SPECS = [
 ]
 
 
+def _reference_latent_mean(meta: dict) -> np.ndarray | None:
+    """Return the synthetic latent target aligned with posterior mean predictions."""
+    if "mu_expected_true" in meta:
+        return np.asarray(meta["mu_expected_true"])
+    if "mu_true" in meta:
+        return np.asarray(meta["mu_true"])
+    return None
+
+
 def _prepare_experiment_data(dgp_config: DGPConfig, train_ratio: float) -> dict:
     """Generate data, split train/test, and compute prior config."""
     x, y, meta = generate_data(dgp_config)
@@ -117,7 +126,7 @@ def _fit_once(
     """Run one inference pass and compute convergence diagnostics."""
     is_mixture_model = "K" in model_spec.kwargs
     inference_seed = dgp_config.seed
-    used_target_accept = 0.90
+    used_target_accept = 0.95 if model_spec.name == "mixture_k2" else 0.90
     used_max_tree_depth = 10
 
     mcmc = run_inference(
@@ -257,12 +266,13 @@ def run_single_experiment(
     )
     mu_train_samples = pred_train.get("mu", pred_train.get("mu_expected"))
     mu_test_samples = pred_test.get("mu", pred_test.get("mu_expected"))
+    latent_truth = _reference_latent_mean(prepared["meta"])
     train_latent = compute_latent_recovery(
-        prepared["meta"]["mu_true"][: prepared["T_train"]],
+        latent_truth[: prepared["T_train"]],
         mu_train_samples,
     )
     test_latent = compute_latent_recovery(
-        prepared["meta"]["mu_true"][prepared["T_train"] :],
+        latent_truth[prepared["T_train"] :],
         mu_test_samples,
     )
 

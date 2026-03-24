@@ -541,6 +541,20 @@ def _extract_latent_samples(predictions: dict[str, np.ndarray]) -> np.ndarray | 
     return None
 
 
+def _reference_latent_mean(meta: dict[str, Any]) -> np.ndarray | None:
+    """Return the synthetic latent target aligned with posterior mean predictions."""
+    if "mu_expected_true" in meta:
+        return np.asarray(meta["mu_expected_true"], dtype=np.float32)
+    if "mu_true" in meta:
+        return np.asarray(meta["mu_true"], dtype=np.float32)
+    return None
+
+
+def _reference_latent_label(meta: dict[str, Any]) -> str:
+    """Return a descriptive label for the plotted latent target."""
+    return "True Expected Latent Mean" if "mu_expected_true" in meta else "True Latent Mean"
+
+
 def _fit_case(
     model_spec: ModelSpec,
     x_train: np.ndarray,
@@ -669,12 +683,13 @@ def _run_case_from_series(
 
     latent_train = None
     latent_test = None
-    if meta is not None and "mu_true" in meta:
+    if meta is not None:
+        latent_truth = _reference_latent_mean(meta)
         train_mu = _extract_latent_samples(pred_train)
         test_mu = _extract_latent_samples(pred_test)
-        if train_mu is not None and test_mu is not None:
-            latent_train = compute_latent_recovery(meta["mu_true"][:T_train], train_mu)
-            latent_test = compute_latent_recovery(meta["mu_true"][T_train:], test_mu)
+        if latent_truth is not None and train_mu is not None and test_mu is not None:
+            latent_train = compute_latent_recovery(latent_truth[:T_train], train_mu)
+            latent_test = compute_latent_recovery(latent_truth[T_train:], test_mu)
 
     parameter_recovery = None
     if meta is not None:
@@ -1308,14 +1323,20 @@ def plot_observed_vs_predictive(result: BenchmarkCaseResult, output_path: str | 
     ax.plot(test_idx, test_mean, color="#1f77b4", linewidth=2)
     ax.fill_between(test_idx, test_q05, test_q95, color="#1f77b4", alpha=0.15, label="90% Interval")
 
-    if result.meta is not None and "mu_true" in result.meta:
+    if result.meta is not None:
+        latent_truth = _reference_latent_mean(result.meta)
+        latent_label = _reference_latent_label(result.meta)
+    else:
+        latent_truth = None
+        latent_label = "True Latent Mean"
+    if latent_truth is not None:
         ax.plot(
             full_idx,
-            result.meta["mu_true"],
+            latent_truth,
             color="#2ca02c",
             linestyle=":",
             linewidth=2,
-            label="True Latent Mean",
+            label=latent_label,
         )
 
     ax.set_title(f"{result.label}: Observed vs Posterior Predictive")

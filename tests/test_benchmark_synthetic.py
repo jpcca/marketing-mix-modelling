@@ -87,6 +87,7 @@ def _generate_selected_publication_figures_after_full_benchmark() -> None:
 def _synthetic_run_config(dgp_name: str, model_name: str, seed: int) -> BenchmarkRunConfig:
     """Return an inference configuration suitable for one synthetic benchmark cell."""
     num_chains = int(os.getenv("HILL_MMM_SYNTHETIC_CHAINS", "2"))
+    target_accept_prob = 0.95 if model_name == "mixture_k2" else 0.90
     if model_name == "single_hill":
         warmup = 800 if dgp_name == "mixture_k3" else 600
         samples = warmup
@@ -95,6 +96,7 @@ def _synthetic_run_config(dgp_name: str, model_name: str, seed: int) -> Benchmar
             num_warmup=warmup,
             num_samples=samples,
             num_chains=num_chains,
+            target_accept_prob=target_accept_prob,
             progress_bar=False,
         )
 
@@ -106,6 +108,7 @@ def _synthetic_run_config(dgp_name: str, model_name: str, seed: int) -> Benchmar
         num_warmup=warmup,
         num_samples=samples,
         num_chains=num_chains,
+        target_accept_prob=target_accept_prob,
         progress_bar=False,
     )
 

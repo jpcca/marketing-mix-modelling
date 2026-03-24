@@ -122,6 +122,7 @@ def _generate_single_hill(config: DGPConfig) -> tuple[np.ndarray, np.ndarray, di
         "s": s,
         "baseline": baseline,
         "mu_true": mu,
+        "mu_expected_true": mu,
         "z_true": np.zeros(T, dtype=int),  # all belong to component 0
     }
 
@@ -174,8 +175,10 @@ def _generate_mixture(config: DGPConfig, K: int) -> tuple[np.ndarray, np.ndarray
         hill_matrix(jnp.array(s), jnp.array(A_true), jnp.array(k_true), jnp.array(n_true))
     )
     effects = hill_mat[np.arange(T), z_true]
+    expected_effects = np.sum(pi_true[None, :] * hill_mat, axis=1)
 
     mu = baseline + effects
+    mu_expected = baseline + expected_effects
     y = rng.normal(loc=mu, scale=config.sigma).astype(np.float32)
 
     meta = {
@@ -195,6 +198,7 @@ def _generate_mixture(config: DGPConfig, K: int) -> tuple[np.ndarray, np.ndarray
         "s": s,
         "baseline": baseline,
         "mu_true": mu,
+        "mu_expected_true": mu_expected,
         "z_true": z_true,
         "hill_mat": hill_mat,
     }
@@ -217,18 +221,23 @@ def compute_prior_config(x: np.ndarray, y: np.ndarray) -> dict:
     """
     y_mean = np.mean(y)
     y_std = np.std(y)
-    y_range = np.max(y) - np.min(y)
+    y_min = np.min(y)
+    y_range = np.max(y) - y_min
     x_median = np.median(x)
     x_max = np.max(x)
+    effect_scale = y_range * A_PRIOR_RANGE_FRACTION
+    intercept_loc = max(float(y_min), float(y_mean - effect_scale))
 
     return {
         # Baseline priors
-        "intercept_loc": float(y_mean),
+        # The response mean includes positive Hill effects, so centering the
+        # baseline prior at y_mean systematically pushes effect curves downward.
+        "intercept_loc": intercept_loc,
         "intercept_scale": float(y_std * 2),
         "slope_scale": float(y_std),
         # A (max effect): center above the old 0.3 * y_range rule to reduce
         # systematic underestimation of high-effect mixture components.
-        "A_loc": float(np.log(y_range * A_PRIOR_RANGE_FRACTION + 1e-6)),
+        "A_loc": float(np.log(effect_scale + 1e-6)),
         "A_scale": 0.8,
         # k (half-saturation): scaled to x
         "k_base_loc": float(np.log(x_median + 1e-6)),
