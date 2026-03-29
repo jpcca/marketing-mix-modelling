@@ -24,7 +24,6 @@ from hill_mixture_mmm.data_loader import (
 @pytest.fixture
 def sample_csv(tmp_path):
     """Create a sample CSV file for testing."""
-    # Create sample data with 2 organisations, 2 territories
     dates = pd.date_range("2023-01-01", periods=200, freq="D")
     rng = np.random.default_rng(42)
 
@@ -43,7 +42,6 @@ def sample_csv(tmp_path):
                         "territory_name": territory,
                         "date_day": date,
                         "currency_code": "USD",
-                        # Spend columns - org_001 uses google, org_002 uses meta
                         "google_paid_search_spend": rng.lognormal(3, 0.5)
                         if org_id == "org_001"
                         else 0,
@@ -57,7 +55,6 @@ def sample_csv(tmp_path):
                         "meta_instagram_spend": rng.lognormal(2, 0.5) if org_id == "org_002" else 0,
                         "meta_other_spend": 0,
                         "tiktok_spend": 0,
-                        # Target variables
                         "all_purchases": rng.integers(10, 100),
                         "first_purchases": rng.integers(1, 20),
                         "all_purchases_units": rng.integers(15, 150),
@@ -80,7 +77,6 @@ class TestListTimeseries:
         """Should find all organisation/territory combinations."""
         ts_info = list_timeseries(sample_csv, min_length=100)
 
-        # 2 orgs × 2 territories = 4 time series
         assert len(ts_info) == 4
         assert "organisation_id" in ts_info.columns
         assert "territory_name" in ts_info.columns
@@ -95,12 +91,10 @@ class TestListTimeseries:
         """Should correctly identify active spend channels."""
         ts_info = list_timeseries(sample_csv, min_length=100)
 
-        # org_001 should have google channels
         org1_row = ts_info[ts_info["organisation_id"] == "org_001"].iloc[0]
         assert "google_paid_search_spend" in org1_row["active_channels"]
         assert "google_shopping_spend" in org1_row["active_channels"]
 
-        # org_002 should have meta channels
         org2_row = ts_info[ts_info["organisation_id"] == "org_002"].iloc[0]
         assert "meta_facebook_spend" in org2_row["active_channels"]
         assert "meta_instagram_spend" in org2_row["active_channels"]
@@ -118,9 +112,9 @@ class TestGetActiveChannels:
         """Should find channels with sufficient non-zero data."""
         df = pd.DataFrame(
             {
-                "google_paid_search_spend": [100, 50, 0, 80, 60],  # 80% nonzero
-                "google_shopping_spend": [0, 0, 0, 10, 0],  # 20% nonzero
-                "meta_facebook_spend": [0, 0, 0, 0, 0],  # 0% nonzero
+                "google_paid_search_spend": [100, 50, 0, 80, 60],
+                "google_shopping_spend": [0, 0, 0, 10, 0],
+                "meta_facebook_spend": [0, 0, 0, 0, 0],
             }
         )
 
@@ -189,9 +183,7 @@ class TestLoadTimeseries:
 
         data = load_timeseries(sample_csv, config)
 
-        # x should be 1D
         assert data.x.ndim == 1
-        # Should have non-zero spend (org_001 has google spend)
         assert data.x.sum() > 0
 
     def test_raises_for_missing_org(self, sample_csv):
@@ -230,7 +222,6 @@ class TestLoadTimeseries:
         data = load_timeseries(sample_csv, config)
 
         assert data.meta["target_col"] == "first_purchases"
-        # first_purchases should have lower values than all_purchases
         assert data.y.mean() < 100
 
 
@@ -250,8 +241,6 @@ class TestSelectRepresentativeTimeseries:
             sample_csv, n=2, min_length=100, min_channels=1, seed=42
         )
 
-        # With 2 verticals and n=2, should ideally get 1 from each
-        # (deterministic with seed=42)
         assert len(set(selected)) == 2
 
     def test_deterministic_with_seed(self, sample_csv):
@@ -272,5 +261,5 @@ class TestSelectRepresentativeTimeseries:
                 sample_csv,
                 n=5,
                 min_length=100,
-                min_channels=10,  # No series has 10 channels
+                min_channels=10,
             )

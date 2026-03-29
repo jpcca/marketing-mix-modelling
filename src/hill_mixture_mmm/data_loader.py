@@ -7,10 +7,8 @@ time series (no cross-organisation data sharing).
 Usage:
     from hill_mixture_mmm.data_loader import list_timeseries, load_timeseries
 
-    # Discover available time series
     ts_info = list_timeseries("data/conjura_mmm_data.csv")
 
-    # Load a specific organisation's data
     data = load_timeseries(
         "data/conjura_mmm_data.csv",
         TimeSeriesConfig(organisation_id="org_123")
@@ -23,7 +21,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-# All spend columns in the Conjura dataset
 SPEND_COLUMNS = [
     "google_paid_search_spend",
     "google_shopping_spend",
@@ -36,7 +33,6 @@ SPEND_COLUMNS = [
     "tiktok_spend",
 ]
 
-# Target variable options
 TARGET_COLUMNS = [
     "first_purchases",
     "first_purchases_units",
@@ -211,7 +207,6 @@ def load_timeseries(
             f"territory={config.territory}"
         )
 
-    # Sort by date
     org_df = org_df.sort_values(by="date_day").reset_index(drop=True)  # type: ignore[call-overload]
 
     if len(org_df) < config.min_series_length:
@@ -235,10 +230,8 @@ def load_timeseries(
     spend_df = org_df[spend_cols].fillna(0)
 
     if config.aggregate_spend:
-        # Aggregate all channels into single spend series
         x = spend_df.sum(axis=1).values.astype(np.float32)
     else:
-        # Per-channel spend matrix
         x = spend_df.values.astype(np.float32)
 
     meta = {
@@ -278,7 +271,6 @@ def load_real_data(csv_path: str | Path) -> pd.DataFrame:
     """
     df = pd.read_csv(csv_path, parse_dates=["date_day"])
 
-    # Use "All Territories" for aggregated view
     df = df[df["territory_name"] == "All Territories"].copy()
 
     spend_cols = [c for c in SPEND_COLUMNS if c in df.columns]
@@ -336,7 +328,6 @@ def select_representative_timeseries(
     if len(ts_info) == 0:
         raise ValueError("No time series meet the criteria")
 
-    # Prefer "All Territories" to match load_timeseries default behavior.
     all_territories = ts_info[ts_info["territory_name"] == "All Territories"]
     if len(all_territories) > 0:
         ts_info = all_territories
@@ -364,14 +355,12 @@ def select_representative_timeseries(
         raise ValueError(f"Unknown selection_criteria: {selection_criteria}")
 
     selected_orgs: list[str] = []
-    # First pass: pick one organization per vertical when possible.
     for _, group in ts_info.groupby("organisation_vertical", sort=True):
         if len(selected_orgs) >= n_select:
             break
         pick = group.sample(n=1, random_state=seed)["organisation_id"].iloc[0]
         selected_orgs.append(str(pick))
 
-    # Second pass: fill remaining slots from the remaining pool.
     remaining = ts_info[~ts_info["organisation_id"].isin(selected_orgs)]
     remaining_slots = n_select - len(selected_orgs)
     if remaining_slots > 0 and len(remaining) > 0:

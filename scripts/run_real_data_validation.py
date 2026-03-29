@@ -7,8 +7,8 @@ Evaluates both models on real Conjura MMM data using:
 
 Usage:
     python scripts/run_real_data_validation.py
-    python scripts/run_real_data_validation.py --quick  # Faster settings for testing
-    python scripts/run_real_data_validation.py --org ORG_ID  # Specific organization
+    python scripts/run_real_data_validation.py --quick
+    python scripts/run_real_data_validation.py --org ORG_ID
 """
 
 import argparse
@@ -20,7 +20,6 @@ from pathlib import Path
 
 import numpy as np
 
-# Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
@@ -40,7 +39,6 @@ from hill_mixture_mmm.inference import (  # noqa: E402
 )
 from hill_mixture_mmm.models import model_hill_mixture_hierarchical_reparam, model_single_hill  # noqa: E402
 
-# Constants
 DATA_PATH = project_root / "data" / "conjura_mmm_data.csv"
 RESULTS_DIR = project_root / "results" / "real_data_validation"
 
@@ -57,7 +55,6 @@ def run_single_hill_model(
 
     start_time = time.time()
 
-    # Run inference
     mcmc = run_inference(
         model_fn=model_single_hill,
         x=data.x,
@@ -71,15 +68,12 @@ def run_single_hill_model(
     elapsed = time.time() - start_time
     print(f"Inference completed in {elapsed:.1f} seconds")
 
-    # Compute LOO
     print("Computing LOO-CV...")
     loo_results = compute_loo(mcmc)
 
-    # Compute standard convergence diagnostics
     print("Computing convergence diagnostics...")
     conv_results = compute_convergence_diagnostics(mcmc)
 
-    # Get parameter summaries
     samples = mcmc.get_samples()
     param_summary = {
         "A_mean": float(np.mean(samples["A"])),
@@ -114,7 +108,6 @@ def run_mixture_model(
 
     start_time = time.time()
 
-    # Run inference
     mcmc = run_inference(
         model_fn=model_hill_mixture_hierarchical_reparam,
         x=data.x,
@@ -129,15 +122,12 @@ def run_mixture_model(
     elapsed = time.time() - start_time
     print(f"Inference completed in {elapsed:.1f} seconds")
 
-    # Compute LOO
     print("Computing LOO-CV...")
     loo_results = compute_loo(mcmc)
 
-    # Compute standard convergence diagnostics (for reference)
     print("Computing standard convergence diagnostics...")
     conv_standard = compute_convergence_diagnostics(mcmc)
 
-    # Compute label-invariant diagnostics
     print("Computing label-invariant diagnostics...")
     try:
         conv_invariant = compute_label_invariant_diagnostics(mcmc, data.x, data.y)
@@ -145,7 +135,6 @@ def run_mixture_model(
         print(f"  Warning: label-invariant diagnostics failed: {e}")
         conv_invariant = {"error": str(e)}
 
-    # Compute diagnostics on relabeled samples
     print("Computing diagnostics on relabeled samples...")
     try:
         conv_relabeled = compute_diagnostics_on_relabeled(mcmc)
@@ -153,7 +142,6 @@ def run_mixture_model(
         print(f"  Warning: relabeled diagnostics failed: {e}")
         conv_relabeled = {"error": str(e)}
 
-    # Get parameter summaries (after relabeling)
     samples = mcmc.get_samples()
     relabeled = relabel_samples_by_k(samples)
 
@@ -185,7 +173,6 @@ def format_results_table(single_results: dict, mixture_results: dict) -> str:
     lines.append("COMPARISON SUMMARY")
     lines.append("=" * 70)
 
-    # ELPD-LOO comparison
     lines.append("\n### Model Comparison (ELPD-LOO)")
     lines.append("-" * 50)
 
@@ -205,10 +192,8 @@ def format_results_table(single_results: dict, mixture_results: dict) -> str:
         f"{mixture_results['loo'].get('p_loo', np.nan):>10.1f}"
     )
 
-    # Delta ELPD
     if not np.isnan(single_elpd) and not np.isnan(mixture_elpd):
         delta = mixture_elpd - single_elpd
-        # Approximate SE of difference
         delta_se = np.sqrt(single_se**2 + mixture_se**2) if not np.isnan(single_se) else np.nan
         lines.append(f"\nDelta (Mixture - Single): {delta:+.1f} (SE: {delta_se:.1f})")
         if delta > 0:
@@ -216,18 +201,15 @@ def format_results_table(single_results: dict, mixture_results: dict) -> str:
         else:
             lines.append("  → Single model has BETTER predictive performance")
 
-    # Convergence comparison
     lines.append("\n### Convergence Diagnostics (R-hat)")
     lines.append("-" * 50)
     lines.append(f"{'Model':<25} {'Max R-hat':>12} {'Converged':>12}")
     lines.append("-" * 49)
 
-    # Single model
     single_rhat = single_results["convergence"].get("max_rhat", np.nan)
     single_conv = single_results["convergence"].get("converged", False)
     lines.append(f"{'Single Hill':<25} {single_rhat:>12.4f} {'Yes' if single_conv else 'No':>12}")
 
-    # Mixture model - show both standard and relabeled
     std_rhat = mixture_results["convergence_standard"].get("max_rhat", np.nan)
     lines.append(f"{'Mixture (standard)':<25} {std_rhat:>12.4f} {'(unreliable)':>12}")
 
@@ -242,7 +224,6 @@ def format_results_table(single_results: dict, mixture_results: dict) -> str:
         ll_rhat = mixture_results["convergence_label_invariant"]["rhat_log_lik"]
         lines.append(f"{'Mixture (log-lik)':<25} {ll_rhat:>12.4f}")
 
-    # Timing
     lines.append("\n### Computation Time")
     lines.append("-" * 50)
     lines.append(f"Single Hill: {single_results['elapsed_seconds']:.1f} seconds")
@@ -259,7 +240,6 @@ def main():
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     args = parser.parse_args()
 
-    # MCMC configuration
     if args.quick:
         config = {
             "num_warmup": 200,
@@ -280,18 +260,15 @@ def main():
         f"chains={config['num_chains']}"
     )
 
-    # Check data exists
     if not DATA_PATH.exists():
         print(f"ERROR: Data file not found: {DATA_PATH}")
         print("Please ensure conjura_mmm_data.csv is in the data/ directory.")
         sys.exit(1)
 
-    # Select organization
     if args.org:
         org_id = args.org
         print(f"\nUsing specified organisation: {org_id}")
     else:
-        # List available and select one with good characteristics
         print("\nDiscovering available time series...")
         ts_info = list_timeseries(DATA_PATH, min_length=200)
         print(f"Found {len(ts_info)} time series with >= 200 days")
@@ -300,7 +277,6 @@ def main():
             print("ERROR: No suitable time series found")
             sys.exit(1)
 
-        # Select one with good characteristics (longest series with multiple channels)
         ts_info_sorted = ts_info.sort_values(
             by=["n_active_channels", "n_days"], ascending=[False, False]
         )
@@ -311,7 +287,6 @@ def main():
         print(f"  - Active channels: {org_info['n_active_channels']}")
         print(f"  - Vertical: {org_info['organisation_vertical']}")
 
-    # Load data
     print(f"\nLoading data for {org_id}...")
     data = load_timeseries(
         DATA_PATH,
@@ -320,15 +295,12 @@ def main():
     print(f"Loaded: T={data.meta['T']}, spend range=[{data.x.min():.0f}, {data.x.max():.0f}]")
     print(f"Target range: [{data.y.min():.0f}, {data.y.max():.0f}]")
 
-    # Run models
     single_results = run_single_hill_model(data, config, seed=args.seed)
     mixture_results = run_mixture_model(data, config, K=args.K, seed=args.seed)
 
-    # Print comparison
     summary = format_results_table(single_results, mixture_results)
     print(summary)
 
-    # Save results
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -341,13 +313,11 @@ def main():
         "mixture": mixture_results,
     }
 
-    # Save JSON
     json_path = RESULTS_DIR / f"validation_{timestamp}.json"
     with open(json_path, "w") as f:
         json.dump(results, f, indent=2, default=str)
     print(f"\nResults saved to: {json_path}")
 
-    # Save summary
     txt_path = RESULTS_DIR / f"validation_{timestamp}.txt"
     with open(txt_path, "w") as f:
         f.write("Real Data Validation Results\n")

@@ -8,11 +8,9 @@ Compares predictive performance using real data (Conjura dataset):
 - 90% CI coverage
 
 Usage:
-    # Run in each worktree:
     python scripts/run_inference_accuracy_comparison.py --label halfnormal
     python scripts/run_inference_accuracy_comparison.py --label lognormal
 
-    # Results saved to: results/inference_accuracy_<label>.csv
 """
 
 import argparse
@@ -24,7 +22,6 @@ import numpy as np
 import numpyro
 import pandas as pd
 
-# Set device count for parallel chains BEFORE any JAX imports
 numpyro.set_host_device_count(2)
 
 from hill_mixture_mmm.baseline import standardized_time_index  # noqa: E402
@@ -54,10 +51,8 @@ def compute_inference_metrics(
     K: int = 3,
 ) -> dict:
     """Compute comprehensive inference accuracy metrics."""
-    # Convergence diagnostics
     diag = compute_convergence_diagnostics(mcmc)
 
-    # LOO-CV and WAIC (computed from mcmc directly)
     try:
         loo_result = compute_loo(mcmc)
         loo_score = float(loo_result["elpd_loo"])
@@ -76,7 +71,6 @@ def compute_inference_metrics(
         waic_score = np.nan
         waic_se = np.nan
 
-    # Predictive performance on test set
     predictions = compute_predictions(
         mcmc,
         model_hill_mixture_hierarchical_reparam,
@@ -86,19 +80,16 @@ def compute_inference_metrics(
         total_time=len(x_train) + len(x_test),
         K=K,
     )
-    # Get y samples and compute metrics
     y_samples = predictions.get("y", predictions.get("mu_expected", None))
     if y_samples is not None:
         y_pred_mean = np.mean(y_samples, axis=0)
     else:
         y_pred_mean = np.zeros_like(y_test)
 
-    # MAPE and MAE
     denom = np.maximum(np.abs(y_test), 1e-8)
     mape = float(np.mean(np.abs((y_test - y_pred_mean) / denom)) * 100.0)
     mae = float(np.mean(np.abs(y_test - y_pred_mean)))
 
-    # 90% CI coverage using quantiles
     if y_samples is not None:
         q05 = np.quantile(y_samples, 0.05, axis=0)
         q95 = np.quantile(y_samples, 0.95, axis=0)
@@ -153,7 +144,6 @@ def run_inference_comparison(
         print(f"\n[{i + 1}/{n_orgs}] Testing organization: {org_id[:12]}...")
 
         try:
-            # Load data
             config = TimeSeriesConfig(
                 organisation_id=org_id,
                 aggregate_spend=True,
@@ -161,7 +151,6 @@ def run_inference_comparison(
             data = load_timeseries(csv_path, config)
             T = len(data.y)
 
-            # Train/test split
             split_idx = int(T * train_ratio)
             t_std_full = standardized_time_index(T)
             x_train, y_train = data.x[:split_idx], data.y[:split_idx]
@@ -169,10 +158,8 @@ def run_inference_comparison(
 
             print(f"  Data: T={T}, train={len(y_train)}, test={len(y_test)}")
 
-            # Compute data-adaptive priors
             prior_config = compute_prior_config(x_train, y_train)
 
-            # Run MCMC
             start_time = time.time()
             mcmc = run_inference(
                 model_fn=model_hill_mixture_hierarchical_reparam,
@@ -188,7 +175,6 @@ def run_inference_comparison(
             )
             elapsed = time.time() - start_time
 
-            # Compute metrics
             metrics = compute_inference_metrics(
                 mcmc, x_train, y_train, x_test, y_test, prior_config, K=K
             )
@@ -333,12 +319,10 @@ def main():
     )
     args = parser.parse_args()
 
-    # Verify data file exists
     if not Path(args.data).exists():
         print(f"ERROR: Data file not found: {args.data}")
         sys.exit(1)
 
-    # Create output directory
     output_dir = Path(args.output_dir)
     output_dir.mkdir(exist_ok=True)
 
@@ -347,7 +331,6 @@ def main():
         f"Settings: warmup={args.warmup}, samples={args.samples}, chains={args.chains}, K={args.K}"
     )
 
-    # Run comparison
     df = run_inference_comparison(
         csv_path=args.data,
         label=args.label,
@@ -359,15 +342,12 @@ def main():
         seed=args.seed,
     )
 
-    # Save results
     output_file = output_dir / f"inference_accuracy_{args.label}.csv"
     df.to_csv(output_file, index=False)
     print(f"\nResults saved to: {output_file}")
 
-    # Print summary
     print_summary(df)
 
-    # Exit code based on convergence
     n_converged = df["converged"].sum()
     sys.exit(0 if n_converged == len(df) else 1)
 

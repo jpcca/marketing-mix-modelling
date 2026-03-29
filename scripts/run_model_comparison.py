@@ -47,7 +47,6 @@ MODEL_SPECS = [
 def main():
     csv_path = "data/conjura_mmm_data.csv"
 
-    # MCMC settings (reduced for speed, but enough for comparison)
     NUM_WARMUP = 200
     NUM_SAMPLES = 400
     NUM_CHAINS = 2
@@ -57,7 +56,6 @@ def main():
     print("Model Comparison: Single Hill vs Mixture Models")
     print("=" * 70)
 
-    # Select 1 representative organization
     print("\n[1] Selecting organisation...")
     org_ids = select_representative_timeseries(
         csv_path, n=1, min_length=300, min_channels=2, seed=42
@@ -65,7 +63,6 @@ def main():
     org_id = org_ids[0]
     print(f"    Selected: {org_id[:20]}...")
 
-    # Load data
     print("\n[2] Loading data...")
     config = TimeSeriesConfig(
         organisation_id=org_id,
@@ -74,7 +71,6 @@ def main():
     )
     data = load_timeseries(csv_path, config)
 
-    # Split train/test manually
     T = len(data.y)
     T_train = int(T * TRAIN_RATIO)
     t_std_full = standardized_time_index(T)
@@ -83,17 +79,14 @@ def main():
 
     print(f"    T={T}, Train={T_train}, Test={T - T_train}")
 
-    # Compute priors
     prior_config = compute_prior_config(x_train, y_train)
 
     results = []
 
-    # Run the benchmark-aligned model set
     for spec in MODEL_SPECS:
         print(f"\n[3] Running {spec.name}...")
 
         try:
-            # Run inference (note: prior_config is a keyword argument)
             mcmc = run_inference(
                 spec.fn,
                 x_train,
@@ -107,14 +100,11 @@ def main():
                 **spec.kwargs,
             )
 
-            # Check convergence
             diag = compute_convergence_diagnostics(mcmc)
             print(f"    R-hat: {diag['max_rhat']:.3f}, ESS: {diag['min_ess_bulk']:.0f}")
 
-            # Compute LOO
             loo_result = compute_loo(mcmc)
 
-            # Compute predictions (train and test separately)
             preds_train = compute_predictions(
                 mcmc,
                 spec.fn,
@@ -133,7 +123,6 @@ def main():
                 **spec.kwargs,
             )
 
-            # Compute metrics (y_true first, y_samples second)
             metrics_train = compute_predictive_metrics(y_train, preds_train["y"])
             metrics_test = compute_predictive_metrics(y_test, preds_test["y"])
 
@@ -173,7 +162,6 @@ def main():
                 }
             )
 
-    # Summary
     print("\n" + "=" * 70)
     print("COMPARISON SUMMARY")
     print("=" * 70)
@@ -181,7 +169,6 @@ def main():
     df = pd.DataFrame(results)
     print("\n" + df.to_string(index=False))
 
-    # Delta LOO comparison
     if len(df) > 1 and not bool(df["elpd_loo"].isna().all()):
         best_idx = df["elpd_loo"].idxmax()
         best_model = df.loc[best_idx, "model"]
@@ -193,7 +180,6 @@ def main():
             delta = row["elpd_loo"] - best_elpd
             print(f"  {row['model']}: {delta:+.1f}")
 
-    # Save results
     df.to_csv("results/model_comparison.csv", index=False)
     print("\nResults saved to results/model_comparison.csv")
 

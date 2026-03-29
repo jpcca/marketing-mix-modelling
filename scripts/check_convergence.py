@@ -19,7 +19,6 @@ from pathlib import Path
 
 import numpyro
 
-# Set device count for parallel chains BEFORE any JAX imports
 numpyro.set_host_device_count(2)
 
 from hill_mixture_mmm.data import compute_prior_config  # noqa: E402
@@ -55,7 +54,6 @@ def run_convergence_test(
     Returns:
         List of result dicts with convergence diagnostics per org
     """
-    # Select representative organizations
     print(f"Selecting {n_orgs} representative organizations...")
     org_ids = select_representative_timeseries(
         csv_path,
@@ -72,7 +70,6 @@ def run_convergence_test(
         print(f"\n[{i + 1}/{n_orgs}] Testing organization: {org_id[:12]}...")
 
         try:
-            # Load data
             config = TimeSeriesConfig(
                 organisation_id=org_id,
                 aggregate_spend=True,
@@ -80,10 +77,8 @@ def run_convergence_test(
             data = load_timeseries(csv_path, config)
             print(f"  Data: T={len(data.y)}, spend_range=[{data.x.min():.1f}, {data.x.max():.1f}]")
 
-            # Compute data-adaptive priors
             prior_config = compute_prior_config(data.x, data.y)
 
-            # Run MCMC
             start_time = time.time()
             mcmc = run_inference(
                 model_fn=model_hill_mixture_hierarchical_reparam,
@@ -98,7 +93,6 @@ def run_convergence_test(
             )
             elapsed = time.time() - start_time
 
-            # Compute diagnostics
             diag = compute_convergence_diagnostics(mcmc)
 
             result = {
@@ -161,7 +155,6 @@ def print_summary(results: list[dict]) -> None:
     print(f"Converged: {n_converged}/{total} ({pct:.0f}%)")
     print("=" * 70)
 
-    # Overall verdict
     if n_converged == total:
         print("\n✓ ALL ORGANIZATIONS CONVERGED - LogNormal hyperprior working as expected")
     elif n_converged > total / 2:
@@ -216,7 +209,6 @@ def main():
     )
     args = parser.parse_args()
 
-    # Verify data file exists
     if not Path(args.data).exists():
         print(f"ERROR: Data file not found: {args.data}")
         sys.exit(1)
@@ -226,7 +218,6 @@ def main():
         f"Settings: warmup={args.warmup}, samples={args.samples}, chains={args.chains}, K={args.K}"
     )
 
-    # Run tests
     results = run_convergence_test(
         csv_path=args.data,
         n_orgs=args.n_orgs,
@@ -237,10 +228,8 @@ def main():
         seed=args.seed,
     )
 
-    # Print summary
     print_summary(results)
 
-    # Exit code based on convergence
     n_converged = sum(1 for r in results if r["converged"])
     sys.exit(0 if n_converged == len(results) else 1)
 

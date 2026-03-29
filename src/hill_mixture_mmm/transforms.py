@@ -61,7 +61,7 @@ def hill_matrix(s, A, k, n):
     Returns:
         (T, K) hill effect matrix
     """
-    s_col = s[:, None]  # (T, 1)
+    s_col = s[:, None]
     return (
         A[None, :]
         * (s_col ** n[None, :])

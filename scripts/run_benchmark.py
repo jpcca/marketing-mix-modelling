@@ -5,22 +5,16 @@ Unified benchmark runner for paper experiments. By default runs both
 synthetic and real data experiments. Use flags to run specific subsets.
 
 Usage:
-    # Run all experiments (synthetic + real data)
     python scripts/run_benchmark.py
 
-    # Run only synthetic experiments
     python scripts/run_benchmark.py --synthetic-only
 
-    # Run only real data experiments
     python scripts/run_benchmark.py --real-only
 
-    # Quick test mode (reduced samples/seeds)
     python scripts/run_benchmark.py --quick
 
-    # Specific DGPs or models
     python scripts/run_benchmark.py --dgp single mixture_k2 --model single_hill mixture_k2
 
-    # Custom output directory
     python scripts/run_benchmark.py --output results/my_experiment
 """
 
@@ -33,7 +27,6 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
-# Add parent src to path for local development
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import numpy as np
@@ -71,8 +64,6 @@ class ModelSpec:
     kwargs: dict
 
 
-# Default model configurations
-# All mixture models use the same hierarchical reparameterized structure with K as parameter
 MODEL_SPECS = [
     ModelSpec("single_hill", model_single_hill, {}),
     ModelSpec("mixture_k2", model_hill_mixture_hierarchical_reparam, {"K": 2}),
@@ -283,7 +274,6 @@ def run_single_experiment(
         "seed": dgp_config.seed,
         "T": prepared["T"],
         "T_train": prepared["T_train"],
-        # Convergence
         "max_rhat": convergence["max_rhat"],
         "min_ess_bulk": convergence["min_ess_bulk"],
         "min_ess_tail": convergence["min_ess_tail"],
@@ -312,13 +302,11 @@ def run_single_experiment(
         "num_samples_used": fit["used_samples"],
         "target_accept_prob_used": fit["used_target_accept"],
         "max_tree_depth_used": fit["used_max_tree_depth"],
-        # Model comparison
         "elpd_loo": loo.get("elpd_loo"),
         "loo_se": loo.get("se"),
         "p_loo": loo.get("p_loo"),
         "elpd_waic": waic.get("elpd_waic"),
         "waic_se": waic.get("se"),
-        # Predictive
         "train_mape": train_metrics["mape"],
         "test_mape": test_metrics["mape"],
         "train_coverage_90": train_metrics["coverage_90"],
@@ -327,10 +315,8 @@ def run_single_experiment(
         "test_mu_mape": test_latent["mape"],
         "train_mu_coverage_90": train_latent["coverage_90"],
         "test_mu_coverage_90": test_latent["coverage_90"],
-        # Effective K
         "effective_k_mean": effective_k["effective_k_mean"],
         "effective_k_std": effective_k["effective_k_std"],
-        # Parameter recovery
         "alpha_in_ci": param_recovery.get("alpha", {}).get("in_ci"),
         "sigma_in_ci": param_recovery.get("sigma", {}).get("in_ci"),
         "alpha_true": prepared["meta"]["alpha_true"],
@@ -363,10 +349,8 @@ def run_benchmark_suite(
     Returns:
         DataFrame with all results
     """
-    # Set up multi-chain
     numpyro.set_host_device_count(num_chains)
 
-    # Defaults
     if dgp_names is None:
         dgp_names = list(DGP_CONFIGS.keys())
     if model_names is None:
@@ -374,7 +358,6 @@ def run_benchmark_suite(
     if seeds is None:
         seeds = [0, 1, 2, 3, 4]
 
-    # Filter model specs
     models = [m for m in MODEL_SPECS if m.name in model_names]
 
     results = []
@@ -385,7 +368,6 @@ def run_benchmark_suite(
         base_config = DGP_CONFIGS[dgp_name]
 
         for seed in seeds:
-            # Create config with this seed
             config = DGPConfig(
                 dgp_type=base_config.dgp_type,
                 T=base_config.T,
@@ -415,7 +397,6 @@ def run_benchmark_suite(
 
     df = pd.DataFrame(results)
 
-    # Add delta LOO relative to single_hill baseline
     df = _add_delta_loo(df)
 
     return df
@@ -535,12 +516,10 @@ def export_results_csv(
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Export raw results
     raw_path = output_path.with_suffix(".csv")
     df.to_csv(raw_path, index=False)
     print(f"Raw results exported to {raw_path}")
 
-    # Export summary if requested
     if include_summary:
         summary = summarize_benchmark(df)
         summary_path = output_path.with_name(f"{output_path.stem}_summary.csv")
@@ -561,15 +540,12 @@ def export_results_json(
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Export raw results
     raw_path = output_path.with_suffix(".json")
     df.to_json(raw_path, orient="records", indent=2)
     print(f"Raw results exported to {raw_path}")
 
-    # Export summary if requested
     if include_summary:
         summary = summarize_benchmark(df)
-        # Convert multi-index summary to JSON-friendly format
         summary_reset = summary.reset_index()
         summary_reset.columns = [
             f"{col[0]}_{col[1]}" if isinstance(col, tuple) else col
@@ -584,46 +560,36 @@ def export_results_json(
 class BenchmarkConfig:
     """Configuration for benchmark experiments."""
 
-    # Synthetic experiments
     synthetic_dgps: list[str]
     synthetic_models: list[str]
     synthetic_seeds: list[int]
 
-    # Real data experiments
     real_n_orgs: int
     real_models: list[str]
     real_seeds: list[int]
 
-    # MCMC settings
     num_warmup: int
     num_samples: int
     num_chains: int
 
-    # Data settings
     train_ratio: float
 
-    # Output
     output_dir: str
 
 
 def get_default_config() -> BenchmarkConfig:
     """Get default full experiment configuration."""
     return BenchmarkConfig(
-        # Synthetic: 3 DGPs x 3 models x 5 seeds = 45 experiments
         synthetic_dgps=["single", "mixture_k2", "mixture_k3"],
         synthetic_models=["single_hill", "mixture_k2", "mixture_k3"],
         synthetic_seeds=[0, 1, 2, 3, 4],
-        # Real: 10 orgs x 3 models x 3 seeds = 90 experiments
         real_n_orgs=10,
         real_models=["single_hill", "mixture_k2", "mixture_k3"],
         real_seeds=[0, 1, 2],
-        # MCMC - NOTE: real data uses num_warmup=2000 (see run_real_data_experiments)
         num_warmup=1000,
         num_samples=2000,
         num_chains=4,
-        # Data
         train_ratio=0.75,
-        # Output
         output_dir="results/benchmark",
     )
 
@@ -690,7 +656,6 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
     print(f"Total: {n_exp} experiments")
     print()
 
-    # Load real data
     csv_path = Path("data/conjura_mmm_data.csv")
     if not csv_path.exists():
         print(f"WARNING: Real data not found at {csv_path}")
@@ -699,7 +664,6 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
 
     df_real = load_real_data(str(csv_path))
 
-    # Select top N organizations by data quantity
     selected_org_ids = select_representative_timeseries(
         str(csv_path),
         n=config.real_n_orgs,
@@ -709,7 +673,6 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
         seed=42,
     )
 
-    # Get model specs
     model_lookup = {m.name: m for m in MODEL_SPECS}
 
     results = []
@@ -723,7 +686,6 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
             print(f"WARNING: No rows found for organization_id={org_id}, skipping")
             continue
 
-        # Prepare data
         x = np.asarray(org_df["spend"].values)
         y = np.asarray(org_df["revenue"].values)
         T = len(y)
@@ -748,7 +710,6 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
                 exp_start = time.time()
 
                 try:
-                    # Run inference (real data uses 2000 warmup per PLAN.md)
                     real_warmup = 2000
                     mcmc = run_inference(
                         model_spec.fn,
@@ -780,7 +741,6 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
                         relabeled = None
                         label_switching = None
 
-                    # Compute diagnostics
                     hmc_diagnostics = compute_hmc_diagnostics(mcmc)
                     diagnostic_status = evaluate_diagnostic_summary(
                         convergence=convergence,
@@ -792,7 +752,6 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
                     loo = compute_loo(mcmc)
                     waic = compute_waic(mcmc)
 
-                    # Compute predictions
                     pred_train = compute_predictions(
                         mcmc,
                         model_spec.fn,
@@ -821,7 +780,6 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
                         "T": T,
                         "T_train": T_train,
                         "T_test": T - T_train,
-                        # Convergence (standard)
                         "max_rhat": convergence["max_rhat"],
                         "min_ess_bulk": convergence["min_ess_bulk"],
                         "min_ess_tail": convergence["min_ess_tail"],
@@ -836,17 +794,14 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
                         "num_divergences": hmc_diagnostics["num_divergences"],
                         "min_bfmi": hmc_diagnostics["min_bfmi"],
                         "tree_depth_hits": hmc_diagnostics["tree_depth_hits"],
-                        # LOO
                         "elpd_loo": loo.get("elpd_loo"),
                         "loo_se": loo.get("se"),
                         "p_loo": loo.get("p_loo"),
                         "pareto_k_bad": loo.get("pareto_k_bad", 0),
                         "pareto_k_very_bad": loo.get("pareto_k_very_bad", 0),
-                        # WAIC
                         "elpd_waic": waic.get("elpd_waic"),
                         "waic_se": waic.get("se"),
                         "p_waic": waic.get("p_waic"),
-                        # Mixture diagnostics (label-invariant)
                         "rhat_log_lik": (
                             label_invariant["rhat_log_lik"] if label_invariant is not None else None
                         ),
@@ -859,14 +814,11 @@ def run_real_data_experiments(config: BenchmarkConfig) -> pd.DataFrame:
                         "switching_rate": (
                             label_switching["switching_rate"] if label_switching is not None else None
                         ),
-                        # Predictions
                         "train_mape": train_metrics["mape"],
                         "test_mape": test_metrics["mape"],
                         "train_coverage_90": train_metrics["coverage_90"],
                         "test_coverage_90": test_metrics["coverage_90"],
-                        # Computation
                         "time_seconds": exp_time,
-                        # Status
                         "status": "success",
                     }
 
@@ -899,13 +851,11 @@ def save_results(
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # Save config
     config_path = output_dir / "config.json"
     with open(config_path, "w") as f:
         json.dump(asdict(config), f, indent=2)
     print(f"Config saved to {config_path}")
 
-    # Save synthetic results
     if synthetic_results is not None and len(synthetic_results) > 0:
         csv_path = output_dir / f"synthetic_{timestamp}.csv"
         synthetic_results.to_csv(csv_path, index=False)
@@ -914,12 +864,10 @@ def save_results(
         json_path = output_dir / f"synthetic_{timestamp}.json"
         synthetic_results.to_json(json_path, orient="records", indent=2)
 
-        # Summary
         summary = summarize_benchmark(synthetic_results)
         summary_path = output_dir / f"synthetic_{timestamp}_summary.csv"
         summary.to_csv(summary_path)
 
-    # Save real results
     if real_results is not None and len(real_results) > 0:
         csv_path = output_dir / f"real_{timestamp}.csv"
         real_results.to_csv(csv_path, index=False)
@@ -928,7 +876,6 @@ def save_results(
         json_path = output_dir / f"real_{timestamp}.json"
         real_results.to_json(json_path, orient="records", indent=2)
 
-    # Print summary
     print("\n" + "=" * 60)
     print("EXPERIMENT SUMMARY")
     print("=" * 60)
@@ -953,7 +900,6 @@ def save_results(
             print(f"  Acceptable diagnostics: {acceptable.sum()} / {len(success)}")
             if "strict_converged" in success:
                 print(f"  Strict Pass: {success['strict_converged'].sum()} / {len(success)}")
-            # Robust summaries: median and mean for key metrics
             elpd_arr = np.array(success["elpd_loo"])
             mape_arr = np.array(success["test_mape"])
             print(
@@ -962,7 +908,6 @@ def save_results(
             print(
                 f"  Test MAPE - Mean: {np.nanmean(mape_arr):.3f}%, Median: {np.nanmedian(mape_arr):.3f}%"
             )
-            # WAIC if available
             if "elpd_waic" in success.columns:
                 waic_arr = np.array(success["elpd_waic"])
                 valid_waic = waic_arr[~np.isnan(waic_arr)]
@@ -970,7 +915,6 @@ def save_results(
                     print(
                         f"  ELPD-WAIC - Mean: {np.mean(valid_waic):.1f}, Median: {np.median(valid_waic):.1f}"
                     )
-            # Pareto-k summary for LOO quality
             if "pareto_k_bad" in success.columns:
                 total_bad = success["pareto_k_bad"].sum()
                 print(f"  Total Pareto-k > 0.7: {total_bad}")
@@ -982,10 +926,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python scripts/run_benchmark.py                    # Full suite (synthetic + real)
-  python scripts/run_benchmark.py --synthetic-only   # Synthetic only
-  python scripts/run_benchmark.py --real-only        # Real data only
-  python scripts/run_benchmark.py --quick            # Quick test mode
+  python scripts/run_benchmark.py
+  python scripts/run_benchmark.py --synthetic-only
+  python scripts/run_benchmark.py --real-only
+  python scripts/run_benchmark.py --quick
   python scripts/run_benchmark.py --dgp single mixture_k2 --synthetic-only
 """,
     )
@@ -1038,10 +982,8 @@ Examples:
 
     args = parser.parse_args()
 
-    # Get config
     config = get_quick_config() if args.quick else get_default_config()
 
-    # Override config with CLI args
     if args.dgp:
         config.synthetic_dgps = args.dgp
     if args.model:
@@ -1057,7 +999,6 @@ Examples:
     if args.output:
         config.output_dir = args.output
 
-    # Set up multi-chain
     numpyro.set_host_device_count(config.num_chains)
 
     print("\n" + "#" * 60)
@@ -1070,14 +1011,12 @@ Examples:
     synthetic_results = None
     real_results = None
 
-    # Run experiments
     if not args.real_only:
         synthetic_results = run_synthetic_experiments(config)
 
     if not args.synthetic_only:
         real_results = run_real_data_experiments(config)
 
-    # Save results
     save_results(synthetic_results, real_results, config)
 
     print("\nDone!")

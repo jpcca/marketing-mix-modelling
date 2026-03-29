@@ -21,7 +21,6 @@ from hill_mixture_mmm.data_loader import TimeSeriesConfig
 
 DEFAULT_REAL_ORG_ID = "72a86a208d24d68b80be0e44a8a4872d"
 
-# Match scripts/run_benchmark.py: quick=[0], default=[0,1,2]
 SMOKE_REAL_SEEDS = [0]
 FULL_REAL_SEEDS = [0, 1, 2]
 SMOKE_REAL_MODELS = ["single_hill", "mixture_k2"]

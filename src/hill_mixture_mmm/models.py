@@ -112,7 +112,6 @@ def model_single_hill(x, y=None, prior_config=None, t_std=None):
     else:
         t_std = jnp.asarray(t_std)
 
-    # Default prior config
     if prior_config is None:
         prior_config = {
             "intercept_loc": 50.0,
@@ -126,12 +125,10 @@ def model_single_hill(x, y=None, prior_config=None, t_std=None):
             "sigma_scale": 10.0,
         }
 
-    # Adstock parameter
     alpha = numpyro.sample("alpha", dist.Beta(2, 2))
     s = adstock_geometric(x, alpha)
     numpyro.deterministic("s", s)
 
-    # Baseline (intercept + trend)
     intercept = numpyro.sample(
         "intercept",
         dist.Normal(prior_config["intercept_loc"], prior_config["intercept_scale"]),
@@ -139,14 +136,12 @@ def model_single_hill(x, y=None, prior_config=None, t_std=None):
     slope = numpyro.sample("slope", dist.Normal(0.0, prior_config["slope_scale"]))
     baseline = linear_baseline(intercept, slope, t_std)
 
-    # Hill parameters
     s_median = jnp.median(s)
     A = numpyro.sample("A", dist.LogNormal(prior_config["A_loc"], prior_config["A_scale"]))  # type: ignore[arg-type]
     k = numpyro.sample("k", dist.LogNormal(jnp.log(s_median + 1e-6), prior_config["k_scale"]))  # type: ignore[arg-type]
     n = numpyro.sample("n", dist.LogNormal(prior_config["n_loc"], prior_config["n_scale"]))  # type: ignore[arg-type]
     sigma = numpyro.sample("sigma", dist.HalfNormal(prior_config["sigma_scale"]))
 
-    # Effect and likelihood
     effect = hill(s, A, k, n)
     mu = baseline + effect
 
@@ -157,9 +152,6 @@ def model_single_hill(x, y=None, prior_config=None, t_std=None):
     numpyro.deterministic("effect", effect)
 
 
-# =============================================================================
-# HIERARCHICAL MIXTURE MODEL (K=2,3,5,...)
-# =============================================================================
 
 
 def _model_hill_mixture_hierarchical_reparam_inner(
@@ -187,12 +179,10 @@ def _model_hill_mixture_hierarchical_reparam_inner(
 
     prior_config = _resolve_mixture_prior_config(prior_config, K)
 
-    # Adstock parameter
     alpha = numpyro.sample("alpha", dist.Beta(2, 2))
     s = adstock_geometric(x, alpha)
     numpyro.deterministic("s", s)
 
-    # Baseline
     intercept = numpyro.sample(
         "intercept",
         dist.Normal(prior_config["intercept_loc"], prior_config["intercept_scale"]),
@@ -200,7 +190,6 @@ def _model_hill_mixture_hierarchical_reparam_inner(
     slope = numpyro.sample("slope", dist.Normal(0.0, prior_config["slope_scale"]))
     baseline = linear_baseline(intercept, slope, t_std)
 
-    # Mixture weights - stick-breaking
     stick_proportions = numpyro.sample(
         "stick_proportions",
         dist.Beta(prior_config["stick_alpha"], prior_config["stick_beta"]).expand((K - 1,)),  # type: ignore[arg-type]
@@ -215,23 +204,18 @@ def _model_hill_mixture_hierarchical_reparam_inner(
     pis = jnp.stack(pis_list)
     numpyro.deterministic("pis", pis)
 
-    # ========== HIERARCHICAL PRIORS ==========
-    # Hyperpriors for amplitude A (shared across components)
     mu_log_A = numpyro.sample("mu_log_A", dist.Normal(prior_config["A_loc"], 0.5))
     sigma_log_A = numpyro.sample(
         "sigma_log_A",
         dist.LogNormal(prior_config["sigma_log_A_loc"], prior_config["sigma_log_A_scale"]),  # type: ignore[arg-type]
-    )  # median ≈ 1.0, wide enough for 5x amplitude ratios across components
+    )
 
-    # Hyperpriors for Hill exponent n (shared across components)
     mu_log_n = numpyro.sample("mu_log_n", dist.Normal(jnp.log(1.5), 0.3))
     sigma_log_n = numpyro.sample(
         "sigma_log_n",
         dist.LogNormal(prior_config["sigma_log_n_loc"], prior_config["sigma_log_n_scale"]),  # type: ignore[arg-type]
-    )  # median ≈ 0.61, allows distinct curvature across components
+    )
 
-    # ========== NON-CENTERED COMPONENT PARAMETERS ==========
-    # A: amplitude per component (hierarchical, non-centered)
     log_A_raw = numpyro.sample("log_A_raw", dist.Normal(0, 1).expand((K,)))  # type: ignore[arg-type]
     if component_anchor_strength > 0.0:
         anchor_A = jnp.linspace(-1.0, 1.0, K) * component_anchor_strength
@@ -247,15 +231,12 @@ def _model_hill_mixture_hierarchical_reparam_inner(
     numpyro.deterministic("log_A", log_A)
     numpyro.deterministic("A", A)
 
-    # n: Hill exponent per component (hierarchical, non-centered)
     log_n_raw = numpyro.sample("log_n_raw", dist.Normal(0, 1).expand((K,)))  # type: ignore[arg-type]
     log_n = mu_log_n + anchor_n + sigma_log_n * log_n_raw
     n = jnp.exp(log_n)
     numpyro.deterministic("log_n", log_n)
     numpyro.deterministic("n", n)
 
-    # k: half-saturation with ordering constraint
-    # Use cumsum of positive increments for ordering
     s_median = jnp.median(s)
 
     if "k_anchor_quantiles" in prior_config and len(prior_config["k_anchor_quantiles"]) == K:
@@ -283,19 +264,15 @@ def _model_hill_mixture_hierarchical_reparam_inner(
                 1e-3,
             )
     else:
-        # Base k centered at median
         log_k_base = numpyro.sample(
             "log_k_base", dist.Normal(jnp.log(s_median + 1e-6), prior_config["k_scale"])
         )
-        # Increments (positive via softplus or abs)
         log_k_increments_raw = numpyro.sample(
             "log_k_increments_raw",
             dist.Normal(0, 1).expand((K - 1,)),  # type: ignore[arg-type]
         )
-        # Scale increments to reasonable range
         log_k_increments = jnp.abs(log_k_increments_raw) * prior_config["k_scale"]
 
-    # Build ordered k values
     log_k_values = jnp.concatenate(
         [jnp.array([log_k_base]), log_k_base + jnp.cumsum(log_k_increments)]
     )
@@ -303,14 +280,11 @@ def _model_hill_mixture_hierarchical_reparam_inner(
     numpyro.deterministic("log_k", log_k_values)
     numpyro.deterministic("k", k)
 
-    # Observation noise
     sigma = numpyro.sample("sigma", dist.HalfNormal(prior_config["sigma_scale"]))
 
-    # Hill transformation for each component
-    hill_mat = hill_matrix(s, A, k, n)  # (T, K)
-    mu_components = baseline[:, None] + hill_mat  # (T, K)
+    hill_mat = hill_matrix(s, A, k, n)
+    mu_components = baseline[:, None] + hill_mat
 
-    # GMM likelihood
     with numpyro.plate("time", T):
         numpyro.sample(
             "y",
@@ -318,7 +292,6 @@ def _model_hill_mixture_hierarchical_reparam_inner(
             obs=y,
         )
 
-    # Deterministic quantities
     mu_expected = baseline + jnp.sum(pis * hill_mat, axis=1)
     numpyro.deterministic("mu_expected", mu_expected)
     numpyro.deterministic("hill_components", hill_mat)

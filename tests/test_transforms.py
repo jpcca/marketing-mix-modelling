@@ -69,10 +69,9 @@ class TestHill:
 
     def test_steepness_increases_with_n(self):
         """Higher n should give steeper curve."""
-        x = 5.0  # at half-saturation
+        x = 5.0
         low_n = hill(x * 0.5, A=10.0, k=x, n=1.0)
         high_n = hill(x * 0.5, A=10.0, k=x, n=4.0)
-        # With higher n, at x < k the effect should be lower (steeper curve)
         assert low_n > high_n
 
 
@@ -81,8 +80,8 @@ class TestHillMatrix:
 
     def test_output_shape(self):
         """Output should be (T, K) for T inputs and K components."""
-        s = jnp.array([1.0, 2.0, 3.0, 4.0, 5.0])  # T=5
-        A = jnp.array([10.0, 20.0, 30.0])  # K=3
+        s = jnp.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        A = jnp.array([10.0, 20.0, 30.0])
         k = jnp.array([2.0, 3.0, 4.0])
         n = jnp.array([1.5, 2.0, 2.5])
 
@@ -98,7 +97,6 @@ class TestHillMatrix:
 
         result = hill_matrix(s, A, k, n)
 
-        # Check each element matches scalar computation
         for t in range(len(s)):
             for j in range(len(A)):
                 expected = hill(s[t], A[j], k[j], n[j])

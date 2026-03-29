@@ -62,12 +62,10 @@ from .transforms import adstock_geometric, hill, hill_matrix
 __version__ = "0.1.0"
 
 __all__ = [
-    # Data
     "DGPConfig",
     "DGP_CONFIGS",
     "generate_data",
     "compute_prior_config",
-    # Benchmark
     "BenchmarkCaseResult",
     "BenchmarkRunConfig",
     "BenchmarkThresholds",
@@ -86,7 +84,6 @@ __all__ = [
     "resolve_case_artifact_dir",
     "resolve_comparison_artifact_dir",
     "save_case_artifacts",
-    # Inference
     "run_inference",
     "compute_convergence_diagnostics",
     "compute_label_invariant_diagnostics",
@@ -94,7 +91,6 @@ __all__ = [
     "compute_predictions",
     "compute_predictive_metrics",
     "compute_waic",
-    # Metrics
     "compute_delta_loo",
     "compute_effective_k",
     "compute_latent_recovery",
@@ -103,10 +99,8 @@ __all__ = [
     "compute_across_seed_component_stability",
     "compute_parameter_recovery",
     "summarize_component_posterior",
-    # Models
     "model_single_hill",
     "model_hill_mixture_hierarchical_reparam",
-    # Transforms
     "adstock_geometric",
     "hill",
     "hill_matrix",

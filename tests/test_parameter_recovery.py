@@ -12,10 +12,8 @@ from hill_mixture_mmm.inference import run_inference
 from hill_mixture_mmm.metrics import compute_effective_k, compute_parameter_recovery
 from hill_mixture_mmm.models import model_hill_mixture_hierarchical_reparam, model_single_hill
 
-# Alias for tests that used old model names
 model_hill_mixture_sparse = model_hill_mixture_hierarchical_reparam
 
-# Use fewer samples for testing
 TEST_WARMUP = 200
 TEST_SAMPLES = 200
 TEST_CHAINS = 2
@@ -96,7 +94,6 @@ class TestMixtureEffectiveK:
         )
 
         eff_k = compute_effective_k(mcmc, threshold=0.05)
-        # Allow some tolerance - should be close to 1 or 2
         assert eff_k["effective_k_mean"] < 3.0, (
             f"Sparse K=5 on single Hill DGP should prune, got {eff_k['effective_k_mean']:.2f}"
         )
@@ -121,7 +118,6 @@ class TestMixtureEffectiveK:
         )
 
         eff_k = compute_effective_k(mcmc, threshold=0.05)
-        # Should find 2-4 components (allowing some tolerance)
         assert 2.0 <= eff_k["effective_k_mean"] <= 5.0, (
             f"Sparse K=5 on mixture K=3 DGP should find ~3, got {eff_k['effective_k_mean']:.2f}"
         )

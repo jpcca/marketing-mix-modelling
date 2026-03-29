@@ -30,7 +30,7 @@ class DGPConfig:
     dgp_type: Literal["single", "mixture_k2", "mixture_k3"]
     T: int = 200
     sigma: float = 3.0
-    alpha: float = 0.5  # adstock decay
+    alpha: float = 0.5
     intercept: float = 50.0
     slope: float = 2.0
     seed: int = 42
@@ -98,7 +98,7 @@ def _generate_single_hill(config: DGPConfig) -> tuple[np.ndarray, np.ndarray, di
 
     s_median = np.median(s)
     A_true = 30.0
-    k_true = s_median  # half-saturation at median spend
+    k_true = s_median
     n_true = 1.5
 
     effect = np.array(hill(jnp.array(s), A_true, k_true, n_true))
@@ -123,7 +123,7 @@ def _generate_single_hill(config: DGPConfig) -> tuple[np.ndarray, np.ndarray, di
         "baseline": baseline,
         "mu_true": mu,
         "mu_expected_true": mu,
-        "z_true": np.zeros(T, dtype=int),  # all belong to component 0
+        "z_true": np.zeros(T, dtype=int),
     }
 
     return x, y, meta
@@ -133,7 +133,7 @@ def _generate_mixture(config: DGPConfig, K: int) -> tuple[np.ndarray, np.ndarray
     """Generate data from K-component Hill mixture.
 
     DGP:
-        z_t ~ Categorical(pi)  # latent component assignment
+        z_t ~ Categorical(pi)
         y_t ~ Normal(baseline_t + hill(s_t; A[z], k[z], n[z]), sigma)
     """
     rng = np.random.default_rng(config.seed)
@@ -146,15 +146,11 @@ def _generate_mixture(config: DGPConfig, K: int) -> tuple[np.ndarray, np.ndarray
     t_std = standardized_time_index(T)
     baseline = linear_baseline(config.intercept, config.slope, t_std)
 
-    # Component parameters based on K
     s_median = np.median(s)
     k_quantiles = None
 
     if K == 2:
         pi_true = np.array([0.55, 0.45], dtype=np.float32)
-        # Anchor K=2 components to lower/upper observed spend quantiles.
-        # Use wide A separation (5x ratio) and distinct curvatures so the
-        # mixture is clearly identifiable above observation noise (sigma=3).
         k_quantiles = [0.25, 0.85]
         k_true = _support_quantiles(s, k_quantiles)
         A_true = np.array([10.0, 50.0], dtype=np.float32)
@@ -162,9 +158,6 @@ def _generate_mixture(config: DGPConfig, K: int) -> tuple[np.ndarray, np.ndarray
 
     elif K == 3:
         pi_true = np.array([0.40, 0.35, 0.25], dtype=np.float32)
-        # Mirror the K=2 benchmark philosophy: anchor components to separated
-        # spend quantiles and widen both amplitude and curvature differences so
-        # permutation-invariant curve recovery is feasible above sigma=3 noise.
         k_quantiles = [0.15, 0.60, 0.95]
         k_true = _support_quantiles(s, k_quantiles)
         A_true = np.array([12.0, 35.0, 85.0], dtype=np.float32)
@@ -235,29 +228,20 @@ def compute_prior_config(x: np.ndarray, y: np.ndarray) -> dict:
     intercept_loc = max(float(y_min), float(y_mean - effect_scale))
 
     return {
-        # Baseline priors
-        # The response mean includes positive Hill effects, so centering the
-        # baseline prior at y_mean systematically pushes effect curves downward.
         "intercept_loc": intercept_loc,
         "intercept_scale": float(y_std * 2),
         "slope_scale": float(y_std),
-        # A (max effect): center above the old 0.3 * y_range rule to reduce
-        # systematic underestimation of high-effect mixture components.
         "A_loc": float(np.log(effect_scale + 1e-6)),
         "A_scale": 0.8,
-        # k (half-saturation): scaled to x
         "k_base_loc": float(np.log(x_median + 1e-6)),
         "k_scale": 0.7,
-        # Single-Hill exponent prior
         "n_loc": float(np.log(1.5)),
         "n_scale": 0.4,
-        # Hierarchical-mixture shrinkage priors
         "sigma_log_A_loc": 0.0,
         "sigma_log_A_scale": 0.8,
         "sigma_log_n_loc": -0.5,
         "sigma_log_n_scale": 0.8,
         "sigma_scale": float(y_std),
-        # Reference values
         "x_median": float(x_median),
         "x_max": float(x_max),
         "y_mean": float(y_mean),

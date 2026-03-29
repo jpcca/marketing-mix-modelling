@@ -11,7 +11,6 @@ Usage:
 import sys
 from pathlib import Path
 
-# Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
@@ -39,7 +38,6 @@ def main():
     print("Quick Validation: Real Conjura Data + Hill MMM")
     print("=" * 60)
 
-    # Select 1 representative organisation
     print("\n[1] Selecting organisation...")
     org_ids = select_representative_timeseries(
         csv_path, n=1, min_length=300, min_channels=2, seed=42
@@ -47,7 +45,6 @@ def main():
     org_id = org_ids[0]
     print(f"    Selected: {org_id[:20]}...")
 
-    # Load data
     print("\n[2] Loading data...")
     config = TimeSeriesConfig(
         organisation_id=org_id,
@@ -58,7 +55,6 @@ def main():
     print(f"    T={data.meta['T']}, Channels={data.meta['n_channels']}")
     print(f"    Vertical: {data.meta['organisation_vertical']}")
 
-    # Train/test split
     T = len(data.y)
     T_train = int(T * 0.75)
     t_std_full = standardized_time_index(T)
@@ -66,13 +62,11 @@ def main():
     x_test, y_test = data.x[T_train:], data.y[T_train:]
     print(f"    Train: {T_train}, Test: {T - T_train}")
 
-    # Compute priors
     print("\n[3] Computing priors...")
     prior_config = compute_prior_config(x_train, y_train)
     print(f"    intercept_loc={prior_config['intercept_loc']:.1f}")
     print(f"    x_median={prior_config['x_median']:.1f}")
 
-    # Run MCMC (minimal settings for quick validation)
     print("\n[4] Running MCMC (reduced samples for quick validation)...")
     print("    This may take 1-2 minutes...")
     mcmc = run_inference(
@@ -87,20 +81,17 @@ def main():
         t_std=t_std_full[:T_train],
     )
 
-    # Diagnostics
     print("\n[5] Checking convergence...")
     diag = compute_convergence_diagnostics(mcmc)
     print(f"    max_rhat: {diag['max_rhat']:.3f} (should be < 1.05)")
     print(f"    min_ess_bulk: {diag['min_ess_bulk']:.0f}")
     print(f"    converged: {diag['converged']}")
 
-    # LOO
     print("\n[6] Computing LOO...")
     loo = compute_loo(mcmc)
     print(f"    elpd_loo: {loo.get('elpd_loo', 'N/A'):.1f}")
     print(f"    p_loo: {loo.get('p_loo', 'N/A'):.1f}")
 
-    # Predictions
     print("\n[7] Computing predictions...")
     pred_train = compute_predictions(
         mcmc,
@@ -126,7 +117,6 @@ def main():
     print(f"    Train Coverage 90%: {train_metrics['coverage_90']:.1%}")
     print(f"    Test Coverage 90%: {test_metrics['coverage_90']:.1%}")
 
-    # Summary
     print("\n" + "=" * 60)
     print("VALIDATION SUMMARY")
     print("=" * 60)
