@@ -92,13 +92,7 @@ def _normalize_bool(series: pd.Series) -> pd.Series:
 
 
 def _compute_rhat_test_pass(df: pd.DataFrame) -> pd.Series:
-    """Return whether each row passes the R-hat benchmark threshold.
-
-    The full synthetic benchmark uses `max_rhat <= 1.05` for the single-Hill
-    model and `label_invariant_max_rhat <= 1.05` for mixture models.
-    When a raw CSV does not include label-invariant diagnostics, fall back to
-    the available `max_rhat` column so figure generation still works.
-    """
+    """Return whether each row passes the benchmark R-hat rule."""
     if "rhat_test_pass" in df.columns:
         return _normalize_bool(df["rhat_test_pass"])
 

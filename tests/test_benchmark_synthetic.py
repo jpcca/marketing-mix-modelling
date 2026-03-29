@@ -1,5 +1,3 @@
-"""Synthetic benchmark smoke/full test matrix for the Hill MMM models."""
-
 from __future__ import annotations
 
 import json
@@ -39,7 +37,6 @@ PAPER_FIGURES_DIR = Path(__file__).parent.parent / "paper" / "figures"
 
 
 def _require_full_synthetic_benchmark() -> None:
-    """Skip unless the caller explicitly opts into the multi-seed synthetic benchmark."""
     enabled = os.getenv("HILL_MMM_RUN_FULL_SYNTHETIC_BENCHMARK", "").strip().lower()
     if enabled not in {"1", "true", "yes"}:
         pytest.skip(
@@ -50,7 +47,6 @@ def _require_full_synthetic_benchmark() -> None:
 
 @pytest.fixture(scope="module", autouse=True)
 def _generate_selected_publication_figures_after_full_benchmark() -> None:
-    """Generate paper figures once the full synthetic benchmark has finished."""
     started_at = time()
     yield
 
@@ -84,7 +80,6 @@ def _generate_selected_publication_figures_after_full_benchmark() -> None:
 
 
 def _synthetic_run_config(dgp_name: str, model_name: str, seed: int) -> BenchmarkRunConfig:
-    """Return an inference configuration suitable for one synthetic benchmark cell."""
     num_chains = int(os.getenv("HILL_MMM_SYNTHETIC_CHAINS", "2"))
     if model_name == "mixture_k2":
         target_accept_prob = 0.95
@@ -128,7 +123,6 @@ def _synthetic_run_config(dgp_name: str, model_name: str, seed: int) -> Benchmar
 
 
 def _synthetic_thresholds(dgp_name: str, model_name: str) -> BenchmarkThresholds:
-    """Return paper-level reportability gates for one synthetic benchmark cell."""
     max_test_mape = 5.0 if dgp_name == "single" else None
     max_test_mu_mape = None
     max_test_mu_nrmse = 0.15 if dgp_name == "mixture_k2" else None
@@ -174,7 +168,6 @@ def _synthetic_thresholds(dgp_name: str, model_name: str) -> BenchmarkThresholds
 
 
 def _synthetic_smoke_thresholds(dgp_name: str, model_name: str) -> BenchmarkThresholds:
-    """Return lighter smoke-test gates for short synthetic runs."""
     del model_name
     max_test_mape = 5.0 if dgp_name == "single" else None
     max_test_mu_mape = None
@@ -217,7 +210,6 @@ def _run_and_assert_case(
     benchmark_output_root: Path,
     thresholds: BenchmarkThresholds,
 ) -> None:
-    """Run one synthetic benchmark cell and assert its quality gates."""
     result = run_synthetic_benchmark_case(
         dgp_config=DGPConfig(dgp_type=dgp_name, T=200, seed=seed),
         model_name=model_name,
@@ -238,7 +230,6 @@ def _case_summary_path(
     model_name: str,
     seed: int,
 ) -> Path:
-    """Return the saved summary path for one synthetic benchmark seed."""
     return (
         benchmark_output_root
         / "synthetic"
@@ -258,7 +249,6 @@ def test_synthetic_benchmark_smoke_matrix(
     seed: int,
     benchmark_output_root: Path,
 ) -> None:
-    """Quick synthetic benchmark smoke test with the original quick seed set."""
     _run_and_assert_case(
         dgp_name,
         model_name,
@@ -279,7 +269,6 @@ def test_synthetic_benchmark_full_matrix(
     seed: int,
     benchmark_output_root: Path,
 ) -> None:
-    """Full synthetic benchmark with the original multi-seed benchmark schedule."""
     _require_full_synthetic_benchmark()
     _run_and_assert_case(
         dgp_name,
@@ -299,7 +288,6 @@ def test_synthetic_benchmark_full_across_seed_stability(
     model_name: str,
     benchmark_output_root: Path,
 ) -> None:
-    """Summarize across-seed component stability after the full synthetic sweep."""
     _require_full_synthetic_benchmark()
 
     summaries = []

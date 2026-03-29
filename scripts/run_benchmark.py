@@ -1,22 +1,5 @@
 #!/usr/bin/env python
-"""Run Hill Mixture MMM benchmarks (synthetic and/or real data).
-
-Unified benchmark runner for paper experiments. By default runs both
-synthetic and real data experiments. Use flags to run specific subsets.
-
-Usage:
-    python scripts/run_benchmark.py
-
-    python scripts/run_benchmark.py --synthetic-only
-
-    python scripts/run_benchmark.py --real-only
-
-    python scripts/run_benchmark.py --quick
-
-    python scripts/run_benchmark.py --dgp single mixture_k2 --model single_hill mixture_k2
-
-    python scripts/run_benchmark.py --output results/my_experiment
-"""
+"""Run synthetic and real MMM benchmarks."""
 
 import argparse
 import json
@@ -213,19 +196,7 @@ def run_single_experiment(
     num_samples: int = 2000,
     num_chains: int = 4,
 ) -> dict:
-    """Run a single DGP x Model experiment.
-
-    Args:
-        dgp_config: Data generating process configuration
-        model_spec: Model specification
-        train_ratio: Fraction of data for training
-        num_warmup: MCMC warmup iterations
-        num_samples: MCMC sample iterations
-        num_chains: Number of MCMC chains
-
-    Returns:
-        Dict with all evaluation metrics
-    """
+    """Run one DGP-model experiment."""
     prepared = _prepare_experiment_data(dgp_config, train_ratio)
     fit = _fit_once(
         dgp_config=dgp_config,
@@ -334,21 +305,7 @@ def run_benchmark_suite(
     num_chains: int = 4,
     verbose: bool = True,
 ) -> pd.DataFrame:
-    """Run the full benchmark suite.
-
-    Args:
-        dgp_names: List of DGP names to test (default: all)
-        model_names: List of model names to test (default: all)
-        seeds: List of random seeds (default: [0, 1, 2, 3, 4])
-        train_ratio: Fraction for training
-        num_warmup: MCMC warmup
-        num_samples: MCMC samples
-        num_chains: MCMC chains
-        verbose: Print progress
-
-    Returns:
-        DataFrame with all results
-    """
+    """Run the benchmark suite."""
     numpyro.set_host_device_count(num_chains)
 
     if dgp_names is None:
@@ -435,14 +392,7 @@ def _add_delta_loo(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def summarize_benchmark(df: pd.DataFrame) -> pd.DataFrame:
-    """Aggregate benchmark results across seeds.
-
-    Args:
-        df: Raw results DataFrame
-
-    Returns:
-        Summary DataFrame with mean +/- std across seeds
-    """
+    """Aggregate benchmark results across seeds."""
     metrics = [
         "benchmark_pass",
         "strict_converged",
@@ -467,11 +417,7 @@ def summarize_benchmark(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def print_benchmark_table(df: pd.DataFrame) -> None:
-    """Print benchmark results as a formatted table.
-
-    Args:
-        df: Summary DataFrame from summarize_benchmark
-    """
+    """Print benchmark results."""
     print("\n" + "=" * 80)
     print("BENCHMARK RESULTS")
     print("=" * 80)
@@ -506,13 +452,7 @@ def print_benchmark_table(df: pd.DataFrame) -> None:
 def export_results_csv(
     df: pd.DataFrame, path: str | Path, include_summary: bool = True
 ) -> None:
-    """Export benchmark results to CSV.
-
-    Args:
-        df: Raw results DataFrame from run_benchmark_suite
-        path: Output file path (without extension)
-        include_summary: Also export summary statistics
-    """
+    """Export benchmark results to CSV."""
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -530,13 +470,7 @@ def export_results_csv(
 def export_results_json(
     df: pd.DataFrame, path: str | Path, include_summary: bool = True
 ) -> None:
-    """Export benchmark results to JSON.
-
-    Args:
-        df: Raw results DataFrame from run_benchmark_suite
-        path: Output file path (without extension)
-        include_summary: Also export summary statistics
-    """
+    """Export benchmark results to JSON."""
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 

@@ -89,17 +89,7 @@ class BenchmarkRunConfig:
 
 @dataclass(frozen=True)
 class BenchmarkThresholds:
-    """Pass/fail thresholds for a single benchmark case.
-
-    Defaults are aligned with the "Fail" tier from PASS_WARN_FAIL_THRESHOLDS.
-    Values between Pass and Fail thresholds produce "Warn" in diagnostic
-    reports but should NOT cause hard assertion failures.
-
-    See PASS_WARN_FAIL_THRESHOLDS for the three-tier system:
-      Pass: rhat <= 1.01, ess >= 100/chain, divergences == 0, bfmi >= 0.3
-      Warn: between Pass and Fail
-      Fail: rhat > 1.05, ess < 50/chain, divergences > 5, bfmi < 0.2
-    """
+    """Pass/fail thresholds for one benchmark case."""
 
     max_rhat: float | None = 1.05
     min_ess_bulk: float | None = None
