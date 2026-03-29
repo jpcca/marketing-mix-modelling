@@ -33,7 +33,11 @@ class TestLatentRecovery:
 
         assert metrics["mape"] == 0.0
         assert metrics["mae"] == 0.0
+        assert metrics["rmse"] == 0.0
+        assert metrics["nrmse"] == 0.0
+        assert metrics["crps"] == 0.0
         assert metrics["coverage_90"] == 1.0
+        assert metrics["coverage_95"] == 1.0
 
     def test_invalid_shapes_raise_value_error(self):
         """Mismatched latent shapes should raise a clear error."""

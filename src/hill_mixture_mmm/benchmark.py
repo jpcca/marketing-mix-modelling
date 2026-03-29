@@ -117,7 +117,9 @@ class BenchmarkThresholds:
     max_tree_depth_hits: int | None = 10
     min_test_coverage_90: float | None = None
     max_test_mape: float | None = None
+    max_test_crps: float | None = None
     max_test_mu_mape: float | None = None
+    max_test_mu_nrmse: float | None = None
     min_test_mu_coverage_90: float | None = None
     max_component_weighted_curve_nrmse: float | None = None
     max_component_curve_nrmse: float | None = None
@@ -222,7 +224,7 @@ def _append_truth_metric_errors(errors: list[str], result: BenchmarkCaseResult) 
         _append_nonfinite_scalar_errors(
             errors,
             result.latent_test,
-            keys=("mape", "mae", "coverage_90"),
+            keys=("mape", "mae", "nrmse", "crps", "coverage_90", "coverage_95"),
             label="latent_test",
         )
 
@@ -838,10 +840,14 @@ def case_summary(result: BenchmarkCaseResult) -> dict[str, Any]:
         },
         "train_metrics": {
             "mape": float(result.train_metrics["mape"]),
+            "nrmse": float(result.train_metrics["nrmse"]),
+            "crps": float(result.train_metrics["crps"]),
             "coverage_90": float(result.train_metrics["coverage_90"]),
         },
         "test_metrics": {
             "mape": float(result.test_metrics["mape"]),
+            "nrmse": float(result.test_metrics["nrmse"]),
+            "crps": float(result.test_metrics["crps"]),
             "coverage_90": float(result.test_metrics["coverage_90"]),
         },
         "effective_k": {
@@ -1128,13 +1134,13 @@ def assert_case_passes(result: BenchmarkCaseResult, thresholds: BenchmarkThresho
         _append_nonfinite_scalar_errors(
             errors,
             result.train_metrics,
-            keys=("mape", "coverage_90"),
+            keys=("mape", "nrmse", "crps", "coverage_90"),
             label="train_metrics",
         )
         _append_nonfinite_scalar_errors(
             errors,
             result.test_metrics,
-            keys=("mape", "coverage_90"),
+            keys=("mape", "nrmse", "crps", "coverage_90"),
             label="test_metrics",
         )
 
@@ -1188,6 +1194,10 @@ def assert_case_passes(result: BenchmarkCaseResult, thresholds: BenchmarkThresho
         mape = float(result.test_metrics["mape"])
         if mape > thresholds.max_test_mape:
             errors.append(f"test_mape={mape:.3f} exceeds {thresholds.max_test_mape:.3f}")
+    if thresholds.max_test_crps is not None:
+        crps = float(result.test_metrics["crps"])
+        if crps > thresholds.max_test_crps:
+            errors.append(f"test_crps={crps:.3f} exceeds {thresholds.max_test_crps:.3f}")
 
     if thresholds.max_test_mu_mape is not None:
         if result.latent_test is None:
@@ -1196,6 +1206,14 @@ def assert_case_passes(result: BenchmarkCaseResult, thresholds: BenchmarkThresho
             errors.append(
                 f"test_mu_mape={result.latent_test['mape']:.3f} exceeds "
                 f"{thresholds.max_test_mu_mape:.3f}"
+            )
+    if thresholds.max_test_mu_nrmse is not None:
+        if result.latent_test is None:
+            errors.append("latent test metrics are unavailable")
+        elif float(result.latent_test["nrmse"]) > thresholds.max_test_mu_nrmse:
+            errors.append(
+                f"test_mu_nrmse={result.latent_test['nrmse']:.3f} exceeds "
+                f"{thresholds.max_test_mu_nrmse:.3f}"
             )
     if thresholds.min_test_mu_coverage_90 is not None:
         if result.latent_test is None:
@@ -1392,7 +1410,11 @@ def plot_observed_vs_predictive(result: BenchmarkCaseResult, output_path: str | 
     ax.text(
         0.99,
         0.02,
-        f"test MAPE={result.test_metrics['mape']:.2f}%, coverage={result.test_metrics['coverage_90']:.1%}",
+        (
+            f"test CRPS={result.test_metrics['crps']:.3f}, "
+            f"nRMSE={result.test_metrics['nrmse']:.3f}, "
+            f"coverage={result.test_metrics['coverage_90']:.1%}"
+        ),
         transform=ax.transAxes,
         ha="right",
         va="bottom",
@@ -1654,14 +1676,17 @@ def plot_case_comparison(
 
     labels = [result.model_name for result in results]
     loo_values = [float(result.loo.get("elpd_loo", np.nan)) for result in results]
-    mape_values = [float(result.test_metrics["mape"]) for result in results]
-    coverage_values = [float(result.test_metrics["coverage_90"]) for result in results]
+    crps_values = [float(result.test_metrics["crps"]) for result in results]
+    latent_nrmse_values = [
+        float((result.latent_test or {}).get("nrmse", result.test_metrics["nrmse"]))
+        for result in results
+    ]
 
     fig, axes = plt.subplots(1, 3, figsize=(11, 4.2))
     metrics = [
         ("ELPD-LOO", loo_values, "#1f77b4"),
-        ("Test MAPE (%)", mape_values, "#ff7f0e"),
-        ("Test Coverage 90%", coverage_values, "#2ca02c"),
+        ("Test CRPS", crps_values, "#ff7f0e"),
+        ("Latent/Test nRMSE", latent_nrmse_values, "#2ca02c"),
     ]
 
     for ax, (metric_name, values, color) in zip(axes, metrics, strict=True):

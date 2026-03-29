@@ -244,14 +244,14 @@ def compute_hmc_diagnostics(
 
 
 def compute_predictive_metrics(y_true: np.ndarray, y_samples: np.ndarray) -> dict[str, float]:
-    """Compute MAPE and coverage metrics.
+    """Compute predictive summary metrics from posterior predictive samples.
 
     Args:
         y_true: (T,) true observations
         y_samples: (n_samples, T) posterior predictive samples
 
     Returns:
-        Dict with mape (percentage points), coverage_90, and predictive summaries
+        Dict with error, calibration, and predictive summaries
     """
     y_true = np.asarray(y_true, dtype=np.float64)
     y_samples = np.asarray(y_samples, dtype=np.float64)
@@ -261,10 +261,17 @@ def compute_predictive_metrics(y_true: np.ndarray, y_samples: np.ndarray) -> dic
 
     denom = np.maximum(np.abs(y_true), 1e-8)
     mape = float(np.mean(np.abs((y_pred_mean - y_true) / denom)) * 100.0)
+    rmse = float(np.sqrt(np.mean((y_pred_mean - y_true) ** 2)))
+    scale = float(max(np.max(y_true) - np.min(y_true), 1e-8))
+    nrmse = float(rmse / scale)
+    crps = float(np.mean(_crps_ensemble(y_true, y_samples)))
     coverage = float(np.mean((y_true >= q05) & (y_true <= q95)))
 
     return {
         "mape": mape,
+        "rmse": rmse,
+        "nrmse": nrmse,
+        "crps": crps,
         "coverage_90": coverage,
         "y_pred_mean": y_pred_mean,
         "q05": q05,
@@ -272,9 +279,26 @@ def compute_predictive_metrics(y_true: np.ndarray, y_samples: np.ndarray) -> dic
     }
 
 
-# =============================================================================
-# POST-HOC RELABELING FOR LABEL SWITCHING
-# =============================================================================
+def _crps_ensemble(y_true: np.ndarray, y_samples: np.ndarray) -> np.ndarray:
+    """Compute empirical CRPS for each observation from posterior samples.
+
+    Uses the standard ensemble representation:
+        CRPS(F, y) = E|X - y| - 0.5 E|X - X'|
+    and evaluates the pairwise term in O(S log S) via sorted samples.
+    """
+    if y_samples.ndim != 2:
+        raise ValueError("y_samples must have shape (n_samples, T)")
+    if y_true.shape[0] != y_samples.shape[1]:
+        raise ValueError("y_true and y_samples must align on time dimension")
+
+    n_samples = y_samples.shape[0]
+    sorted_samples = np.sort(y_samples, axis=0)
+    coeffs = (2 * np.arange(1, n_samples + 1, dtype=np.float64) - n_samples - 1)[:, None]
+    pairwise_term = np.sum(coeffs * sorted_samples, axis=0) / (n_samples**2)
+    observation_term = np.mean(np.abs(y_samples - y_true[None, :]), axis=0)
+    return observation_term - pairwise_term
+
+
 
 
 def relabel_samples_by_k(samples: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
@@ -307,31 +331,24 @@ def relabel_samples_by_k(samples: dict[str, np.ndarray]) -> dict[str, np.ndarray
         >>> mcmc = run_inference(model_hill_mixture_hierarchical_reparam, x, y, K=3)
         >>> samples = mcmc.get_samples()
         >>> relabeled = relabel_samples_by_k(samples)
-        >>> # Now k[:, 0] < k[:, 1] < k[:, 2] for all samples
+        >>>
     """
-    # Component-specific parameters to relabel
     component_params = ["k", "A", "n", "pis", "log_k", "log_A", "log_n"]
 
-    # Check if k exists
     if "k" not in samples:
         raise ValueError("samples must contain 'k' for relabeling")
 
-    k = samples["k"]  # Shape: (n_samples, K)
+    k = samples["k"]
     n_samples, K = k.shape
 
-    # Get sort indices for each sample (ascending order by k)
-    sort_indices = np.argsort(k, axis=1)  # Shape: (n_samples, K)
+    sort_indices = np.argsort(k, axis=1)
 
-    # Create output dict
     relabeled = {}
 
     for key, value in samples.items():
         if key in component_params and value.ndim == 2 and value.shape[1] == K:
-            # Relabel this parameter using fancy indexing
-            # For each sample i, we want value[i, sort_indices[i, :]]
             relabeled[key] = np.take_along_axis(value, sort_indices, axis=1)
         else:
-            # Pass through unchanged
             relabeled[key] = value
 
     return relabeled
@@ -362,16 +379,13 @@ def check_label_switching(samples: dict[str, np.ndarray], param: str = "k") -> d
     if param not in samples:
         raise ValueError(f"samples must contain '{param}'")
 
-    values = samples[param]  # Shape: (n_samples, K)
+    values = samples[param]
     n_samples, K = values.shape
 
-    # Get ordering for each sample
-    orderings = np.argsort(values, axis=1)  # Shape: (n_samples, K)
+    orderings = np.argsort(values, axis=1)
 
-    # Convert orderings to tuples for counting
     ordering_tuples = [tuple(o) for o in orderings]
 
-    # Count occurrences
     from collections import Counter
 
     counts = Counter(ordering_tuples)
@@ -388,9 +402,6 @@ def check_label_switching(samples: dict[str, np.ndarray], param: str = "k") -> d
     }
 
 
-# =============================================================================
-# LABEL-INVARIANT CONVERGENCE DIAGNOSTICS
-# =============================================================================
 
 
 def _batched_adstock_geometric(
@@ -512,11 +523,11 @@ def _compute_mixture_log_likelihood_vectorized(
 ) -> jnp.ndarray:
     """Compute total mixture log-likelihood for all draws in a chain."""
     t_std = standardized_time_index(x.shape[0], xp=jnp)
-    s = _batched_adstock_geometric(x, alpha)  # (n_samples, T)
+    s = _batched_adstock_geometric(x, alpha)
     baseline = linear_baseline(intercept[:, None], slope[:, None], t_std[None, :])
 
-    s_expanded = s[:, :, None]  # (n_samples, T, 1)
-    n_expanded = n[:, None, :]  # (n_samples, 1, K)
+    s_expanded = s[:, :, None]
+    n_expanded = n[:, None, :]
     s_power = s_expanded**n_expanded
     k_power = k[:, None, :] ** n_expanded
     hill_components = A[:, None, :] * s_power / (k_power + s_power + 1e-12)
@@ -605,34 +616,30 @@ def compute_label_invariant_diagnostics(
     samples = mcmc.get_samples(group_by_chain=True)
     n_chains = samples["sigma"].shape[0]
 
-    # Compute log-likelihood per chain
     log_liks_by_chain = []
     for chain_idx in range(n_chains):
         chain_samples = {k: v[chain_idx] for k, v in samples.items()}
         log_lik = compute_mixture_log_likelihood(x, y, chain_samples)
         log_liks_by_chain.append(log_lik)
 
-    log_liks = np.stack(log_liks_by_chain)  # (n_chains, n_samples_per_chain)
+    log_liks = np.stack(log_liks_by_chain)
 
-    # Compute R-hat on log-likelihood
     rhat_log_lik = _compute_rhat(log_liks, method=method)
     ess_bulk_log_lik = _compute_ess(log_liks, method="bulk")
     ess_tail_log_lik = _compute_ess(log_liks, method="tail")
 
-    # Compute R-hat on scalar parameters
     scalar_params = ["intercept", "slope", "sigma", "alpha"]
     rhat_scalars = {}
     ess_bulk_scalars = {}
     ess_tail_scalars = {}
     for param in scalar_params:
         if param in samples:
-            param_values = samples[param]  # (n_chains, n_samples)
-            if param_values.ndim == 2:  # Scalar parameter
+            param_values = samples[param]
+            if param_values.ndim == 2:
                 rhat_scalars[param] = _compute_rhat(param_values, method=method)
                 ess_bulk_scalars[param] = _compute_ess(param_values, method="bulk")
                 ess_tail_scalars[param] = _compute_ess(param_values, method="tail")
 
-    # Check convergence with stricter threshold (1.01 per Vehtari et al.)
     all_rhats = [rhat_log_lik] + list(rhat_scalars.values())
     all_ess_bulk = [ess_bulk_log_lik] + list(ess_bulk_scalars.values())
     all_ess_tail = [ess_tail_log_lik] + list(ess_tail_scalars.values())
@@ -674,19 +681,16 @@ def compute_diagnostics_on_relabeled(
     samples_by_chain = mcmc.get_samples(group_by_chain=True)
     n_chains = list(samples_by_chain.values())[0].shape[0]
 
-    # Relabel each chain independently
     relabeled_by_chain = []
     for chain_idx in range(n_chains):
         chain_samples = {k: v[chain_idx] for k, v in samples_by_chain.items()}
         relabeled = relabel_samples_by_k(chain_samples)
         relabeled_by_chain.append(relabeled)
 
-    # Stack back into (n_chains, n_samples, ...) format
     relabeled_samples = {}
     for key in relabeled_by_chain[0].keys():
         relabeled_samples[key] = np.stack([r[key] for r in relabeled_by_chain])
 
-    # Compute R-hat on component parameters
     component_params = ["A", "k", "n", "pis"]
     results = {}
     ess_bulk_results = {}
@@ -694,7 +698,7 @@ def compute_diagnostics_on_relabeled(
 
     for param in component_params:
         if param in relabeled_samples:
-            values = relabeled_samples[param]  # (n_chains, n_samples, K)
+            values = relabeled_samples[param]
             if values.ndim == 3:
                 K = values.shape[2]
                 rhats = []
@@ -718,7 +722,6 @@ def compute_diagnostics_on_relabeled(
                     "min": min(ess_tail),
                 }
 
-    # Overall convergence
     max_rhat = max(r["max"] for r in results.values())
     min_ess_bulk = min(r["min"] for r in ess_bulk_results.values())
     min_ess_tail = min(r["min"] for r in ess_tail_results.values())
@@ -752,35 +755,28 @@ def _compute_rhat(values: np.ndarray, method: str = "rank") -> float:
 
     n_chains, n_samples = values.shape
 
-    # Check for degenerate cases
     if n_chains < 2:
-        return np.nan  # Need at least 2 chains for R-hat
+        return np.nan
 
     if np.any(~np.isfinite(values)):
-        return np.nan  # Can't compute R-hat with inf/nan values
+        return np.nan
 
-    # Check for zero variance (all identical values)
     if np.allclose(values, values[0, 0]):
-        return 1.0  # Perfect convergence (trivially)
+        return 1.0
 
     try:
-        # Create xarray DataArray in ArviZ format
         da = xr.DataArray(
             values,
             dims=["chain", "draw"],
             coords={"chain": np.arange(n_chains), "draw": np.arange(n_samples)},
         )
 
-        # Compute R-hat
         if method == "rank":
             rhat = az.rhat(da, method="rank")
         else:
             rhat = az.rhat(da, method="split")
 
-        # Extract float value from ArviZ result
-        # az.rhat returns an xarray.Dataset with a single data variable
         if isinstance(rhat, xr.Dataset):
-            # Get the first (and only) data variable from the Dataset
             var_name = list(rhat.data_vars)[0]
             result = float(rhat[var_name].values.item())
         elif isinstance(rhat, xr.DataArray):
@@ -788,20 +784,16 @@ def _compute_rhat(values: np.ndarray, method: str = "rank") -> float:
         elif isinstance(rhat, (int, float)):
             result = float(rhat)
         elif hasattr(rhat, "item"):
-            # numpy scalar or 0-d array
             result = float(rhat.item())
         else:
-            # Fallback
             result = float(rhat)
 
-        # Check for invalid result
         if not np.isfinite(result):
             return np.nan
 
         return result
 
     except (ValueError, TypeError, RuntimeWarning) as e:
-        # If computation fails, return nan
         import warnings
 
         warnings.warn(f"R-hat computation failed: {e}")
@@ -874,27 +866,19 @@ def compute_comprehensive_mixture_diagnostics(
     Returns:
         Dict with comprehensive diagnostics and recommendations
     """
-    # 1. Standard diagnostics (for reference)
     standard = compute_convergence_diagnostics(mcmc)
 
-    # 2. Label-invariant diagnostics
     label_invariant = compute_label_invariant_diagnostics(mcmc, x, y, method=method)
 
-    # 3. Diagnostics on relabeled samples
     relabeled = compute_diagnostics_on_relabeled(mcmc, method=method)
 
-    # 4. Label switching detection
     samples = mcmc.get_samples()
     switching = check_label_switching(samples, param="k")
 
-    # Overall assessment
-    # Use label-invariant log-likelihood R-hat as primary criterion
     primary_converged = label_invariant["converged"]
 
-    # Check if relabeled parameters also converged
     relabeled_converged = relabeled["converged"]
 
-    # Recommendation
     significant_switching = switching["switching_rate"] > 0.1
 
     if primary_converged and relabeled_converged:

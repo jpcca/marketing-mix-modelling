@@ -72,6 +72,13 @@ def _nested_metric(summary: dict[str, Any], section: str, key: str) -> float | N
     return _safe_float(payload.get(key))
 
 
+def _numeric_series(df: pd.DataFrame, column: str) -> pd.Series:
+    """Return one numeric column as a float series, or all-NaN if missing."""
+    if column not in df.columns:
+        return pd.Series(np.nan, index=df.index, dtype=float)
+    return pd.to_numeric(df[column], errors="coerce")
+
+
 def _normalize_bool(series: pd.Series) -> pd.Series:
     """Convert boolean-like benchmark columns into strict bools."""
     if pd.api.types.is_bool_dtype(series):
@@ -142,8 +149,20 @@ def _summary_to_record(summary: dict[str, Any]) -> dict[str, Any]:
         "pareto_k_very_bad": _nested_metric(summary, "loo", "pareto_k_very_bad"),
         "train_mape": _nested_metric(summary, "train_metrics", "mape"),
         "test_mape": _nested_metric(summary, "test_metrics", "mape"),
+        "train_nrmse": _nested_metric(summary, "train_metrics", "nrmse"),
+        "test_nrmse": _nested_metric(summary, "test_metrics", "nrmse"),
+        "train_crps": _nested_metric(summary, "train_metrics", "crps"),
+        "test_crps": _nested_metric(summary, "test_metrics", "crps"),
         "train_coverage_90": _nested_metric(summary, "train_metrics", "coverage_90"),
         "test_coverage_90": _nested_metric(summary, "test_metrics", "coverage_90"),
+        "latent_train_nrmse": _nested_metric(summary, "latent_train", "nrmse"),
+        "latent_test_nrmse": _nested_metric(summary, "latent_test", "nrmse"),
+        "latent_train_crps": _nested_metric(summary, "latent_train", "crps"),
+        "latent_test_crps": _nested_metric(summary, "latent_test", "crps"),
+        "latent_train_coverage_90": _nested_metric(summary, "latent_train", "coverage_90"),
+        "latent_test_coverage_90": _nested_metric(summary, "latent_test", "coverage_90"),
+        "latent_train_coverage_95": _nested_metric(summary, "latent_train", "coverage_95"),
+        "latent_test_coverage_95": _nested_metric(summary, "latent_test", "coverage_95"),
         "effective_k_mean": _nested_metric(summary, "effective_k", "mean"),
         "effective_k_std": _nested_metric(summary, "effective_k", "std"),
     }
@@ -394,9 +413,9 @@ def generate_elpd_comparison_figure(df: pd.DataFrame, output_dir: str | Path) ->
 
 
 def generate_mape_comparison_figure(df: pd.DataFrame, output_dir: str | Path) -> Path:
-    """Render Figure 2: holdout test MAPE comparison across DGPs and models."""
+    """Render Figure 2: holdout test CRPS comparison across DGPs and models."""
     output_dir = Path(output_dir)
-    metric_frame = _metric_frame(df, "test_mape")
+    metric_frame = _metric_frame(df, "test_crps")
 
     fig, ax = plt.subplots(figsize=(10, 6))
     x = np.arange(len(DGP_ORDER))
@@ -428,8 +447,8 @@ def generate_mape_comparison_figure(df: pd.DataFrame, output_dir: str | Path) ->
         )
 
     ax.set_xlabel("Data Generating Process")
-    ax.set_ylabel("Test MAPE (%)")
-    ax.set_title("Model Comparison: Holdout Test MAPE (Lower Is Better)")
+    ax.set_ylabel("Test CRPS")
+    ax.set_title("Model Comparison: Holdout Predictive CRPS (Lower Is Better)")
     ax.set_xticks(x)
     ax.set_xticklabels([DGP_LABELS[dgp_name] for dgp_name in DGP_ORDER])
     ax.legend(title="Model")
@@ -445,8 +464,10 @@ def generate_mape_comparison_figure(df: pd.DataFrame, output_dir: str | Path) ->
     )
 
     plt.tight_layout()
-    output_path = output_dir / "fig2_mape_comparison.png"
+    output_path = output_dir / "fig2_predictive_score_comparison.png"
+    legacy_output_path = output_dir / "fig2_mape_comparison.png"
     fig.savefig(output_path)
+    fig.savefig(legacy_output_path)
     plt.close(fig)
     return output_path
 
@@ -500,78 +521,71 @@ def generate_convergence_heatmap_figure(df: pd.DataFrame, output_dir: str | Path
 
 
 def generate_coverage_figure(df: pd.DataFrame, output_dir: str | Path) -> Path:
-    """Render Figure 3: train/test 90% interval coverage."""
+    """Render Figure 3: latent test nRMSE across DGPs and models."""
     output_dir = Path(output_dir)
-    coverage = (
+    latent_nrmse = _numeric_series(df, "latent_test_nrmse")
+    observed_nrmse = _numeric_series(df, "test_nrmse")
+
+    df = df.assign(
+        figure3_nrmse=latent_nrmse.combine_first(observed_nrmse),
+    )
+    metric_frame = (
         df.groupby(["dgp", "model"], as_index=False)
         .agg(
-            train_cov_mean=("train_coverage_90", "mean"),
-            train_cov_std=("train_coverage_90", "std"),
-            test_cov_mean=("test_coverage_90", "mean"),
-            test_cov_std=("test_coverage_90", "std"),
+            mean=("figure3_nrmse", "mean"),
+            std=("figure3_nrmse", "std"),
         )
-        .fillna({"train_cov_std": 0.0, "test_cov_std": 0.0})
+        .fillna({"std": 0.0})
     )
 
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
-    dgp_spacing = 0.3
-    n_models = len(MODEL_ORDER)
-    width = min(0.28, 0.8 / max(n_models, 1))
+    fig, ax = plt.subplots(figsize=(10, 6))
+    x = np.arange(len(DGP_ORDER))
+    width = min(0.28, 0.8 / max(len(MODEL_ORDER), 1))
+    max_height = 0.0
 
-    for axis_index, (prefix, title) in enumerate([("train", "Training Set"), ("test", "Test Set")]):
-        ax = axes[axis_index]
-        x_positions = np.array(
-            [idx * (n_models * width + dgp_spacing) for idx in range(len(DGP_ORDER))]
+    for idx, model_name in enumerate(MODEL_ORDER):
+        means: list[float] = []
+        stds: list[float] = []
+        for dgp_name in DGP_ORDER:
+            mean, std = _lookup_metric(metric_frame, dgp_name, model_name)
+            means.append(mean)
+            stds.append(std)
+            if not np.isnan(mean):
+                max_height = max(max_height, mean + (0.0 if np.isnan(std) else std))
+
+        offset = (idx - (len(MODEL_ORDER) - 1) / 2) * width
+        ax.bar(
+            x + offset,
+            means,
+            width,
+            yerr=stds,
+            label=MODEL_LABELS[model_name],
+            color=COLORS[model_name],
+            capsize=3,
+            alpha=0.85,
+            edgecolor="white",
+            linewidth=0.5,
         )
 
-        for model_index, model_name in enumerate(MODEL_ORDER):
-            means: list[float] = []
-            stds: list[float] = []
-            for dgp_name in DGP_ORDER:
-                row = coverage[
-                    (coverage["dgp"] == dgp_name) & (coverage["model"] == model_name)
-                ]
-                if row.empty:
-                    means.append(np.nan)
-                    stds.append(np.nan)
-                    continue
-                means.append(float(row[f"{prefix}_cov_mean"].iloc[0]))
-                stds.append(float(row[f"{prefix}_cov_std"].iloc[0]))
-
-            offset = (model_index - (n_models - 1) / 2) * width
-            ax.bar(
-                x_positions + offset,
-                means,
-                width,
-                yerr=stds,
-                label=MODEL_LABELS[model_name],
-                color=COLORS[model_name],
-                capsize=3,
-                alpha=0.85,
-            )
-
-        ax.axhline(y=0.9, color="red", linestyle="--", linewidth=2, label="Nominal (90%)")
-        ax.set_xlabel("Data Generating Process")
-        ax.set_ylabel("Coverage Rate")
-        ax.set_title(f"90% Prediction Interval Coverage ({title})")
-        ax.set_xticks(x_positions)
-        ax.set_xticklabels([DGP_LABELS[dgp_name] for dgp_name in DGP_ORDER], rotation=15)
-        ax.set_ylim(0.5, 1.05)
-
-        if axis_index == 0:
-            ax.legend(title="Model", loc="lower left", fontsize=8)
-
-    fig.text(
-        0.5,
-        -0.02,
-        "Error bars: ±1 std across random seeds",
-        ha="center",
-        fontsize=9,
-        style="italic",
+    ax.set_xlabel("Data Generating Process")
+    ax.set_ylabel("Latent Test nRMSE")
+    ax.set_title("Model Comparison: Latent Response Recovery (Lower Is Better)")
+    ax.set_xticks(x)
+    ax.set_xticklabels([DGP_LABELS[dgp_name] for dgp_name in DGP_ORDER])
+    ax.legend(title="Model")
+    ax.set_ylim(0, max(0.05, max_height * 1.15))
+    ax.annotate(
+        "Lower is better; error bars: ±1 std across random seeds",
+        xy=(0.98, 0.94),
+        xycoords="axes fraction",
+        ha="right",
+        va="top",
+        fontsize=8,
+        color="gray",
     )
 
     plt.tight_layout()
-    output_path = output_dir / "fig3_coverage_comparison.png"
+    output_path = output_dir / "fig3_latent_recovery_comparison.png"
     fig.savefig(output_path)
     plt.close(fig)
     return output_path

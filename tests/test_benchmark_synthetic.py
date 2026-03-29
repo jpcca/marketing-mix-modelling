@@ -30,7 +30,6 @@ SMOKE_MODEL_NAMES = ["single_hill", "mixture_k2"]
 FULL_DGP_NAMES = ["single", "mixture_k2", "mixture_k3"]
 FULL_MODEL_NAMES = ["single_hill", "mixture_k2", "mixture_k3"]
 
-# Match scripts/run_benchmark.py: quick=[0], default=[0,1,2,3,4]
 SMOKE_SYNTHETIC_SEEDS = [0]
 FULL_SYNTHETIC_SEEDS = [0, 1, 2, 3, 4]
 FULL_SYNTHETIC_EXPECTED_CASES = (
@@ -93,9 +92,6 @@ def _synthetic_run_config(dgp_name: str, model_name: str, seed: int) -> Benchmar
         target_accept_prob = 0.97
     else:
         target_accept_prob = 0.90
-    # Keep benchmark settings consistent by model complexity: all K=3 mixture
-    # fits use the same target accept / warmup budget, while keeping a diagonal
-    # mass matrix to avoid overfitting sampler geometry to one synthetic DGP.
     dense_mass = False
     init_strategy = "median" if model_name in {"mixture_k2", "mixture_k3"} else "uniform"
     if model_name == "single_hill":
@@ -134,7 +130,8 @@ def _synthetic_run_config(dgp_name: str, model_name: str, seed: int) -> Benchmar
 def _synthetic_thresholds(dgp_name: str, model_name: str) -> BenchmarkThresholds:
     """Return paper-level reportability gates for one synthetic benchmark cell."""
     max_test_mape = 5.0 if dgp_name == "single" else None
-    max_test_mu_mape = 5.0 if dgp_name == "mixture_k2" else None
+    max_test_mu_mape = None
+    max_test_mu_nrmse = 0.15 if dgp_name == "mixture_k2" else None
     max_component_weighted_curve_nrmse = None
     max_component_curve_nrmse = None
     max_component_effective_k_error = None
@@ -159,7 +156,9 @@ def _synthetic_thresholds(dgp_name: str, model_name: str) -> BenchmarkThresholds
         max_tree_depth_hits=None,
         min_test_coverage_90=None,
         max_test_mape=max_test_mape,
+        max_test_crps=None,
         max_test_mu_mape=max_test_mu_mape,
+        max_test_mu_nrmse=max_test_mu_nrmse,
         min_test_mu_coverage_90=None,
         max_component_weighted_curve_nrmse=max_component_weighted_curve_nrmse,
         max_component_curve_nrmse=max_component_curve_nrmse,
@@ -178,7 +177,8 @@ def _synthetic_smoke_thresholds(dgp_name: str, model_name: str) -> BenchmarkThre
     """Return lighter smoke-test gates for short synthetic runs."""
     del model_name
     max_test_mape = 5.0 if dgp_name == "single" else None
-    max_test_mu_mape = 5.0 if dgp_name == "mixture_k2" else None
+    max_test_mu_mape = None
+    max_test_mu_nrmse = 0.18 if dgp_name == "mixture_k2" else None
     return BenchmarkThresholds(
         max_rhat=None,
         min_ess_bulk=None,
@@ -196,7 +196,9 @@ def _synthetic_smoke_thresholds(dgp_name: str, model_name: str) -> BenchmarkThre
         max_tree_depth_hits=None,
         min_test_coverage_90=None,
         max_test_mape=max_test_mape,
+        max_test_crps=None,
         max_test_mu_mape=max_test_mu_mape,
+        max_test_mu_nrmse=max_test_mu_nrmse,
         min_test_mu_coverage_90=None,
         require_alpha_in_ci=False,
         require_sigma_in_ci=False,

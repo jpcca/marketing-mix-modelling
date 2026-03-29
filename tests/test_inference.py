@@ -281,6 +281,9 @@ class TestPredictiveMetrics:
         metrics = compute_predictive_metrics(y_true, y_samples)
 
         assert metrics["mape"] == 0.0
+        assert metrics["rmse"] == 0.0
+        assert metrics["nrmse"] == 0.0
+        assert metrics["crps"] == 0.0
         assert metrics["coverage_90"] == 1.0
 
     def test_mape_is_reported_in_percentage_points(self):
@@ -299,6 +302,9 @@ class TestPredictiveMetrics:
 
         assert metrics["mape"] == 10.0
         assert metrics["coverage_90"] == 1.0
+        assert metrics["rmse"] > 0.0
+        assert metrics["nrmse"] > 0.0
+        assert metrics["crps"] > 0.0
 
     def test_mape_handles_zero_targets_without_nan(self):
         """Zero observations should use a finite denominator guard."""
@@ -314,3 +320,5 @@ class TestPredictiveMetrics:
         metrics = compute_predictive_metrics(y_true, y_samples)
 
         assert np.isfinite(metrics["mape"])
+        assert np.isfinite(metrics["nrmse"])
+        assert np.isfinite(metrics["crps"])

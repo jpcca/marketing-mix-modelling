@@ -34,15 +34,14 @@ def compute_effective_k(mcmc: MCMC, threshold: float = 0.05) -> dict[str, float]
     samples = mcmc.get_samples()
 
     if "pis" not in samples:
-        # Single Hill model has no mixture weights
         return {
             "effective_k_mean": 1.0,
             "effective_k_std": 0.0,
             "effective_k_samples": np.ones(1),
         }
 
-    pis = np.array(samples["pis"])  # (n_samples, K)
-    effective_k = (pis > threshold).sum(axis=-1)  # (n_samples,)
+    pis = np.array(samples["pis"])
+    effective_k = (pis > threshold).sum(axis=-1)
 
     return {
         "effective_k_mean": float(effective_k.mean()),
@@ -128,9 +127,8 @@ def compute_parameter_recovery(mcmc: MCMC, meta: dict, ci_level: float = 0.95) -
             "in_ci": bool(ci_low <= true_val <= ci_high),
         }
 
-    # For mixture models, check if any component matches true pis
     if "pis" in samples and "pi_true" in meta:
-        pis_samples = np.array(samples["pis"])  # (n_samples, K)
+        pis_samples = np.array(samples["pis"])
         pis_mean = pis_samples.mean(axis=0)
         K_fit = pis_samples.shape[1]
         K_true = len(meta["pi_true"])
@@ -153,7 +151,7 @@ def compute_latent_recovery(mu_true: np.ndarray, mu_samples: np.ndarray) -> dict
         mu_samples: (n_samples, T) posterior samples of the latent mean
 
     Returns:
-        Dict with MAPE (percentage points), MAE, and 90% interval coverage
+        Dict with MAPE (percentage points), MAE, nRMSE, CRPS, and coverage
     """
     mu_true = np.asarray(mu_true, dtype=np.float64)
     mu_samples = np.asarray(mu_samples, dtype=np.float64)
@@ -166,13 +164,31 @@ def compute_latent_recovery(mu_true: np.ndarray, mu_samples: np.ndarray) -> dict
     mu_mean = mu_samples.mean(axis=0)
     q05 = np.quantile(mu_samples, 0.05, axis=0)
     q95 = np.quantile(mu_samples, 0.95, axis=0)
+    q025 = np.quantile(mu_samples, 0.025, axis=0)
+    q975 = np.quantile(mu_samples, 0.975, axis=0)
     denom = np.maximum(np.abs(mu_true), 1e-8)
+    rmse = float(np.sqrt(np.mean((mu_mean - mu_true) ** 2)))
+    scale = float(max(np.max(mu_true) - np.min(mu_true), 1e-8))
 
     return {
         "mape": float(np.mean(np.abs((mu_mean - mu_true) / denom)) * 100.0),
         "mae": float(np.mean(np.abs(mu_mean - mu_true))),
+        "rmse": rmse,
+        "nrmse": float(rmse / scale),
+        "crps": float(np.mean(_crps_ensemble(mu_true, mu_samples))),
         "coverage_90": float(np.mean((mu_true >= q05) & (mu_true <= q95))),
+        "coverage_95": float(np.mean((mu_true >= q025) & (mu_true <= q975))),
     }
+
+
+def _crps_ensemble(y_true: np.ndarray, y_samples: np.ndarray) -> np.ndarray:
+    """Compute empirical CRPS per observation for posterior samples."""
+    n_samples = y_samples.shape[0]
+    sorted_samples = np.sort(y_samples, axis=0)
+    coeffs = (2 * np.arange(1, n_samples + 1, dtype=np.float64) - n_samples - 1)[:, None]
+    pairwise_term = np.sum(coeffs * sorted_samples, axis=0) / (n_samples**2)
+    observation_term = np.mean(np.abs(y_samples - y_true[None, :]), axis=0)
+    return observation_term - pairwise_term
 
 
 def compute_delta_loo(loo_model: dict, loo_baseline: dict) -> dict[str, float]:
@@ -193,13 +209,12 @@ def compute_delta_loo(loo_model: dict, loo_baseline: dict) -> dict[str, float]:
         return {"delta_loo": np.nan, "se": np.nan, "significant": False}
 
     delta = loo_model["elpd_loo"] - loo_baseline["elpd_loo"]
-    # Approximate SE (conservative)
     se = np.sqrt(loo_model["se"] ** 2 + loo_baseline["se"] ** 2)
 
     return {
         "delta_loo": float(delta),
         "se": float(se),
-        "significant": bool(abs(delta) > 2 * se),  # Roughly 95% CI
+        "significant": bool(abs(delta) > 2 * se),
     }
 
 
@@ -508,8 +523,6 @@ def compute_component_set_alignment(
             best_result = result
 
     if best_result is None:
-        # One side has active components but the other has none —
-        # no valid assignment exists.  Return a zero-metric result.
         return {
             "reference_label": reference_label,
             "candidate_label": candidate_label,
@@ -668,14 +681,12 @@ def summarize_results(results: dict) -> str:
     lines.append(f"Model: {results.get('model', 'unknown')}")
     lines.append("=" * 70)
 
-    # Convergence
     conv = results.get("convergence", {})
     lines.append(
         f"Convergence: R-hat={conv.get('max_rhat', np.nan):.3f}, "
         f"ESS={conv.get('min_ess_bulk', np.nan):.0f}"
     )
 
-    # Model comparison
     lines.append(
         f"LOO-CV: {results.get('elpd_loo', np.nan):.1f} (SE={results.get('loo_se', np.nan):.1f})"
     )
@@ -683,18 +694,15 @@ def summarize_results(results: dict) -> str:
         f"WAIC: {results.get('elpd_waic', np.nan):.1f} (SE={results.get('waic_se', np.nan):.1f})"
     )
 
-    # Predictive
     lines.append(
         f"Train MAPE: {results.get('train_mape', np.nan):.3f}%, "
         f"Test MAPE: {results.get('test_mape', np.nan):.3f}%"
     )
     lines.append(f"90% Coverage: {results.get('coverage_90', np.nan):.1%}")
 
-    # Effective K
     eff_k = results.get("effective_k_mean", np.nan)
     lines.append(f"Effective K: {eff_k:.2f}")
 
-    # Delta LOO
     delta = results.get("delta_loo", np.nan)
     if not np.isnan(delta):
         sig = "*" if results.get("delta_significant", False) else ""

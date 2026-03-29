@@ -179,6 +179,8 @@ MAPE = (100 / T_test) * sum_t |y_t - y_hat_t| / (|y_t| + eps)
 ```
 
 - **90% Interval Coverage**: Fraction of y_t falling within the posterior 5th--95th percentile
+- **CRPS** (Continuous Ranked Probability Score): Proper scoring rule for the full posterior predictive distribution
+- **nRMSE**: RMSE normalized by the test-set outcome range
 - **LOO-CV** (PSIS-LOO): Expected log pointwise predictive density
 - **WAIC**: Widely Applicable Information Criterion
 
@@ -189,7 +191,11 @@ Compares the posterior mean function to the true noise-free mean:
 ```
 MAPE_mu = (100 / T) * sum_t |mu_hat_t - mu_true_t| / max(|mu_true_t|, eps)
 MAE     = (1 / T) * sum_t |mu_hat_t - mu_true_t|
+RMSE_mu = sqrt((1 / T) * sum_t (mu_hat_t - mu_true_t)^2)
+nRMSE_mu = RMSE_mu / max(max_t mu_true_t - min_t mu_true_t, eps)
+CRPS_mu = mean_t CRPS(F_mu_t, mu_true_t)
 Coverage_90 = fraction of mu_true_t within [q_0.05, q_0.95]
+Coverage_95 = fraction of mu_true_t within [q_0.025, q_0.975]
 ```
 
 ### 5.3.1 Interpretation for Mixture DGPs
@@ -202,9 +208,11 @@ For mixture models, the benchmark intentionally separates two predictive targets
 These are not interchangeable in synthetic mixture settings. The DGP samples one latent component per time step, while the fitted mixture model also exposes a marginal soft expectation across components. As a result:
 
 - Posterior predictive `MAPE` on `y_t` is best interpreted as **marginal predictive fit**.
-- Latent-mean `MAPE_mu` is best interpreted as **recovery of the underlying response function**.
+- Posterior predictive `CRPS` on `y_t` is the preferred **probabilistic predictive score**.
+- Latent-mean `nRMSE_mu` is the preferred **headline recovery score** for the underlying response function.
+- Latent-mean `MAPE_mu` remains a secondary descriptive metric.
 
-The headline K=2 synthetic quality gate uses latent-mean `MAPE_mu` rather than observed-outcome `MAPE`. This keeps the benchmark aligned with the scientific question for the paper: whether the model recovers the underlying heterogeneous Hill response, not whether a single point forecast reproduces the realized per-time latent draw.
+The headline K=2 synthetic quality gate uses latent-mean `nRMSE_mu` rather than observed-outcome `MAPE`. This keeps the benchmark aligned with the scientific question for the paper: whether the model recovers the underlying heterogeneous Hill response, not whether a single point forecast reproduces the realized per-time latent draw.
 
 ### 5.4 Parameter Recovery
 
@@ -251,11 +259,11 @@ For all C(5,2) = 10 seed pairs, aligns recovered components and aggregates:
 | Gate                       | Condition                                              |
 |----------------------------|--------------------------------------------------------|
 | Max test MAPE              | <= 5.0% (single DGP only)                              |
-| Max latent test MAPE       | <= 5.0% (`mixture_k2` DGP only)                        |
+| Max latent test nRMSE      | <= 0.18 (`mixture_k2` DGP only)                        |
 | Truth metrics              | Required (latent recovery + parameter recovery finite) |
 | Reportable diagnostics     | Not required                                           |
 | Finite LOO/WAIC            | Required                                               |
-| Finite predictive metrics  | Required                                               |
+| Finite predictive metrics  | Required (`MAPE`, `nRMSE`, `CRPS`, coverage)           |
 
 ### 6.2 Full Benchmark Gates
 
@@ -264,6 +272,7 @@ Same as smoke, plus:
 | Gate                       | Condition                                              |
 |----------------------------|--------------------------------------------------------|
 | Reportable diagnostics     | Required (publication status must not be "Fail")       |
+| Max latent test nRMSE      | <= 0.15 (`mixture_k2` DGP only)                        |
 
 ### 6.3 Across-Seed Stability Assertions
 
@@ -305,7 +314,7 @@ After full benchmark completion:
 | 3 DGPs x 3 models | Focuses the headline benchmark on the single, K=2, and K=3 cases used in the paper |
 | T = 200 | Balances statistical power with realistic sample size |
 | Observed-support `k` quantiles for K=2 | Ensures the headline K=2 mixture DGP is identifiable on the spend range that is actually sampled |
-| Latent-mean MAPE gate for K=2 | Aligns the synthetic quality gate with the mixture DGP's noise-free ground truth instead of conflating response-function recovery with realized latent-regime draws |
+| Latent-mean nRMSE gate for K=2 | Aligns the synthetic quality gate with the mixture DGP's noise-free ground truth while avoiding the low-denominator instability of MAPE |
 | k-ordering constraint | Resolves label switching in mixture components |
 | Hierarchical priors | Partial pooling prevents component collapse |
 | Non-centered parameterization | Avoids Neal's funnel geometry in hierarchical models |

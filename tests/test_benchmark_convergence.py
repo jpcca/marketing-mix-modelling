@@ -51,8 +51,22 @@ def _make_mixture_result(
         y_test=np.array([1.0], dtype=np.float32),
         dates_train=None,
         dates_test=None,
-        train_metrics={"mape": 1.0, "coverage_90": 0.9, "y_pred_mean": np.array([1.0])},
-        test_metrics={"mape": 1.0, "coverage_90": 0.9, "y_pred_mean": np.array([1.0])},
+        train_metrics={
+            "mape": 1.0,
+            "rmse": 0.1,
+            "nrmse": 0.1,
+            "crps": 0.1,
+            "coverage_90": 0.9,
+            "y_pred_mean": np.array([1.0]),
+        },
+        test_metrics={
+            "mape": 1.0,
+            "rmse": 0.1,
+            "nrmse": 0.1,
+            "crps": 0.1,
+            "coverage_90": 0.9,
+            "y_pred_mean": np.array([1.0]),
+        },
         loo={"elpd_loo": -1.0, "se": 0.1, "pareto_k_bad": 0, "pareto_k_very_bad": 0},
         waic={"elpd_waic": -1.0, "se": 0.1},
         convergence={
@@ -344,6 +358,39 @@ def test_assert_case_passes_enforces_max_test_mape() -> None:
     failing_result.test_metrics["mape"] = 5.1
     with pytest.raises(AssertionError, match="test_mape=5.100 exceeds 5.000"):
         assert_case_passes(failing_result, BenchmarkThresholds(max_test_mape=5.0))
+
+
+def test_assert_case_passes_enforces_max_test_crps() -> None:
+    """Benchmark thresholds should support CRPS-based predictive gates."""
+    passing_result = _make_mixture_result()
+    passing_result.test_metrics["crps"] = 0.24
+    assert_case_passes(passing_result, BenchmarkThresholds(max_test_crps=0.25))
+
+    failing_result = _make_mixture_result()
+    failing_result.test_metrics["crps"] = 0.26
+    with pytest.raises(AssertionError, match="test_crps=0.260 exceeds 0.250"):
+        assert_case_passes(failing_result, BenchmarkThresholds(max_test_crps=0.25))
+
+
+def test_assert_case_passes_enforces_max_test_mu_nrmse() -> None:
+    """Synthetic thresholds should support latent nRMSE gates."""
+    passing_result = _make_mixture_result()
+    passing_result.latent_test = {
+        "mape": 4.0,
+        "mae": 0.5,
+        "rmse": 0.7,
+        "nrmse": 0.09,
+        "crps": 0.3,
+        "coverage_90": 0.9,
+        "coverage_95": 0.95,
+    }
+    assert_case_passes(passing_result, BenchmarkThresholds(max_test_mu_nrmse=0.10))
+
+    failing_result = _make_mixture_result()
+    failing_result.latent_test = dict(passing_result.latent_test)
+    failing_result.latent_test["nrmse"] = 0.11
+    with pytest.raises(AssertionError, match="test_mu_nrmse=0.110 exceeds 0.100"):
+        assert_case_passes(failing_result, BenchmarkThresholds(max_test_mu_nrmse=0.10))
 
 
 def test_comparison_thresholds_use_mape_delta_and_ratio() -> None:
