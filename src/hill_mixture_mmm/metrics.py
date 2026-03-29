@@ -183,6 +183,10 @@ def compute_latent_recovery(mu_true: np.ndarray, mu_samples: np.ndarray) -> dict
 
 def _crps_ensemble(y_true: np.ndarray, y_samples: np.ndarray) -> np.ndarray:
     """Compute empirical CRPS per observation for posterior samples."""
+    if y_samples.ndim != 2:
+        raise ValueError("y_samples must have shape (n_samples, T)")
+    if y_true.shape[0] != y_samples.shape[1]:
+        raise ValueError("y_true and y_samples must align on time dimension")
     n_samples = y_samples.shape[0]
     sorted_samples = np.sort(y_samples, axis=0)
     coeffs = (2 * np.arange(1, n_samples + 1, dtype=np.float64) - n_samples - 1)[:, None]

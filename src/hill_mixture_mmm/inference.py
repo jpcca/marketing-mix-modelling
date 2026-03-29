@@ -3,6 +3,8 @@
 Handles MCMC execution, posterior predictive, and basic evaluation.
 """
 
+import warnings
+from collections import Counter
 from collections.abc import Callable
 from typing import Any
 
@@ -10,11 +12,13 @@ import arviz as az
 import jax
 import jax.numpy as jnp
 import numpy as np
+import xarray as xr
 from jax.scipy.special import logsumexp
 from numpyro.infer import MCMC, NUTS, Predictive
 from numpyro.infer.initialization import init_to_median, init_to_uniform
 
 from .baseline import linear_baseline, standardized_time_index
+from .metrics import _crps_ensemble
 
 
 def run_inference(
@@ -279,25 +283,6 @@ def compute_predictive_metrics(y_true: np.ndarray, y_samples: np.ndarray) -> dic
     }
 
 
-def _crps_ensemble(y_true: np.ndarray, y_samples: np.ndarray) -> np.ndarray:
-    """Compute empirical CRPS for each observation from posterior samples.
-
-    Uses the standard ensemble representation:
-        CRPS(F, y) = E|X - y| - 0.5 E|X - X'|
-    and evaluates the pairwise term in O(S log S) via sorted samples.
-    """
-    if y_samples.ndim != 2:
-        raise ValueError("y_samples must have shape (n_samples, T)")
-    if y_true.shape[0] != y_samples.shape[1]:
-        raise ValueError("y_true and y_samples must align on time dimension")
-
-    n_samples = y_samples.shape[0]
-    sorted_samples = np.sort(y_samples, axis=0)
-    coeffs = (2 * np.arange(1, n_samples + 1, dtype=np.float64) - n_samples - 1)[:, None]
-    pairwise_term = np.sum(coeffs * sorted_samples, axis=0) / (n_samples**2)
-    observation_term = np.mean(np.abs(y_samples - y_true[None, :]), axis=0)
-    return observation_term - pairwise_term
-
 
 
 
@@ -385,8 +370,6 @@ def check_label_switching(samples: dict[str, np.ndarray], param: str = "k") -> d
     orderings = np.argsort(values, axis=1)
 
     ordering_tuples = [tuple(o) for o in orderings]
-
-    from collections import Counter
 
     counts = Counter(ordering_tuples)
     mode_ordering = counts.most_common(1)[0][0]
@@ -740,6 +723,22 @@ def compute_diagnostics_on_relabeled(
     }
 
 
+def _extract_arviz_scalar(result: Any) -> float:
+    """Extract a scalar float from an ArviZ diagnostic result."""
+    if isinstance(result, xr.Dataset):
+        var_name = list(result.data_vars)[0]
+        value = float(result[var_name].values.item())
+    elif isinstance(result, xr.DataArray):
+        value = float(result.values.item())
+    elif isinstance(result, (int, float)):
+        value = float(result)
+    elif hasattr(result, "item"):
+        value = float(result.item())
+    else:
+        value = float(result)
+    return value if np.isfinite(value) else np.nan
+
+
 def _compute_rhat(values: np.ndarray, method: str = "rank") -> float:
     """Compute R-hat using ArviZ.
 
@@ -751,8 +750,6 @@ def _compute_rhat(values: np.ndarray, method: str = "rank") -> float:
     Returns:
         R-hat value (returns np.nan if computation fails)
     """
-    import xarray as xr
-
     n_chains, n_samples = values.shape
 
     if n_chains < 2:
@@ -776,34 +773,15 @@ def _compute_rhat(values: np.ndarray, method: str = "rank") -> float:
         else:
             rhat = az.rhat(da, method="split")
 
-        if isinstance(rhat, xr.Dataset):
-            var_name = list(rhat.data_vars)[0]
-            result = float(rhat[var_name].values.item())
-        elif isinstance(rhat, xr.DataArray):
-            result = float(rhat.values.item())
-        elif isinstance(rhat, (int, float)):
-            result = float(rhat)
-        elif hasattr(rhat, "item"):
-            result = float(rhat.item())
-        else:
-            result = float(rhat)
-
-        if not np.isfinite(result):
-            return np.nan
-
-        return result
+        return _extract_arviz_scalar(rhat)
 
     except (ValueError, TypeError, RuntimeWarning) as e:
-        import warnings
-
         warnings.warn(f"R-hat computation failed: {e}")
         return np.nan
 
 
 def _compute_ess(values: np.ndarray, method: str = "bulk") -> float:
     """Compute ESS using ArviZ."""
-    import xarray as xr
-
     n_chains, n_samples = values.shape
 
     if n_chains < 2:
@@ -819,26 +797,8 @@ def _compute_ess(values: np.ndarray, method: str = "bulk") -> float:
             dims=["chain", "draw"],
             coords={"chain": np.arange(n_chains), "draw": np.arange(n_samples)},
         )
-        ess = az.ess(da, method=method)
-
-        if isinstance(ess, xr.Dataset):
-            var_name = list(ess.data_vars)[0]
-            result = float(ess[var_name].values.item())
-        elif isinstance(ess, xr.DataArray):
-            result = float(ess.values.item())
-        elif isinstance(ess, (int, float)):
-            result = float(ess)
-        elif hasattr(ess, "item"):
-            result = float(ess.item())
-        else:
-            result = float(ess)
-
-        if not np.isfinite(result):
-            return np.nan
-        return result
+        return _extract_arviz_scalar(az.ess(da, method=method))
     except (ValueError, TypeError, RuntimeWarning) as e:
-        import warnings
-
         warnings.warn(f"ESS computation failed: {e}")
         return np.nan
 
