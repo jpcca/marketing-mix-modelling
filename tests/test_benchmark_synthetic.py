@@ -87,7 +87,14 @@ def _generate_selected_publication_figures_after_full_benchmark() -> None:
 def _synthetic_run_config(dgp_name: str, model_name: str, seed: int) -> BenchmarkRunConfig:
     """Return an inference configuration suitable for one synthetic benchmark cell."""
     num_chains = int(os.getenv("HILL_MMM_SYNTHETIC_CHAINS", "2"))
-    target_accept_prob = 0.95 if model_name == "mixture_k2" else 0.90
+    if model_name == "mixture_k2":
+        target_accept_prob = 0.95
+    elif model_name == "mixture_k3":
+        target_accept_prob = 0.945 if dgp_name == "mixture_k3" else 0.94
+    else:
+        target_accept_prob = 0.90
+    dense_mass = model_name == "mixture_k3" and dgp_name == "mixture_k3"
+    init_strategy = "median" if model_name in {"mixture_k2", "mixture_k3"} else "uniform"
     if model_name == "single_hill":
         warmup = 800 if dgp_name == "mixture_k3" else 600
         samples = warmup
@@ -97,11 +104,17 @@ def _synthetic_run_config(dgp_name: str, model_name: str, seed: int) -> Benchmar
             num_samples=samples,
             num_chains=num_chains,
             target_accept_prob=target_accept_prob,
+            dense_mass=dense_mass,
+            init_strategy=init_strategy,
             progress_bar=False,
         )
 
-    warmup = 1200 if model_name == "mixture_k3" else 900
-    samples = warmup
+    if model_name == "mixture_k3":
+        warmup = 1400 if dgp_name in {"single", "mixture_k3"} else 1200
+        samples = 1200
+    else:
+        warmup = 900
+        samples = warmup
 
     return BenchmarkRunConfig(
         seed=seed,
@@ -109,15 +122,23 @@ def _synthetic_run_config(dgp_name: str, model_name: str, seed: int) -> Benchmar
         num_samples=samples,
         num_chains=num_chains,
         target_accept_prob=target_accept_prob,
+        dense_mass=dense_mass,
+        init_strategy=init_strategy,
         progress_bar=False,
     )
 
 
 def _synthetic_thresholds(dgp_name: str, model_name: str) -> BenchmarkThresholds:
     """Return paper-level reportability gates for one synthetic benchmark cell."""
-    del model_name
     max_test_mape = 5.0 if dgp_name == "single" else None
     max_test_mu_mape = 5.0 if dgp_name == "mixture_k2" else None
+    max_component_weighted_curve_nrmse = None
+    max_component_curve_nrmse = None
+    max_component_effective_k_error = None
+    if dgp_name == "mixture_k3" and model_name == "mixture_k3":
+        max_component_weighted_curve_nrmse = 0.15
+        max_component_curve_nrmse = 0.25
+        max_component_effective_k_error = 0.0
     return BenchmarkThresholds(
         max_rhat=None,
         min_ess_bulk=None,
@@ -137,6 +158,9 @@ def _synthetic_thresholds(dgp_name: str, model_name: str) -> BenchmarkThresholds
         max_test_mape=max_test_mape,
         max_test_mu_mape=max_test_mu_mape,
         min_test_mu_coverage_90=None,
+        max_component_weighted_curve_nrmse=max_component_weighted_curve_nrmse,
+        max_component_curve_nrmse=max_component_curve_nrmse,
+        max_component_effective_k_error=max_component_effective_k_error,
         require_alpha_in_ci=False,
         require_sigma_in_ci=False,
         effective_k_bounds=None,

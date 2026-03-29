@@ -12,6 +12,7 @@ import jax.numpy as jnp
 import numpy as np
 from jax.scipy.special import logsumexp
 from numpyro.infer import MCMC, NUTS, Predictive
+from numpyro.infer.initialization import init_to_median, init_to_uniform
 
 from .baseline import linear_baseline, standardized_time_index
 
@@ -27,6 +28,8 @@ def run_inference(
     prior_config: dict | None = None,
     target_accept_prob: float = 0.9,
     max_tree_depth: int = 10,
+    dense_mass: bool = False,
+    init_strategy: str = "uniform",
     progress_bar: bool = True,
     **model_kwargs,
 ) -> MCMC:
@@ -43,6 +46,8 @@ def run_inference(
         prior_config: Prior hyperparameters
         target_accept_prob: NUTS target acceptance probability
         max_tree_depth: Maximum NUTS tree depth
+        dense_mass: Whether to adapt a dense mass matrix during warmup
+        init_strategy: NUTS initialization strategy ("uniform" or "median")
         progress_bar: Whether to show MCMC progress bar
         **model_kwargs: Additional model arguments (e.g., K for mixture)
 
@@ -50,10 +55,19 @@ def run_inference(
         MCMC object with samples
     """
     rng_key = jax.random.PRNGKey(seed)
+    if init_strategy == "median":
+        resolved_init_strategy = init_to_median(num_samples=15)
+    elif init_strategy == "uniform":
+        resolved_init_strategy = init_to_uniform()
+    else:
+        raise ValueError(f"Unsupported init_strategy: {init_strategy}")
+
     kernel = NUTS(
         model_fn,
+        dense_mass=dense_mass,
         target_accept_prob=target_accept_prob,
         max_tree_depth=max_tree_depth,
+        init_strategy=resolved_init_strategy,
     )
     mcmc = MCMC(
         kernel,

@@ -82,6 +82,8 @@ class BenchmarkRunConfig:
     num_chains: int = 2
     target_accept_prob: float = 0.90
     max_tree_depth: int = 10
+    dense_mass: bool = False
+    init_strategy: str = "uniform"
     progress_bar: bool = False
 
 
@@ -117,6 +119,9 @@ class BenchmarkThresholds:
     max_test_mape: float | None = None
     max_test_mu_mape: float | None = None
     min_test_mu_coverage_90: float | None = None
+    max_component_weighted_curve_nrmse: float | None = None
+    max_component_curve_nrmse: float | None = None
+    max_component_effective_k_error: float | None = None
     require_alpha_in_ci: bool = False
     require_sigma_in_ci: bool = False
     effective_k_bounds: tuple[float, float] | None = None
@@ -574,6 +579,8 @@ def _fit_case(
         "num_chains_used": config.num_chains,
         "target_accept_prob_used": config.target_accept_prob,
         "max_tree_depth_used": config.max_tree_depth,
+        "dense_mass_used": bool(config.dense_mass),
+        "init_strategy_used": config.init_strategy,
     }
 
     mcmc = run_inference(
@@ -588,6 +595,8 @@ def _fit_case(
         t_std=t_std_train,
         target_accept_prob=fit_summary["target_accept_prob_used"],
         max_tree_depth=fit_summary["max_tree_depth_used"],
+        dense_mass=fit_summary["dense_mass_used"],
+        init_strategy=fit_summary["init_strategy_used"],
         progress_bar=config.progress_bar,
         **model_spec.kwargs,
     )
@@ -1131,6 +1140,43 @@ def assert_case_passes(result: BenchmarkCaseResult, thresholds: BenchmarkThresho
 
     if thresholds.require_truth_metrics:
         _append_truth_metric_errors(errors, result)
+
+    if thresholds.max_component_weighted_curve_nrmse is not None:
+        if result.component_recovery is None:
+            errors.append("component recovery metrics are unavailable")
+        else:
+            weighted_curve_nrmse = float(result.component_recovery["weighted_curve_nrmse"])
+            if weighted_curve_nrmse > thresholds.max_component_weighted_curve_nrmse:
+                errors.append(
+                    f"component_weighted_curve_nrmse={weighted_curve_nrmse:.3f} exceeds "
+                    f"{thresholds.max_component_weighted_curve_nrmse:.3f}"
+                )
+    if thresholds.max_component_curve_nrmse is not None:
+        if result.component_recovery is None:
+            errors.append("component recovery metrics are unavailable")
+        else:
+            matched_components = list(result.component_recovery.get("matched_components", []))
+            if not matched_components:
+                errors.append("matched component recovery metrics are unavailable")
+            else:
+                max_component_curve_nrmse = max(
+                    float(component["curve_nrmse"]) for component in matched_components
+                )
+                if max_component_curve_nrmse > thresholds.max_component_curve_nrmse:
+                    errors.append(
+                        f"component_max_curve_nrmse={max_component_curve_nrmse:.3f} exceeds "
+                        f"{thresholds.max_component_curve_nrmse:.3f}"
+                    )
+    if thresholds.max_component_effective_k_error is not None:
+        if result.component_recovery is None:
+            errors.append("component recovery metrics are unavailable")
+        else:
+            effective_k_error = float(result.component_recovery["effective_k_error"])
+            if effective_k_error > thresholds.max_component_effective_k_error:
+                errors.append(
+                    f"component_effective_k_error={effective_k_error:.3f} exceeds "
+                    f"{thresholds.max_component_effective_k_error:.3f}"
+                )
 
     if thresholds.min_test_coverage_90 is not None:
         coverage = float(result.test_metrics["coverage_90"])

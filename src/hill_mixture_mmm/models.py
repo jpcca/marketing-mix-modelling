@@ -16,6 +16,8 @@ from .baseline import linear_baseline, standardized_time_index
 from .transforms import adstock_geometric, hill, hill_matrix
 
 DEFAULT_COMPONENT_ANCHOR_STRENGTH = 0.65
+DEFAULT_COMPONENT_ANCHOR_STRENGTH_K2 = 0.8
+DEFAULT_COMPONENT_ANCHOR_STRENGTH_K3 = 0.7
 
 
 def _default_mixture_prior_config() -> dict[str, float]:
@@ -26,12 +28,72 @@ def _default_mixture_prior_config() -> dict[str, float]:
         "A_loc": np.log(50.0),
         "A_scale": 0.8,
         "k_scale": 0.7,
+        "stick_alpha": 1.0,
+        "stick_beta": 1.0,
         "sigma_log_A_loc": 0.0,
         "sigma_log_A_scale": 0.8,
         "sigma_log_n_loc": -0.5,
         "sigma_log_n_scale": 0.8,
         "sigma_scale": 10.0,
     }
+
+
+def _resolve_mixture_prior_config(
+    prior_config: dict[str, float] | None,
+    K: int,
+) -> dict[str, float | tuple[float, ...]]:
+    """Apply conservative K-specific defaults on top of empirical priors."""
+    resolved: dict[str, float | tuple[float, ...]] = dict(_default_mixture_prior_config())
+    if prior_config is not None:
+        resolved.update(prior_config)
+
+    if K == 2:
+        if prior_config is None or "stick_alpha" not in prior_config:
+            resolved["stick_alpha"] = 3.0
+        else:
+            resolved["stick_alpha"] = float(resolved["stick_alpha"])
+        if prior_config is None or "stick_beta" not in prior_config:
+            resolved["stick_beta"] = 1.0
+        else:
+            resolved["stick_beta"] = float(resolved["stick_beta"])
+        resolved["k_scale"] = min(float(resolved["k_scale"]), 0.55)
+        resolved["k_anchor_scale"] = min(float(resolved.get("k_anchor_scale", 0.12)), 0.12)
+        resolved["k_increment_scale"] = min(
+            float(resolved.get("k_increment_scale", 0.08)), 0.08
+        )
+        resolved["k_anchor_quantiles"] = tuple(
+            float(q) for q in resolved.get("k_anchor_quantiles", (0.25, 0.85))
+        )
+        resolved["sigma_log_A_loc"] = min(float(resolved["sigma_log_A_loc"]), -1.2)
+        resolved["sigma_log_A_scale"] = min(float(resolved["sigma_log_A_scale"]), 0.35)
+        resolved["sigma_log_n_loc"] = min(float(resolved["sigma_log_n_loc"]), -1.7)
+        resolved["sigma_log_n_scale"] = min(float(resolved["sigma_log_n_scale"]), 0.35)
+    elif K == 3:
+        if prior_config is None or "stick_alpha" not in prior_config:
+            resolved["stick_alpha"] = 3.0
+        else:
+            resolved["stick_alpha"] = float(resolved["stick_alpha"])
+        if prior_config is None or "stick_beta" not in prior_config:
+            resolved["stick_beta"] = 1.5
+        else:
+            resolved["stick_beta"] = float(resolved["stick_beta"])
+        resolved["k_scale"] = min(float(resolved["k_scale"]), 0.45)
+        resolved["k_anchor_scale"] = min(float(resolved.get("k_anchor_scale", 0.12)), 0.12)
+        resolved["k_increment_scale"] = min(
+            float(resolved.get("k_increment_scale", 0.10)), 0.10
+        )
+        resolved["k_anchor_quantiles"] = tuple(
+            float(q) for q in resolved.get("k_anchor_quantiles", (0.20, 0.55, 0.90))
+        )
+        resolved["sigma_log_A_loc"] = min(float(resolved["sigma_log_A_loc"]), -1.1)
+        resolved["sigma_log_A_scale"] = min(float(resolved["sigma_log_A_scale"]), 0.40)
+        resolved["sigma_log_n_loc"] = min(float(resolved["sigma_log_n_loc"]), -1.4)
+        resolved["sigma_log_n_scale"] = min(float(resolved["sigma_log_n_scale"]), 0.40)
+    else:
+        resolved["stick_alpha"] = float(resolved["stick_alpha"])
+        resolved["stick_beta"] = float(resolved["stick_beta"])
+
+    return resolved
 
 
 def model_single_hill(x, y=None, prior_config=None, t_std=None):
@@ -123,8 +185,7 @@ def _model_hill_mixture_hierarchical_reparam_inner(
     else:
         t_std = jnp.asarray(t_std)
 
-    if prior_config is None:
-        prior_config = _default_mixture_prior_config()
+    prior_config = _resolve_mixture_prior_config(prior_config, K)
 
     # Adstock parameter
     alpha = numpyro.sample("alpha", dist.Beta(2, 2))
@@ -142,7 +203,7 @@ def _model_hill_mixture_hierarchical_reparam_inner(
     # Mixture weights - stick-breaking
     stick_proportions = numpyro.sample(
         "stick_proportions",
-        dist.Beta(1.0, 1.0).expand((K - 1,)),  # type: ignore[arg-type]
+        dist.Beta(prior_config["stick_alpha"], prior_config["stick_beta"]).expand((K - 1,)),  # type: ignore[arg-type]
     )
     remaining = jnp.ones(())
     pis_list = []
@@ -174,7 +235,9 @@ def _model_hill_mixture_hierarchical_reparam_inner(
     log_A_raw = numpyro.sample("log_A_raw", dist.Normal(0, 1).expand((K,)))  # type: ignore[arg-type]
     if component_anchor_strength > 0.0:
         anchor_A = jnp.linspace(-1.0, 1.0, K) * component_anchor_strength
-        anchor_n = jnp.linspace(-0.8, 0.8, K) * (component_anchor_strength * 0.6)
+        anchor_n_scale = 0.4 if K == 2 else 0.6
+        anchor_n_direction = jnp.linspace(-0.8, 0.8, K)
+        anchor_n = anchor_n_direction * (component_anchor_strength * anchor_n_scale)
     else:
         anchor_A = jnp.zeros((K,))
         anchor_n = jnp.zeros((K,))
@@ -195,23 +258,49 @@ def _model_hill_mixture_hierarchical_reparam_inner(
     # Use cumsum of positive increments for ordering
     s_median = jnp.median(s)
 
-    # Base k centered at median
-    log_k_base = numpyro.sample(
-        "log_k_base", dist.Normal(jnp.log(s_median + 1e-6), prior_config["k_scale"])
-    )
-    # Increments (positive via softplus or abs)
-    log_k_increments_raw = numpyro.sample(
-        "log_k_increments_raw",
-        dist.Normal(0, 1).expand((K - 1,)),  # type: ignore[arg-type]
-    )
-    # Scale increments to reasonable range
-    log_k_increments = jnp.abs(log_k_increments_raw) * prior_config["k_scale"]
+    if "k_anchor_quantiles" in prior_config and len(prior_config["k_anchor_quantiles"]) == K:
+        support_quantiles = jnp.asarray(prior_config["k_anchor_quantiles"])
+        k_anchor = jnp.quantile(s, support_quantiles)
+        log_k_anchor = jnp.log(k_anchor + 1e-6)
+        log_k_base = numpyro.sample(
+            "log_k_base",
+            dist.Normal(log_k_anchor[0], prior_config["k_anchor_scale"]),
+        )
+        log_k_increments_raw = numpyro.sample(
+            "log_k_increments_raw",
+            dist.Normal(0, 1).expand((K - 1,)),  # type: ignore[arg-type]
+        )
+        anchor_gaps = jnp.maximum(jnp.diff(log_k_anchor), 1e-3)
+        if K == 2:
+            log_k_increments = anchor_gaps + (
+                jnp.abs(log_k_increments_raw) * prior_config["k_increment_scale"]
+            )
+        else:
+            log_k_increments = jnp.maximum(
+                anchor_gaps + (
+                    log_k_increments_raw * prior_config["k_increment_scale"]
+                ),
+                1e-3,
+            )
+    else:
+        # Base k centered at median
+        log_k_base = numpyro.sample(
+            "log_k_base", dist.Normal(jnp.log(s_median + 1e-6), prior_config["k_scale"])
+        )
+        # Increments (positive via softplus or abs)
+        log_k_increments_raw = numpyro.sample(
+            "log_k_increments_raw",
+            dist.Normal(0, 1).expand((K - 1,)),  # type: ignore[arg-type]
+        )
+        # Scale increments to reasonable range
+        log_k_increments = jnp.abs(log_k_increments_raw) * prior_config["k_scale"]
 
     # Build ordered k values
     log_k_values = jnp.concatenate(
         [jnp.array([log_k_base]), log_k_base + jnp.cumsum(log_k_increments)]
     )
     k = jnp.exp(log_k_values)
+    numpyro.deterministic("log_k", log_k_values)
     numpyro.deterministic("k", k)
 
     # Observation noise
@@ -294,6 +383,11 @@ def model_hill_mixture_hierarchical_reparam(
         prior_config: Dict with prior hyperparameters
         component_anchor_strength: Magnitude of fixed component-separation offsets
     """
+    if K == 2 and component_anchor_strength == DEFAULT_COMPONENT_ANCHOR_STRENGTH:
+        component_anchor_strength = DEFAULT_COMPONENT_ANCHOR_STRENGTH_K2
+    if K == 3 and component_anchor_strength == DEFAULT_COMPONENT_ANCHOR_STRENGTH:
+        component_anchor_strength = DEFAULT_COMPONENT_ANCHOR_STRENGTH_K3
+
     _run_reparameterized_mixture_model(
         x,
         y=y,

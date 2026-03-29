@@ -161,11 +161,14 @@ def _generate_mixture(config: DGPConfig, K: int) -> tuple[np.ndarray, np.ndarray
         n_true = np.array([2.0, 0.8], dtype=np.float32)
 
     elif K == 3:
-        pi_true = np.array([0.40, 0.30, 0.30], dtype=np.float32)
-        # Keep K=3 as the harder benchmark case with partial overlap.
-        k_true = np.array([s_median * 0.4, s_median * 1.0, s_median * 1.8], dtype=np.float32)
-        A_true = np.array([15.0, 30.0, 60.0], dtype=np.float32)
-        n_true = np.array([2.0, 1.5, 1.0], dtype=np.float32)
+        pi_true = np.array([0.40, 0.35, 0.25], dtype=np.float32)
+        # Mirror the K=2 benchmark philosophy: anchor components to separated
+        # spend quantiles and widen both amplitude and curvature differences so
+        # permutation-invariant curve recovery is feasible above sigma=3 noise.
+        k_quantiles = [0.15, 0.60, 0.95]
+        k_true = _support_quantiles(s, k_quantiles)
+        A_true = np.array([12.0, 35.0, 85.0], dtype=np.float32)
+        n_true = np.array([0.75, 1.35, 2.1], dtype=np.float32)
 
     else:
         raise ValueError(f"Unsupported K={K}")
