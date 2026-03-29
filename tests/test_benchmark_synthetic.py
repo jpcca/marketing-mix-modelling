@@ -90,10 +90,13 @@ def _synthetic_run_config(dgp_name: str, model_name: str, seed: int) -> Benchmar
     if model_name == "mixture_k2":
         target_accept_prob = 0.95
     elif model_name == "mixture_k3":
-        target_accept_prob = 0.945 if dgp_name == "mixture_k3" else 0.94
+        target_accept_prob = 0.97
     else:
         target_accept_prob = 0.90
-    dense_mass = model_name == "mixture_k3" and dgp_name == "mixture_k3"
+    # Keep benchmark settings consistent by model complexity: all K=3 mixture
+    # fits use the same target accept / warmup budget, while keeping a diagonal
+    # mass matrix to avoid overfitting sampler geometry to one synthetic DGP.
+    dense_mass = False
     init_strategy = "median" if model_name in {"mixture_k2", "mixture_k3"} else "uniform"
     if model_name == "single_hill":
         warmup = 800 if dgp_name == "mixture_k3" else 600
@@ -110,7 +113,7 @@ def _synthetic_run_config(dgp_name: str, model_name: str, seed: int) -> Benchmar
         )
 
     if model_name == "mixture_k3":
-        warmup = 1400 if dgp_name in {"single", "mixture_k3"} else 1200
+        warmup = 1600
         samples = 1200
     else:
         warmup = 900
