@@ -406,7 +406,7 @@ def generate_elpd_comparison_figure(df: pd.DataFrame, output_dir: str | Path) ->
     return output_path
 
 
-def generate_mape_comparison_figure(df: pd.DataFrame, output_dir: str | Path) -> Path:
+def generate_predictive_score_comparison_figure(df: pd.DataFrame, output_dir: str | Path) -> Path:
     """Render Figure 2: holdout test CRPS comparison across DGPs and models."""
     output_dir = Path(output_dir)
     metric_frame = _metric_frame(df, "test_crps")
@@ -459,9 +459,7 @@ def generate_mape_comparison_figure(df: pd.DataFrame, output_dir: str | Path) ->
 
     plt.tight_layout()
     output_path = output_dir / "fig2_predictive_score_comparison.png"
-    legacy_output_path = output_dir / "fig2_mape_comparison.png"
     fig.savefig(output_path)
-    fig.savefig(legacy_output_path)
     plt.close(fig)
     return output_path
 
@@ -514,7 +512,7 @@ def generate_convergence_heatmap_figure(df: pd.DataFrame, output_dir: str | Path
     return output_path
 
 
-def generate_coverage_figure(df: pd.DataFrame, output_dir: str | Path) -> Path:
+def generate_latent_recovery_comparison_figure(df: pd.DataFrame, output_dir: str | Path) -> Path:
     """Render Figure 3: latent test nRMSE across DGPs and models."""
     output_dir = Path(output_dir)
     latent_nrmse = _numeric_series(df, "latent_test_nrmse")
@@ -618,8 +616,8 @@ def generate_publication_figures(
 
     generators = {
         "fig1": generate_elpd_comparison_figure,
-        "fig2": generate_mape_comparison_figure,
-        "fig3": generate_coverage_figure,
+        "fig2": generate_predictive_score_comparison_figure,
+        "fig3": generate_latent_recovery_comparison_figure,
         "fig4": generate_convergence_heatmap_figure,
     }
     for figure_id in data_figures:
