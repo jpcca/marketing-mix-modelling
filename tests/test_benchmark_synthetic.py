@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import replace
 from pathlib import Path
 from time import time
 
@@ -122,85 +123,39 @@ def _synthetic_run_config(dgp_name: str, model_name: str, seed: int) -> Benchmar
     )
 
 
+_RELAXED_BASE = BenchmarkThresholds(
+    max_rhat=None,
+    min_ess_bulk_per_chain=None,
+    min_ess_tail_per_chain=None,
+    max_divergences=None,
+    min_bfmi=None,
+    max_tree_depth_hits=None,
+    require_finite_loo_waic=True,
+    require_finite_predictive_metrics=True,
+)
+
+
 def _synthetic_thresholds(dgp_name: str, model_name: str) -> BenchmarkThresholds:
-    max_test_mape = 5.0 if dgp_name == "single" else None
-    max_test_mu_mape = None
-    max_test_mu_nrmse = 0.15 if dgp_name == "mixture_k2" else None
-    max_component_weighted_curve_nrmse = None
-    max_component_curve_nrmse = None
-    max_component_effective_k_error = None
+    overrides: dict = {"require_reportable_diagnostics": True, "require_truth_metrics": True}
+    if dgp_name == "single":
+        overrides["max_test_mape"] = 5.0
+    elif dgp_name == "mixture_k2":
+        overrides["max_test_mu_nrmse"] = 0.15
     if dgp_name == "mixture_k3" and model_name == "mixture_k3":
-        max_component_weighted_curve_nrmse = 0.15
-        max_component_curve_nrmse = 0.25
-        max_component_effective_k_error = 0.0
-    return BenchmarkThresholds(
-        max_rhat=None,
-        min_ess_bulk=None,
-        min_ess_tail=None,
-        min_ess_bulk_per_chain=None,
-        min_ess_tail_per_chain=None,
-        max_label_invariant_rhat=None,
-        min_label_invariant_ess_bulk_per_chain=None,
-        min_label_invariant_ess_tail_per_chain=None,
-        max_relabeled_rhat=None,
-        min_relabeled_ess_bulk_per_chain=None,
-        min_relabeled_ess_tail_per_chain=None,
-        max_divergences=None,
-        min_bfmi=None,
-        max_tree_depth_hits=None,
-        min_test_coverage_90=None,
-        max_test_mape=max_test_mape,
-        max_test_crps=None,
-        max_test_mu_mape=max_test_mu_mape,
-        max_test_mu_nrmse=max_test_mu_nrmse,
-        min_test_mu_coverage_90=None,
-        max_component_weighted_curve_nrmse=max_component_weighted_curve_nrmse,
-        max_component_curve_nrmse=max_component_curve_nrmse,
-        max_component_effective_k_error=max_component_effective_k_error,
-        require_alpha_in_ci=False,
-        require_sigma_in_ci=False,
-        effective_k_bounds=None,
-        max_pareto_k_bad=None,
-        max_pareto_k_very_bad=None,
-        require_reportable_diagnostics=True,
-        require_truth_metrics=True,
-    )
+        overrides["max_component_weighted_curve_nrmse"] = 0.15
+        overrides["max_component_curve_nrmse"] = 0.25
+        overrides["max_component_effective_k_error"] = 0.0
+    return replace(_RELAXED_BASE, **overrides)
 
 
 def _synthetic_smoke_thresholds(dgp_name: str, model_name: str) -> BenchmarkThresholds:
     del model_name
-    max_test_mape = 5.0 if dgp_name == "single" else None
-    max_test_mu_mape = None
-    max_test_mu_nrmse = 0.18 if dgp_name == "mixture_k2" else None
-    return BenchmarkThresholds(
-        max_rhat=None,
-        min_ess_bulk=None,
-        min_ess_tail=None,
-        min_ess_bulk_per_chain=None,
-        min_ess_tail_per_chain=None,
-        max_label_invariant_rhat=None,
-        min_label_invariant_ess_bulk_per_chain=None,
-        min_label_invariant_ess_tail_per_chain=None,
-        max_relabeled_rhat=None,
-        min_relabeled_ess_bulk_per_chain=None,
-        min_relabeled_ess_tail_per_chain=None,
-        max_divergences=None,
-        min_bfmi=None,
-        max_tree_depth_hits=None,
-        min_test_coverage_90=None,
-        max_test_mape=max_test_mape,
-        max_test_crps=None,
-        max_test_mu_mape=max_test_mu_mape,
-        max_test_mu_nrmse=max_test_mu_nrmse,
-        min_test_mu_coverage_90=None,
-        require_alpha_in_ci=False,
-        require_sigma_in_ci=False,
-        effective_k_bounds=None,
-        max_pareto_k_bad=None,
-        max_pareto_k_very_bad=None,
-        require_reportable_diagnostics=False,
-        require_truth_metrics=True,
-    )
+    overrides: dict = {"require_truth_metrics": True}
+    if dgp_name == "single":
+        overrides["max_test_mape"] = 5.0
+    elif dgp_name == "mixture_k2":
+        overrides["max_test_mu_nrmse"] = 0.18
+    return replace(_RELAXED_BASE, **overrides)
 
 
 def _run_and_assert_case(

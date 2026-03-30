@@ -1,17 +1,4 @@
-"""Data generation for Hill Mixture MMM experiments.
-
-Provides multiple DGP (Data Generating Process) scenarios for
-fair model evaluation:
-
-1. single: Single Hill curve (tests overfitting)
-2. mixture_k2: 2-component mixture
-3. mixture_k3: 3-component mixture
-
-The benchmark-facing mixture DGPs anchor their half-saturation points to
-quantiles of the realized adstocked spend support. This keeps the synthetic
-difficulty focused on inference instead of accidental near-ties caused by
-curves being evaluated on too narrow a spend range.
-"""
+"""Synthetic data generation for Hill Mixture MMM experiments."""
 
 from dataclasses import dataclass
 from typing import Literal
@@ -64,16 +51,7 @@ def _support_quantiles(values: np.ndarray, quantiles: list[float]) -> np.ndarray
 
 
 def generate_data(config: DGPConfig) -> tuple[np.ndarray, np.ndarray, dict]:
-    """Generate synthetic MMM data from specified DGP.
-
-    Args:
-        config: DGP configuration
-
-    Returns:
-        x: (T,) raw spend
-        y: (T,) observed response
-        meta: Dict with true parameters and intermediate values
-    """
+    """Generate synthetic MMM data (x, y, meta) from specified DGP."""
     if config.dgp_type == "single":
         return _generate_single_hill(config)
     elif config.dgp_type == "mixture_k2":
@@ -130,12 +108,6 @@ def _generate_single_hill(config: DGPConfig) -> tuple[np.ndarray, np.ndarray, di
 
 
 def _generate_mixture(config: DGPConfig, K: int) -> tuple[np.ndarray, np.ndarray, dict]:
-    """Generate data from K-component Hill mixture.
-
-    DGP:
-        z_t ~ Categorical(pi)
-        y_t ~ Normal(baseline_t + hill(s_t; A[z], k[z], n[z]), sigma)
-    """
     rng = np.random.default_rng(config.seed)
     T = config.T
 
@@ -206,18 +178,7 @@ def _generate_mixture(config: DGPConfig, K: int) -> tuple[np.ndarray, np.ndarray
 
 
 def compute_prior_config(x: np.ndarray, y: np.ndarray) -> dict:
-    """Compute prior hyperparameters from data.
-
-    Uses empirical Bayes approach to set reasonable priors
-    based on data scale.
-
-    Args:
-        x: (T,) spend values
-        y: (T,) response values
-
-    Returns:
-        Dict with prior configuration
-    """
+    """Compute empirical Bayes prior hyperparameters from data scale."""
     y_mean = np.mean(y)
     y_std = np.std(y)
     y_min = np.min(y)

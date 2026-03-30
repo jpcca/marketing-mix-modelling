@@ -1,13 +1,4 @@
-"""Evaluation metrics for Hill Mixture MMM.
-
-Key metrics:
-- effective_k: Number of active mixture components
-- parameter_recovery: Check if true params in credible intervals
-- latent_recovery: Check recovery of the true latent mean function
-- delta_loo: Relative improvement over baseline
-- component_recovery: Permutation-invariant component recovery on synthetic data
-- across_seed_stability: Seed-to-seed stability of recovered component structure
-"""
+"""Evaluation metrics for Hill Mixture MMM."""
 
 from __future__ import annotations
 
@@ -20,17 +11,7 @@ from numpyro.infer import MCMC
 
 
 def compute_effective_k(mcmc: MCMC, threshold: float = 0.05) -> dict[str, float]:
-    """Compute effective number of mixture components.
-
-    Counts components with mixture weight > threshold.
-
-    Args:
-        mcmc: Fitted MCMC object (must have 'pis' samples)
-        threshold: Minimum weight to count as active
-
-    Returns:
-        Dict with mean, std, and per-sample effective K
-    """
+    """Count mixture components with weight > threshold."""
     samples = mcmc.get_samples()
 
     if "pis" not in samples:
@@ -50,82 +31,36 @@ def compute_effective_k(mcmc: MCMC, threshold: float = 0.05) -> dict[str, float]
     }
 
 
+def _scalar_ci(samples_arr: np.ndarray, true_val: float, tail: float) -> dict:
+    ci_low = np.percentile(samples_arr, 100 * tail)
+    ci_high = np.percentile(samples_arr, 100 * (1 - tail))
+    return {
+        "true": true_val,
+        "mean": float(samples_arr.mean()),
+        "std": float(samples_arr.std()),
+        "ci_low": float(ci_low),
+        "ci_high": float(ci_high),
+        "in_ci": bool(ci_low <= true_val <= ci_high),
+    }
+
+
+_SCALAR_RECOVERY_PARAMS = [
+    ("alpha", "alpha_true"),
+    ("sigma", "sigma_true"),
+    ("intercept", "intercept_true"),
+    ("slope", "slope_true"),
+]
+
+
 def compute_parameter_recovery(mcmc: MCMC, meta: dict, ci_level: float = 0.95) -> dict[str, dict]:
-    """Check if true parameters fall within credible intervals.
-
-    For each recoverable parameter, reports:
-    - true value
-    - posterior mean
-    - CI bounds
-    - whether true is in CI
-
-    Args:
-        mcmc: Fitted MCMC object
-        meta: DGP metadata with true parameter values
-        ci_level: Credible interval level (default 95%)
-
-    Returns:
-        Dict mapping param names to recovery stats
-    """
+    """Check if true parameters fall within posterior credible intervals."""
     samples = mcmc.get_samples()
-    alpha = (1 - ci_level) / 2
+    tail = (1 - ci_level) / 2
     results = {}
 
-    if "alpha" in samples and "alpha_true" in meta:
-        alpha_samples = np.array(samples["alpha"])
-        true_val = meta["alpha_true"]
-        ci_low = np.percentile(alpha_samples, 100 * alpha)
-        ci_high = np.percentile(alpha_samples, 100 * (1 - alpha))
-        results["alpha"] = {
-            "true": true_val,
-            "mean": float(alpha_samples.mean()),
-            "std": float(alpha_samples.std()),
-            "ci_low": float(ci_low),
-            "ci_high": float(ci_high),
-            "in_ci": bool(ci_low <= true_val <= ci_high),
-        }
-
-    if "sigma" in samples and "sigma_true" in meta:
-        sigma_samples = np.array(samples["sigma"])
-        true_val = meta["sigma_true"]
-        ci_low = np.percentile(sigma_samples, 100 * alpha)
-        ci_high = np.percentile(sigma_samples, 100 * (1 - alpha))
-        results["sigma"] = {
-            "true": true_val,
-            "mean": float(sigma_samples.mean()),
-            "std": float(sigma_samples.std()),
-            "ci_low": float(ci_low),
-            "ci_high": float(ci_high),
-            "in_ci": bool(ci_low <= true_val <= ci_high),
-        }
-
-    if "intercept" in samples and "intercept_true" in meta:
-        int_samples = np.array(samples["intercept"])
-        true_val = meta["intercept_true"]
-        ci_low = np.percentile(int_samples, 100 * alpha)
-        ci_high = np.percentile(int_samples, 100 * (1 - alpha))
-        results["intercept"] = {
-            "true": true_val,
-            "mean": float(int_samples.mean()),
-            "std": float(int_samples.std()),
-            "ci_low": float(ci_low),
-            "ci_high": float(ci_high),
-            "in_ci": bool(ci_low <= true_val <= ci_high),
-        }
-
-    if "slope" in samples and "slope_true" in meta:
-        slope_samples = np.array(samples["slope"])
-        true_val = meta["slope_true"]
-        ci_low = np.percentile(slope_samples, 100 * alpha)
-        ci_high = np.percentile(slope_samples, 100 * (1 - alpha))
-        results["slope"] = {
-            "true": true_val,
-            "mean": float(slope_samples.mean()),
-            "std": float(slope_samples.std()),
-            "ci_low": float(ci_low),
-            "ci_high": float(ci_high),
-            "in_ci": bool(ci_low <= true_val <= ci_high),
-        }
+    for param, meta_key in _SCALAR_RECOVERY_PARAMS:
+        if param in samples and meta_key in meta:
+            results[param] = _scalar_ci(np.array(samples[param]), meta[meta_key], tail)
 
     if "pis" in samples and "pi_true" in meta:
         pis_samples = np.array(samples["pis"])
@@ -144,15 +79,7 @@ def compute_parameter_recovery(mcmc: MCMC, meta: dict, ci_level: float = 0.95) -
 
 
 def compute_latent_recovery(mu_true: np.ndarray, mu_samples: np.ndarray) -> dict[str, float]:
-    """Measure recovery of the noise-free latent mean function.
-
-    Args:
-        mu_true: (T,) true latent mean from the DGP
-        mu_samples: (n_samples, T) posterior samples of the latent mean
-
-    Returns:
-        Dict with MAPE (percentage points), MAE, nRMSE, CRPS, and coverage
-    """
+    """Measure recovery of the noise-free latent mean function."""
     mu_true = np.asarray(mu_true, dtype=np.float64)
     mu_samples = np.asarray(mu_samples, dtype=np.float64)
 
@@ -196,17 +123,7 @@ def _crps_ensemble(y_true: np.ndarray, y_samples: np.ndarray) -> np.ndarray:
 
 
 def compute_delta_loo(loo_model: dict, loo_baseline: dict) -> dict[str, float]:
-    """Compute improvement in LOO-CV relative to baseline.
-
-    Positive delta means model is better than baseline.
-
-    Args:
-        loo_model: LOO results for model being evaluated
-        loo_baseline: LOO results for baseline (single Hill)
-
-    Returns:
-        Dict with delta, se, and significance
-    """
+    """Compute LOO-CV improvement relative to baseline (positive = better)."""
     if np.isnan(loo_model.get("elpd_loo", np.nan)) or np.isnan(
         loo_baseline.get("elpd_loo", np.nan)
     ):
@@ -671,14 +588,7 @@ def compute_across_seed_component_stability(
 
 
 def summarize_results(results: dict) -> str:
-    """Format benchmark results as a summary table.
-
-    Args:
-        results: Dict with evaluation metrics
-
-    Returns:
-        Formatted string for printing
-    """
+    """Format benchmark results as a summary table."""
     lines = []
     lines.append("=" * 70)
     lines.append(f"DGP: {results.get('dgp', 'unknown')}")

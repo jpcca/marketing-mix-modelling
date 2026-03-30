@@ -1,9 +1,4 @@
-"""NumPyro model definitions for Hill Mixture MMM.
-
-Models:
-1. model_single_hill: Standard single response curve (baseline)
-2. model_hill_mixture_hierarchical_reparam: Hierarchical mixture with stabilized component priors
-"""
+"""NumPyro model definitions for Hill Mixture MMM."""
 
 import jax.numpy as jnp
 import numpy as np
@@ -97,15 +92,7 @@ def _resolve_mixture_prior_config(
 
 
 def model_single_hill(x, y=None, prior_config=None, t_std=None):
-    """Single Hill function MMM.
-
-    x -> adstock(x, alpha) -> hill(s, A, k, n) -> y
-
-    Args:
-        x: (T,) raw spend
-        y: (T,) observed response (None for prior predictive)
-        prior_config: Dict with prior hyperparameters
-    """
+    """Single Hill function MMM: x -> adstock -> hill -> y."""
     T = x.shape[0]
     if t_std is None:
         t_std = standardized_time_index(T, xp=jnp)
@@ -152,8 +139,6 @@ def model_single_hill(x, y=None, prior_config=None, t_std=None):
     numpyro.deterministic("effect", effect)
 
 
-
-
 def _model_hill_mixture_hierarchical_reparam_inner(
     x,
     y=None,
@@ -162,15 +147,6 @@ def _model_hill_mixture_hierarchical_reparam_inner(
     t_std=None,
     component_anchor_strength: float = 0.0,
 ):
-    """Inner model for hierarchical reparameterized Hill Mixture.
-
-    Combines hierarchical priors (partial pooling) with non-centered parameterization.
-    Key features:
-    1. Hierarchical priors on A, k, n - components share information
-    2. Non-centered parameterization for all hierarchical parameters
-    3. Stick-breaking for mixture weights
-    4. Ordered constraint on k for identifiability
-    """
     T = x.shape[0]
     if t_std is None:
         t_std = standardized_time_index(T, xp=jnp)
@@ -333,29 +309,7 @@ def model_hill_mixture_hierarchical_reparam(
     t_std=None,
     component_anchor_strength: float = DEFAULT_COMPONENT_ANCHOR_STRENGTH,
 ):
-    """Hierarchical Hill Mixture Model with stabilized component priors.
-
-    Combines the best of both worlds:
-    1. Hierarchical priors for partial pooling across components (better regularization)
-    2. Non-centered parameterization for MCMC convergence
-    3. Stick-breaking for mixture weights
-    4. Ordered constraint on k for identifiability
-    5. Fixed offsets on log A / log n to stabilize component separation
-
-    The hierarchical structure shares information across mixture components,
-    which can improve predictive performance especially with limited data.
-    The non-centered parameterization handles the "funnel" geometry that
-    typically causes convergence issues in hierarchical models. By default,
-    the model uses a modest component-separation prior; setting
-    `component_anchor_strength=0.0` recovers the pre-stabilization behavior.
-
-    Args:
-        x: (T,) raw spend
-        y: (T,) observed response
-        K: Number of mixture components
-        prior_config: Dict with prior hyperparameters
-        component_anchor_strength: Magnitude of fixed component-separation offsets
-    """
+    """Hierarchical Hill Mixture with non-centered parameterization and ordered k."""
     if K == 2 and component_anchor_strength == DEFAULT_COMPONENT_ANCHOR_STRENGTH:
         component_anchor_strength = DEFAULT_COMPONENT_ANCHOR_STRENGTH_K2
     if K == 3 and component_anchor_strength == DEFAULT_COMPONENT_ANCHOR_STRENGTH:

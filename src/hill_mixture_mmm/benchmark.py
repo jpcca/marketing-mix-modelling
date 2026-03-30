@@ -1,4 +1,4 @@
-"""Reusable benchmark helpers for test-driven model evaluation."""
+"""Benchmark harness for test-driven model evaluation."""
 
 from __future__ import annotations
 

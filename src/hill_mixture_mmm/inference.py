@@ -1,7 +1,4 @@
-"""Inference utilities for Hill Mixture MMM.
-
-Handles MCMC execution, posterior predictive, and basic evaluation.
-"""
+"""Inference utilities for Hill Mixture MMM."""
 
 import warnings
 from collections import Counter
@@ -37,27 +34,7 @@ def run_inference(
     progress_bar: bool = True,
     **model_kwargs,
 ) -> MCMC:
-    """Run MCMC inference.
-
-    Args:
-        model_fn: NumPyro model function
-        x: (T,) spend values
-        y: (T,) response values
-        seed: Random seed
-        num_warmup: Warmup iterations per chain
-        num_samples: Samples per chain
-        num_chains: Number of parallel chains
-        prior_config: Prior hyperparameters
-        target_accept_prob: NUTS target acceptance probability
-        max_tree_depth: Maximum NUTS tree depth
-        dense_mass: Whether to adapt a dense mass matrix during warmup
-        init_strategy: NUTS initialization strategy ("uniform" or "median")
-        progress_bar: Whether to show MCMC progress bar
-        **model_kwargs: Additional model arguments (e.g., K for mixture)
-
-    Returns:
-        MCMC object with samples
-    """
+    """Run NUTS MCMC inference and return the fitted MCMC object."""
     rng_key = jax.random.PRNGKey(seed)
     if init_strategy == "median":
         resolved_init_strategy = init_to_median(num_samples=15)
@@ -102,25 +79,7 @@ def compute_predictions(
     random_seed: int = 99,
     **model_kwargs,
 ) -> dict[str, np.ndarray]:
-    """Compute posterior predictive samples.
-
-    Args:
-        mcmc: Fitted MCMC object
-        model_fn: NumPyro model function
-        x: (T,) spend values for prediction
-        prior_config: Prior hyperparameters
-        history_x: Optional spend history immediately preceding ``x``.
-            When provided, adstock state is continued from this history.
-        time_start: Absolute start index for ``x`` within the full series.
-            Defaults to ``len(history_x)`` when history is provided, else 0.
-        total_time: Total length used to standardize the time trend.
-            Defaults to ``time_start + len(x)``.
-        random_seed: Random seed for posterior predictive sampling
-        **model_kwargs: Additional model arguments
-
-    Returns:
-        Dict with predicted samples for each variable
-    """
+    """Compute posterior predictive samples, continuing adstock from history_x if provided."""
     samples = mcmc.get_samples()
     n_samples = int(samples["sigma"].shape[0]) if "sigma" in samples else 0
 
@@ -159,11 +118,7 @@ def compute_predictions(
 
 
 def compute_loo(mcmc: MCMC) -> dict[str, Any]:
-    """Compute LOO-CV (PSIS-LOO) using ArviZ.
-
-    Returns:
-        Dict with elpd_loo, se, p_loo, and pareto_k diagnostics
-    """
+    """Compute LOO-CV (PSIS-LOO) using ArviZ."""
     idata = az.from_numpyro(mcmc)
     try:
         loo = az.loo(idata, pointwise=True)
@@ -181,11 +136,7 @@ def compute_loo(mcmc: MCMC) -> dict[str, Any]:
 
 
 def compute_waic(mcmc: MCMC) -> dict[str, Any]:
-    """Compute WAIC using ArviZ.
-
-    Returns:
-        Dict with elpd_waic, se, p_waic
-    """
+    """Compute WAIC using ArviZ."""
     idata = az.from_numpyro(mcmc)
     try:
         waic = az.waic(idata)
@@ -199,11 +150,7 @@ def compute_waic(mcmc: MCMC) -> dict[str, Any]:
 
 
 def compute_convergence_diagnostics(mcmc: MCMC) -> dict[str, Any]:
-    """Compute R-hat and ESS diagnostics.
-
-    Returns:
-        Dict with max_rhat, min_ess_bulk, min_ess_tail, and per-param details
-    """
+    """Compute R-hat and ESS diagnostics."""
     idata = az.from_numpyro(mcmc)
     summary = az.summary(idata, kind="diagnostics")
 
@@ -248,15 +195,7 @@ def compute_hmc_diagnostics(
 
 
 def compute_predictive_metrics(y_true: np.ndarray, y_samples: np.ndarray) -> dict[str, float]:
-    """Compute predictive summary metrics from posterior predictive samples.
-
-    Args:
-        y_true: (T,) true observations
-        y_samples: (n_samples, T) posterior predictive samples
-
-    Returns:
-        Dict with error, calibration, and predictive summaries
-    """
+    """Compute predictive summary metrics (MAPE, RMSE, nRMSE, CRPS, coverage)."""
     y_true = np.asarray(y_true, dtype=np.float64)
     y_samples = np.asarray(y_samples, dtype=np.float64)
     y_pred_mean = y_samples.mean(axis=0)
@@ -284,40 +223,8 @@ def compute_predictive_metrics(y_true: np.ndarray, y_samples: np.ndarray) -> dic
 
 
 
-
-
 def relabel_samples_by_k(samples: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
-    """Relabel mixture components by sorting on k (half-saturation).
-
-    This function addresses label switching in mixture models by sorting
-    components by their k values at each MCMC iteration. This is a post-hoc
-    approach that preserves detailed balance (unlike within-MCMC ordering).
-
-    For each sample, components are reordered so that k[0] < k[1] < ... < k[K-1].
-    All component-specific parameters (A, k, n, pis) are permuted consistently.
-
-    Note — Ordering convention:
-        ``model_hill_mixture_hierarchical_reparam`` already enforces
-        k[0] <= k[1] <= ... <= k[K-1] structurally via
-        ``jnp.abs(increments) + cumsum`` in log-space (see models.py).
-        For that model this function is effectively a **no-op**; it is
-        retained as a robustness guard for potential unconstrained model
-        variants and numerical edge cases.
-
-    Args:
-        samples: Dict of MCMC samples with keys including 'k', 'A', 'n', 'pis'
-                 Each array has shape (n_samples,) or (n_samples, K)
-
-    Returns:
-        Dict with relabeled samples. Component-specific parameters are sorted
-        by k values. Non-component parameters are passed through unchanged.
-
-    Example:
-        >>> mcmc = run_inference(model_hill_mixture_hierarchical_reparam, x, y, K=3)
-        >>> samples = mcmc.get_samples()
-        >>> relabeled = relabel_samples_by_k(samples)
-        >>>
-    """
+    """Sort mixture components by k at each MCMC draw for label-switching robustness."""
     component_params = ["k", "A", "n", "pis", "log_k", "log_A", "log_n"]
 
     if "k" not in samples:
@@ -340,27 +247,7 @@ def relabel_samples_by_k(samples: dict[str, np.ndarray]) -> dict[str, np.ndarray
 
 
 def check_label_switching(samples: dict[str, np.ndarray], param: str = "k") -> dict[str, Any]:
-    """Diagnose label switching by analyzing component ordering over samples.
-
-    Checks how often the ordering of components (by the specified parameter)
-    changes across MCMC samples. High switching rates indicate label switching.
-
-    Note — Expected behavior with ordered models:
-        When used with ``model_hill_mixture_hierarchical_reparam``, k is
-        structurally ordered (see models.py), so ``switching_rate`` should
-        be ~0 and ``mode_ordering`` should be ``(0, 1, ..., K-1)``.
-        Non-trivial switching rates on k would indicate a model bug.
-
-    Args:
-        samples: Dict of MCMC samples
-        param: Parameter to check ordering on (default: 'k')
-
-    Returns:
-        Dict with diagnostics:
-        - switching_rate: Fraction of samples where ordering differs from mode
-        - n_unique_orderings: Number of distinct orderings observed
-        - mode_ordering: Most common component ordering
-    """
+    """Diagnose label switching by analyzing component ordering consistency."""
     if param not in samples:
         raise ValueError(f"samples must contain '{param}'")
 
@@ -383,8 +270,6 @@ def check_label_switching(samples: dict[str, np.ndarray], param: str = "k") -> d
         "n_samples": n_samples,
         "top_orderings": counts.most_common(min(5, len(counts))),
     }
-
-
 
 
 def _batched_adstock_geometric(
@@ -533,21 +418,7 @@ def compute_mixture_log_likelihood(
     samples: dict[str, np.ndarray],
     alpha_key: str = "alpha",
 ) -> np.ndarray:
-    """Compute per-sample log-likelihood for mixture model.
-
-    The log-likelihood is label-invariant: it has the same value regardless
-    of how components are labeled. This makes it suitable for convergence
-    diagnostics in mixture models.
-
-    Args:
-        x: (T,) spend values
-        y: (T,) observed response values
-        samples: Dict of MCMC samples containing 'A', 'k', 'n', 'pis', 'sigma',
-                 'intercept', 'slope', and alpha_key
-
-    Returns:
-        (n_samples,) array of total log-likelihood per MCMC sample
-    """
+    """Compute label-invariant total log-likelihood per MCMC draw."""
     required_keys = {"A", "k", "n", "pis", "sigma", "intercept", "slope", alpha_key}
     missing = sorted(required_keys.difference(samples))
     if missing:
@@ -574,28 +445,7 @@ def compute_label_invariant_diagnostics(
     y: np.ndarray,
     method: str = "rank",
 ) -> dict[str, Any]:
-    """Compute convergence diagnostics using label-invariant quantities.
-
-    Standard R-hat on component parameters is unreliable for mixture models
-    due to label switching. This function computes R-hat on:
-    1. Total log-likelihood (label-invariant)
-    2. Other scalar parameters (intercept, slope, sigma, alpha)
-
-    Args:
-        mcmc: Fitted MCMC object
-        x: (T,) spend values
-        y: (T,) observed response values
-        method: R-hat method - 'rank' (recommended) or 'split'
-
-    Returns:
-        Dict with:
-        - rhat_log_lik: R-hat on total log-likelihood
-        - rhat_scalars: R-hat on scalar parameters
-        - min_ess_bulk: Minimum bulk ESS across label-invariant quantities
-        - min_ess_tail: Minimum tail ESS across label-invariant quantities
-        - converged: Whether all R-hats < 1.01 (stricter threshold)
-        - details: Per-parameter diagnostics
-    """
+    """Compute R-hat/ESS on label-invariant quantities (log-likelihood + scalars)."""
     samples = mcmc.get_samples(group_by_chain=True)
     n_chains = samples["sigma"].shape[0]
 
@@ -649,18 +499,7 @@ def compute_diagnostics_on_relabeled(
     mcmc: MCMC,
     method: str = "rank",
 ) -> dict[str, Any]:
-    """Compute convergence diagnostics on relabeled samples.
-
-    After relabeling by k, component parameters should be comparable
-    across chains. This allows standard R-hat to be meaningful.
-
-    Args:
-        mcmc: Fitted MCMC object
-        method: R-hat method - 'rank' (recommended) or 'split'
-
-    Returns:
-        Dict with per-parameter R-hat and ESS on relabeled samples
-    """
+    """Compute R-hat/ESS on k-relabeled component parameters."""
     samples_by_chain = mcmc.get_samples(group_by_chain=True)
     n_chains = list(samples_by_chain.values())[0].shape[0]
 
@@ -740,16 +579,6 @@ def _extract_arviz_scalar(result: Any) -> float:
 
 
 def _compute_rhat(values: np.ndarray, method: str = "rank") -> float:
-    """Compute R-hat using ArviZ.
-
-    Args:
-        values: (n_chains, n_samples) array
-        method: 'rank' for rank-normalized R-hat (recommended),
-                'split' for split R-hat
-
-    Returns:
-        R-hat value (returns np.nan if computation fails)
-    """
     n_chains, n_samples = values.shape
 
     if n_chains < 2:
@@ -809,23 +638,7 @@ def compute_comprehensive_mixture_diagnostics(
     y: np.ndarray,
     method: str = "rank",
 ) -> dict[str, Any]:
-    """Compute comprehensive convergence diagnostics for mixture models.
-
-    This function combines multiple diagnostic approaches:
-    1. Standard diagnostics (for reference, may be unreliable)
-    2. Label-invariant diagnostics (R-hat on log-likelihood)
-    3. Diagnostics on relabeled samples
-    4. Label switching detection
-
-    Args:
-        mcmc: Fitted MCMC object
-        x: (T,) spend values
-        y: (T,) observed response values
-        method: R-hat method - 'rank' (recommended) or 'split'
-
-    Returns:
-        Dict with comprehensive diagnostics and recommendations
-    """
+    """Combine standard, label-invariant, relabeled, and label-switching diagnostics."""
     standard = compute_convergence_diagnostics(mcmc)
 
     label_invariant = compute_label_invariant_diagnostics(mcmc, x, y, method=method)

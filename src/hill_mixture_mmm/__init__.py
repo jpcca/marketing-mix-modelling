@@ -1,17 +1,4 @@
-"""Hill Mixture MMM - Bayesian Marketing Mix Modeling with Mixture of Hill Curves.
-
-A research implementation for the paper:
-"Non-parametric Bayesian Mixture Models for Marketing Mix Response Curves"
-
-Key modules:
-- transforms: Core mathematical transforms (adstock, hill)
-- models: NumPyro model definitions
-- data: Data generation with multiple DGP scenarios
-- inference: MCMC execution and evaluation
-- metrics: Effective K, parameter recovery
-- data_loader: Real data loading utilities
-- baseline: Baseline model implementations
-"""
+"""Hill Mixture MMM - Bayesian Marketing Mix Modeling with Mixture of Hill Curves."""
 
 from .data import DGP_CONFIGS, DGPConfig, compute_prior_config, generate_data
 from .benchmark import (
