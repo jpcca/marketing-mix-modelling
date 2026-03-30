@@ -38,7 +38,6 @@ from .metrics import (
     summarize_component_posterior,
 )
 from .models import model_hill_mixture_hierarchical_reparam, model_single_hill
-from .transforms import hill
 
 
 @dataclass(frozen=True)

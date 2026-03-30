@@ -15,7 +15,7 @@ This is a **Bayesian Marketing Mix Modeling** research project implementing a mi
 | **JAX** (≥0.4.30) | Accelerated numerical computing (GPU/TPU support) |
 | **ArviZ** (≥0.18.0) | Bayesian model evaluation (LOO-CV, WAIC, diagnostics) |
 | **Pandas/NumPy** | Data manipulation |
-| **Matplotlib/daft-pgm** | Visualization and graphical model diagrams |
+| **Matplotlib** | Visualization and graphical model diagrams |
 | **pytest** | Testing framework |
 
 **Python version:** ≥3.11  
