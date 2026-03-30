@@ -86,6 +86,34 @@ This dataset is suitable for validating Hill mixture MMM models:
 - Estimating adstock/carryover effects
 - Analyzing new customer acquisition vs total revenue
 
-## Source
+## Source & Provenance
 
-Conjura eCommerce Analytics Platform
+- **Provider**: Conjura eCommerce Analytics Platform (Dublin, Ireland)
+- **Author**: Anthony Anderson (Head of Data Science, Conjura)
+- **DOI**: [10.6084/m9.figshare.25314841.v3](https://doi.org/10.6084/m9.figshare.25314841.v3)
+- **License**: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) — 商用利用・派生物の公開を含むあらゆる用途で利用可。帰属表示のみ必須
+- **Version**: v3 (2024-06-03)
+- **Original URL**: https://figshare.com/articles/dataset/Multi-Region_Marketing_Mix_Modeling_MMM_Dataset_for_Several_eCommerce_Brands/25314841
+
+### Attribution (required by CC BY 4.0)
+
+> Anderson, A. (2024). Multi-Region Marketing Mix Modelling (MMM) Dataset for Several eCommerce Brands. figshare. https://doi.org/10.6084/m9.figshare.25314841.v3 — Licensed under CC BY 4.0.
+
+### Reliability Assessment (2026-03-30)
+
+**Provider credibility**: Conjura is a VC-funded ecommerce analytics company (EUR 15M Series A, 2022). The author holds a PhD in Applied Mathematics (Northwestern) with prior experience at Cambridge and Palantir. The data originates from real ecommerce transactions processed through Conjura's analytics platform, anonymised for public release.
+
+**Data quality**:
+- Real (not synthetic) ecommerce data from 93 brands across 15 verticals and 19 territories
+- Date range: 2019-07-21 to 2024-06-02 (up to ~5 years per brand)
+- Missing values are natural (channels not used by a brand), not data corruption
+- No negative values in spend columns
+- Data dictionary provided (`conjura_mmm_data_dictionary.tsv`)
+
+**Known limitations**:
+- No formal academic paper accompanies the dataset (no peer-reviewed methodology description)
+- No academic citations as of 2026-03 (Figshare shows 5,734 views / 1,662 downloads)
+- Digital channels only (no TV, radio, print) — appropriate for ecommerce scope
+- No ground-truth ROAS available (inherent to real observational data)
+- Anonymisation methodology not publicly documented
+- Author has since left Conjura; no dataset updates since v3 (2024-06-03)
