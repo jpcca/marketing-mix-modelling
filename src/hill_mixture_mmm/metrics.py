@@ -615,39 +615,3 @@ def compute_across_seed_component_stability(
     }
 
 
-def summarize_results(results: dict) -> str:
-    """Format benchmark results as a summary table."""
-    lines = []
-    lines.append("=" * 70)
-    lines.append(f"DGP: {results.get('dgp', 'unknown')}")
-    lines.append(f"Model: {results.get('model', 'unknown')}")
-    lines.append("=" * 70)
-
-    conv = results.get("convergence", {})
-    lines.append(
-        f"Convergence: R-hat={conv.get('max_rhat', np.nan):.3f}, "
-        f"ESS={conv.get('min_ess_bulk', np.nan):.0f}"
-    )
-
-    lines.append(
-        f"LOO-CV: {results.get('elpd_loo', np.nan):.1f} (SE={results.get('loo_se', np.nan):.1f})"
-    )
-    lines.append(
-        f"WAIC: {results.get('elpd_waic', np.nan):.1f} (SE={results.get('waic_se', np.nan):.1f})"
-    )
-
-    lines.append(
-        f"Train MAPE: {results.get('train_mape', np.nan):.3f}%, "
-        f"Test MAPE: {results.get('test_mape', np.nan):.3f}%"
-    )
-    lines.append(f"90% Coverage: {results.get('coverage_90', np.nan):.1%}")
-
-    eff_k = results.get("effective_k_mean", np.nan)
-    lines.append(f"Effective K: {eff_k:.2f}")
-
-    delta = results.get("delta_loo", np.nan)
-    if not np.isnan(delta):
-        sig = "*" if results.get("delta_significant", False) else ""
-        lines.append(f"Delta LOO vs baseline: {delta:+.1f}{sig}")
-
-    return "\n".join(lines)
