@@ -15,7 +15,6 @@ from numpyro.infer import MCMC, NUTS, Predictive
 from numpyro.infer.initialization import init_to_median, init_to_uniform
 
 from .baseline import linear_baseline, standardized_time_index
-from .metrics import _crps_ensemble
 
 
 def run_inference(
@@ -192,35 +191,6 @@ def compute_hmc_diagnostics(
         "max_num_steps": int(np.max(num_steps)) if num_steps.size else 0,
         "mean_accept_prob": float(np.mean(accept_prob)) if accept_prob.size else float("nan"),
     }
-
-
-def compute_predictive_metrics(y_true: np.ndarray, y_samples: np.ndarray) -> dict[str, float]:
-    """Compute predictive summary metrics (MAPE, RMSE, nRMSE, CRPS, coverage)."""
-    y_true = np.asarray(y_true, dtype=np.float64)
-    y_samples = np.asarray(y_samples, dtype=np.float64)
-    y_pred_mean = y_samples.mean(axis=0)
-    q05 = np.quantile(y_samples, 0.05, axis=0)
-    q95 = np.quantile(y_samples, 0.95, axis=0)
-
-    denom = np.maximum(np.abs(y_true), 1e-8)
-    mape = float(np.mean(np.abs((y_pred_mean - y_true) / denom)) * 100.0)
-    rmse = float(np.sqrt(np.mean((y_pred_mean - y_true) ** 2)))
-    scale = float(max(np.max(y_true) - np.min(y_true), 1e-8))
-    nrmse = float(rmse / scale)
-    crps = float(np.mean(_crps_ensemble(y_true, y_samples)))
-    coverage = float(np.mean((y_true >= q05) & (y_true <= q95)))
-
-    return {
-        "mape": mape,
-        "rmse": rmse,
-        "nrmse": nrmse,
-        "crps": crps,
-        "coverage_90": coverage,
-        "y_pred_mean": y_pred_mean,
-        "q05": q05,
-        "q95": q95,
-    }
-
 
 
 def relabel_samples_by_k(samples: dict[str, np.ndarray]) -> dict[str, np.ndarray]:

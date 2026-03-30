@@ -26,7 +26,6 @@ from .inference import (
     compute_label_invariant_diagnostics,
     compute_loo,
     compute_predictions,
-    compute_predictive_metrics,
     compute_waic,
     run_inference,
 )
@@ -38,6 +37,7 @@ from .metrics import (
     compute_latent_recovery,
     compute_permutation_invariant_component_recovery,
     compute_parameter_recovery,
+    compute_predictive_metrics,
     summarize_component_posterior,
 )
 from .models import (

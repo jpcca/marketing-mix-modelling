@@ -122,6 +122,34 @@ def _crps_ensemble(y_true: np.ndarray, y_samples: np.ndarray) -> np.ndarray:
     return observation_term - pairwise_term
 
 
+def compute_predictive_metrics(y_true: np.ndarray, y_samples: np.ndarray) -> dict[str, float]:
+    """Compute predictive summary metrics (MAPE, RMSE, nRMSE, CRPS, coverage)."""
+    y_true = np.asarray(y_true, dtype=np.float64)
+    y_samples = np.asarray(y_samples, dtype=np.float64)
+    y_pred_mean = y_samples.mean(axis=0)
+    q05 = np.quantile(y_samples, 0.05, axis=0)
+    q95 = np.quantile(y_samples, 0.95, axis=0)
+
+    denom = np.maximum(np.abs(y_true), 1e-8)
+    mape = float(np.mean(np.abs((y_pred_mean - y_true) / denom)) * 100.0)
+    rmse = float(np.sqrt(np.mean((y_pred_mean - y_true) ** 2)))
+    scale = float(max(np.max(y_true) - np.min(y_true), 1e-8))
+    nrmse = float(rmse / scale)
+    crps = float(np.mean(_crps_ensemble(y_true, y_samples)))
+    coverage = float(np.mean((y_true >= q05) & (y_true <= q95)))
+
+    return {
+        "mape": mape,
+        "rmse": rmse,
+        "nrmse": nrmse,
+        "crps": crps,
+        "coverage_90": coverage,
+        "y_pred_mean": y_pred_mean,
+        "q05": q05,
+        "q95": q95,
+    }
+
+
 def compute_delta_loo(loo_model: dict, loo_baseline: dict) -> dict[str, float]:
     """Compute LOO-CV improvement relative to baseline (positive = better)."""
     if np.isnan(loo_model.get("elpd_loo", np.nan)) or np.isnan(

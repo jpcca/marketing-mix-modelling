@@ -25,7 +25,6 @@ from hill_mixture_mmm.inference import (
     compute_hmc_diagnostics,
     compute_loo,
     compute_predictions,
-    compute_predictive_metrics,
     compute_waic,
     run_inference,
 )
@@ -34,6 +33,7 @@ from hill_mixture_mmm.metrics import (
     compute_effective_k,
     compute_latent_recovery,
     compute_parameter_recovery,
+    compute_predictive_metrics,
 )
 from hill_mixture_mmm.models import model_hill_mixture_hierarchical_reparam, model_single_hill
 

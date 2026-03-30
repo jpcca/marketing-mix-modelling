@@ -7,8 +7,8 @@ from hill_mixture_mmm.baseline import linear_baseline, standardized_time_index
 from hill_mixture_mmm.inference import (
     compute_mixture_log_likelihood,
     compute_predictions,
-    compute_predictive_metrics,
 )
+from hill_mixture_mmm.metrics import compute_predictive_metrics
 from hill_mixture_mmm.models import model_hill_mixture_hierarchical_reparam, model_single_hill
 from hill_mixture_mmm.transforms import adstock_geometric, hill_matrix
 
