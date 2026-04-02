@@ -35,6 +35,13 @@ COLORS = {
     "mixture_k3": "#ff7f0e",
 }
 DEFAULT_FIGURE_IDS = ("fig0", "fig1", "fig2", "fig3", "fig4")
+FIGURE_FILENAMES = {
+    "fig0": "fig0_graphical_model.png",
+    "fig1": "fig1_elpd_comparison.png",
+    "fig2": "fig2_crps_comparison.png",
+    "fig3": "fig3_latent_nrmse_comparison.png",
+    "fig4": "fig4_convergence_heatmap.png",
+}
 RHAT_TEST_PASS_MAX = 1.05
 
 plt.rcParams.update(
@@ -400,7 +407,7 @@ def generate_elpd_comparison_figure(df: pd.DataFrame, output_dir: str | Path) ->
     )
 
     plt.tight_layout()
-    output_path = output_dir / "fig1_elpd_comparison.png"
+    output_path = output_dir / FIGURE_FILENAMES["fig1"]
     fig.savefig(output_path)
     plt.close(fig)
     return output_path
@@ -458,7 +465,7 @@ def generate_predictive_score_comparison_figure(df: pd.DataFrame, output_dir: st
     )
 
     plt.tight_layout()
-    output_path = output_dir / "fig2_predictive_score_comparison.png"
+    output_path = output_dir / FIGURE_FILENAMES["fig2"]
     fig.savefig(output_path)
     plt.close(fig)
     return output_path
@@ -506,7 +513,7 @@ def generate_convergence_heatmap_figure(df: pd.DataFrame, output_dir: str | Path
     ax.set_title("R-hat Threshold Pass Rate by DGP and Model")
 
     plt.tight_layout()
-    output_path = output_dir / "fig4_convergence_heatmap.png"
+    output_path = output_dir / FIGURE_FILENAMES["fig4"]
     fig.savefig(output_path)
     plt.close(fig)
     return output_path
@@ -577,7 +584,7 @@ def generate_latent_recovery_comparison_figure(df: pd.DataFrame, output_dir: str
     )
 
     plt.tight_layout()
-    output_path = output_dir / "fig3_latent_recovery_comparison.png"
+    output_path = output_dir / FIGURE_FILENAMES["fig3"]
     fig.savefig(output_path)
     plt.close(fig)
     return output_path
