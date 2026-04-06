@@ -9,6 +9,7 @@ The `docs/` directory is split into two groups:
 
 - `SYNTHETIC_BENCHMARK_DESIGN.md` - Canonical synthetic benchmark design and quality gates
 - `MMM_EVALUATION_METRICS.md` - Literature-backed review of MMM evaluation metrics and recommendations for this benchmark
+- `COMPONENT_SEPARATION_EFFECTIVE_COUNT.md` - Design note for the separation vs effective-component-count benchmark figure
 - `research-summary.md` - Literature review and project motivation
 - `PYDATA_SUBMISSION.md` - Conference/session submission material
 
