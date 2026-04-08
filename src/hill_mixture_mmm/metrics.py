@@ -31,6 +31,25 @@ def compute_effective_k(mcmc: MCMC, threshold: float = 0.05) -> dict[str, float]
     }
 
 
+def _normalize_probability_mass(values: np.ndarray) -> np.ndarray:
+    """Normalize a nonnegative discrete mass vector to sum to one."""
+    values = np.asarray(values, dtype=np.float64)
+    clipped = np.clip(values, 0.0, None)
+    total = float(clipped.sum())
+    if total <= 0.0:
+        return np.full(clipped.shape, 1.0 / max(clipped.size, 1), dtype=np.float64)
+    return clipped / total
+
+
+def compute_total_variation_distance(p: np.ndarray, q: np.ndarray) -> float:
+    """Return the discrete total variation distance between two mass vectors."""
+    p_mass = _normalize_probability_mass(p)
+    q_mass = _normalize_probability_mass(q)
+    if p_mass.shape != q_mass.shape:
+        raise ValueError("p and q must have matching shapes")
+    return float(0.5 * np.abs(p_mass - q_mass).sum())
+
+
 def _scalar_ci(samples_arr: np.ndarray, true_val: float, tail: float) -> dict:
     ci_low = np.percentile(samples_arr, 100 * tail)
     ci_high = np.percentile(samples_arr, 100 * (1 - tail))
@@ -226,7 +245,7 @@ def summarize_component_posterior(
     }
 
 
-def _summarize_true_components(
+def summarize_true_components(
     meta: dict[str, Any], weight_threshold: float = 0.05
 ) -> dict[str, Any]:
     """Build a component summary from synthetic DGP metadata."""
@@ -280,15 +299,35 @@ def _extract_component_summary(payload: dict[str, Any]) -> tuple[dict[str, Any],
     raise ValueError("payload must contain either component_summary or a component summary itself")
 
 
-def _active_components(component_summary: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return active components, falling back to the highest-weight component if needed."""
+def _select_components(
+    component_summary: dict[str, Any], *, active_only: bool
+) -> list[dict[str, Any]]:
+    """Return selected components, optionally filtering to the active subset."""
     components = [dict(component) for component in component_summary.get("components", [])]
+    if not active_only:
+        return components
     active = [component for component in components if component.get("active", False)]
     if active:
         return active
     if not components:
         return []
     return [max(components, key=lambda component: float(component.get("pi_mean", 0.0)))]
+
+
+def _active_components(component_summary: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return active components, falling back to the highest-weight component if needed."""
+    return _select_components(component_summary, active_only=True)
+
+
+def _component_weights(
+    component_summary: dict[str, Any], *, active_only: bool
+) -> np.ndarray:
+    """Return normalized component weights."""
+    components = _select_components(component_summary, active_only=active_only)
+    if not components:
+        return np.asarray([1.0], dtype=np.float64)
+    weights = np.asarray([float(component["pi_mean"]) for component in components], dtype=np.float64)
+    return _normalize_probability_mass(weights)
 
 
 def _component_curve(component: dict[str, Any], u_grid: np.ndarray) -> np.ndarray:
@@ -299,6 +338,290 @@ def _component_curve(component: dict[str, Any], u_grid: np.ndarray) -> np.ndarra
     numerator = np.power(u_grid, n_mean)
     denominator = np.power(k_ratio, n_mean) + numerator + 1e-12
     return A_mean * numerator / denominator
+
+
+def _component_curve_mass(component: dict[str, Any], u_grid: np.ndarray) -> np.ndarray:
+    """Return normalized incremental response mass for one component on the grid."""
+    curve = _component_curve(component, u_grid)
+    increments = np.diff(curve, prepend=0.0)
+    return _normalize_probability_mass(increments)
+
+
+def compute_component_distance_matrix(
+    component_summary: dict[str, Any],
+    *,
+    curve_grid_max: float = 4.0,
+    grid_size: int = 128,
+    active_only: bool = True,
+) -> dict[str, Any]:
+    """Return active-component masses, weights, and pairwise TV distances."""
+    components = _select_components(component_summary, active_only=active_only)
+    if not components:
+        return {
+            "components": [],
+            "weights": np.zeros((0,), dtype=np.float64),
+            "masses": np.zeros((0, 0), dtype=np.float64),
+            "distance_matrix": np.zeros((0, 0), dtype=np.float64),
+        }
+
+    u_grid = np.linspace(0.0, curve_grid_max, grid_size, dtype=np.float64)
+    masses = np.stack([_component_curve_mass(component, u_grid) for component in components], axis=0)
+    weights = _normalize_probability_mass(
+        np.asarray([float(component["pi_mean"]) for component in components], dtype=np.float64)
+    )
+    k = len(components)
+    distance_matrix = np.zeros((k, k), dtype=np.float64)
+    for left_idx, right_idx in combinations(range(k), 2):
+        tv = compute_total_variation_distance(masses[left_idx], masses[right_idx])
+        distance_matrix[left_idx, right_idx] = tv
+        distance_matrix[right_idx, left_idx] = tv
+    return {
+        "components": components,
+        "weights": weights,
+        "masses": masses,
+        "distance_matrix": distance_matrix,
+    }
+
+
+def compute_component_curve_tv_separation(
+    component_summary: dict[str, Any],
+    *,
+    curve_grid_max: float = 4.0,
+    grid_size: int = 128,
+) -> dict[str, Any]:
+    """Average pairwise TV separation for active components represented as normalized curves."""
+    components = _active_components(component_summary)
+    if len(components) < 2:
+        return {
+            "num_components": len(components),
+            "pair_count": 0,
+            "pairwise_tv": [],
+            "mean_pairwise_tv": 0.0,
+        }
+
+    matrix = compute_component_distance_matrix(
+        component_summary,
+        curve_grid_max=curve_grid_max,
+        grid_size=grid_size,
+    )
+    masses = list(matrix["masses"])
+    pairwise_tv = [
+        {
+            "left_index": int(left_component["index"]),
+            "right_index": int(right_component["index"]),
+            "tv": compute_total_variation_distance(left_mass, right_mass),
+        }
+        for (left_component, left_mass), (right_component, right_mass) in combinations(
+            list(zip(components, masses, strict=True)), 2
+        )
+    ]
+    return {
+        "num_components": len(components),
+        "pair_count": len(pairwise_tv),
+        "pairwise_tv": pairwise_tv,
+        "mean_pairwise_tv": float(
+            np.mean([item["tv"] for item in pairwise_tv], dtype=np.float64)
+        ),
+    }
+
+
+def compute_similarity_adjusted_effective_count(
+    component_summary: dict[str, Any],
+    *,
+    gamma: float = 0.5,
+    curve_grid_max: float = 4.0,
+    grid_size: int = 128,
+) -> dict[str, Any]:
+    """Estimate a continuous effective component count using curve similarity and flattened weights."""
+    if not 0.0 < float(gamma) <= 1.0:
+        raise ValueError("gamma must lie in (0, 1]")
+
+    components = _active_components(component_summary)
+    if not components:
+        return {
+            "gamma": float(gamma),
+            "num_components": 0,
+            "effective_count": 0.0,
+            "weights": [],
+            "flattened_weights": [],
+            "similarity_matrix": [],
+        }
+
+    matrix = compute_component_distance_matrix(
+        component_summary,
+        curve_grid_max=curve_grid_max,
+        grid_size=grid_size,
+    )
+    curve_masses = np.asarray(matrix["masses"], dtype=np.float64)
+    weights = np.asarray(matrix["weights"], dtype=np.float64)
+    flattened = np.power(weights, gamma)
+    flattened_total = float(flattened.sum())
+    if flattened_total <= 0.0:
+        flattened = np.full(weights.shape, 1.0 / len(weights), dtype=np.float64)
+    else:
+        flattened = flattened / flattened_total
+
+    k = len(components)
+    similarity = np.eye(k, dtype=np.float64)
+    for left_idx, right_idx in combinations(range(k), 2):
+        tv = compute_total_variation_distance(curve_masses[left_idx], curve_masses[right_idx])
+        similarity_value = float(1.0 - tv)
+        similarity[left_idx, right_idx] = similarity_value
+        similarity[right_idx, left_idx] = similarity_value
+
+    denominator = float(flattened @ similarity @ flattened)
+    effective_count = float(1.0 / max(denominator, 1e-12))
+    return {
+        "gamma": float(gamma),
+        "num_components": k,
+        "effective_count": effective_count,
+        "weights": weights.tolist(),
+        "flattened_weights": flattened.tolist(),
+        "similarity_matrix": similarity.tolist(),
+    }
+
+
+def compute_shannon_effective_count(component_summary: dict[str, Any]) -> dict[str, Any]:
+    """Return the Hill q=1 effective count from all component weights."""
+    weights = _component_weights(component_summary, active_only=False)
+    effective_count = float(np.exp(-np.sum(weights * np.log(np.clip(weights, 1e-12, None)))))
+    return {
+        "q": 1.0,
+        "num_components": int(len(weights)),
+        "effective_count": effective_count,
+        "weights": weights.tolist(),
+    }
+
+
+def compute_inverse_simpson_effective_count(component_summary: dict[str, Any]) -> dict[str, Any]:
+    """Return the Hill q=2 effective count from all component weights."""
+    weights = _component_weights(component_summary, active_only=False)
+    effective_count = float(1.0 / np.sum(weights**2))
+    return {
+        "q": 2.0,
+        "num_components": int(len(weights)),
+        "effective_count": effective_count,
+        "weights": weights.tolist(),
+    }
+
+
+def _exp_similarity_matrix(distance_matrix: np.ndarray, lambda_: float) -> np.ndarray:
+    """Convert a distance matrix to an exponential-kernel similarity matrix."""
+    if lambda_ <= 0.0:
+        raise ValueError("lambda_ must be positive")
+    distance_matrix = np.asarray(distance_matrix, dtype=np.float64)
+    similarity = np.exp(-float(lambda_) * distance_matrix)
+    np.fill_diagonal(similarity, 1.0)
+    return similarity
+
+
+def compute_rao_quadratic_entropy_equivalent_count(
+    component_summary: dict[str, Any],
+    *,
+    curve_grid_max: float = 4.0,
+    grid_size: int = 128,
+) -> dict[str, Any]:
+    """Return Rao's quadratic entropy and its equivalent-number transform."""
+    matrix = compute_component_distance_matrix(
+        component_summary,
+        curve_grid_max=curve_grid_max,
+        grid_size=grid_size,
+        active_only=False,
+    )
+    weights = np.asarray(matrix["weights"], dtype=np.float64)
+    if len(weights) == 0:
+        return {"num_components": 0, "rao_q": 0.0, "effective_count": 0.0, "weights": []}
+    distance_matrix = np.asarray(matrix["distance_matrix"], dtype=np.float64)
+    rao_q = float(weights @ distance_matrix @ weights)
+    effective_count = float(1.0 / max(1.0 - rao_q, 1e-12))
+    return {
+        "num_components": int(len(weights)),
+        "rao_q": rao_q,
+        "effective_count": effective_count,
+        "weights": weights.tolist(),
+    }
+
+
+def compute_leinster_cobbold_effective_count(
+    component_summary: dict[str, Any],
+    *,
+    q: float = 1.0,
+    lambda_: float = 6.0,
+    curve_grid_max: float = 4.0,
+    grid_size: int = 128,
+) -> dict[str, Any]:
+    """Return a similarity-sensitive effective count in the Leinster-Cobbold family."""
+    if q <= 0.0:
+        raise ValueError("q must be positive")
+    matrix = compute_component_distance_matrix(
+        component_summary,
+        curve_grid_max=curve_grid_max,
+        grid_size=grid_size,
+        active_only=False,
+    )
+    weights = np.asarray(matrix["weights"], dtype=np.float64)
+    if len(weights) == 0:
+        return {
+            "q": float(q),
+            "lambda": float(lambda_),
+            "num_components": 0,
+            "effective_count": 0.0,
+            "weights": [],
+            "similarity_matrix": [],
+        }
+
+    similarity = _exp_similarity_matrix(np.asarray(matrix["distance_matrix"], dtype=np.float64), lambda_)
+    zp = similarity @ weights
+    if np.isclose(q, 1.0):
+        effective_count = float(np.exp(-np.sum(weights * np.log(np.clip(zp, 1e-12, None)))))
+    else:
+        effective_count = float(np.power(np.sum(weights * np.power(np.clip(zp, 1e-12, None), q - 1.0)), -1.0 / (q - 1.0)))
+    return {
+        "q": float(q),
+        "lambda": float(lambda_),
+        "num_components": int(len(weights)),
+        "effective_count": effective_count,
+        "weights": weights.tolist(),
+        "similarity_matrix": similarity.tolist(),
+    }
+
+
+def compute_soft_component_count(
+    component_summary: dict[str, Any],
+    *,
+    lambda_: float = 6.0,
+    curve_grid_max: float = 4.0,
+    grid_size: int = 128,
+) -> dict[str, Any]:
+    """Return a soft pairwise effective-count heuristic from weights and distances."""
+    if lambda_ <= 0.0:
+        raise ValueError("lambda_ must be positive")
+    matrix = compute_component_distance_matrix(
+        component_summary,
+        curve_grid_max=curve_grid_max,
+        grid_size=grid_size,
+    )
+    weights = np.asarray(matrix["weights"], dtype=np.float64)
+    distance_matrix = np.asarray(matrix["distance_matrix"], dtype=np.float64)
+    if len(weights) <= 1:
+        return {
+            "lambda": float(lambda_),
+            "num_components": int(len(weights)),
+            "effective_count": 1.0 if len(weights) == 1 else 0.0,
+            "weights": weights.tolist(),
+        }
+
+    total = 1.0
+    for left_idx, right_idx in combinations(range(len(weights)), 2):
+        total += 2.0 * min(float(weights[left_idx]), float(weights[right_idx])) * (
+            1.0 - float(np.exp(-lambda_ * distance_matrix[left_idx, right_idx]))
+        )
+    return {
+        "lambda": float(lambda_),
+        "num_components": int(len(weights)),
+        "effective_count": float(total),
+        "weights": weights.tolist(),
+    }
 
 
 def _pair_metrics(
@@ -518,7 +841,7 @@ def compute_permutation_invariant_component_recovery(
     if posterior_summary is None:
         return None
 
-    true_summary = _summarize_true_components(meta, weight_threshold=weight_threshold)
+    true_summary = summarize_true_components(meta, weight_threshold=weight_threshold)
     alignment = compute_component_set_alignment(
         {"component_summary": true_summary, "label": "true_components"},
         {"component_summary": posterior_summary, "label": "posterior_components"},
@@ -613,5 +936,3 @@ def compute_across_seed_component_stability(
         },
         "pairwise": pairwise,
     }
-
-

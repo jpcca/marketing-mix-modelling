@@ -1,6 +1,13 @@
 """Hill Mixture MMM - Bayesian Marketing Mix Modeling with Mixture of Hill Curves."""
 
-from .data import DGP_CONFIGS, DGPConfig, compute_prior_config, generate_data
+from .data import (
+    ControlledKSpacingConfig,
+    DGP_CONFIGS,
+    DGPConfig,
+    compute_prior_config,
+    generate_controlled_k_spacing_data,
+    generate_data,
+)
 from .benchmark import (
     BenchmarkCaseResult,
     BenchmarkRunConfig,
@@ -18,6 +25,7 @@ from .benchmark import (
     resolve_case_artifact_dir,
     resolve_comparison_artifact_dir,
     run_real_benchmark_case,
+    run_prepared_synthetic_benchmark_case,
     run_synthetic_benchmark_case,
     save_case_artifacts,
 )
@@ -31,13 +39,23 @@ from .inference import (
 )
 from .metrics import (
     compute_across_seed_component_stability,
+    compute_component_curve_tv_separation,
+    compute_component_distance_matrix,
     compute_component_set_alignment,
     compute_delta_loo,
     compute_effective_k,
+    compute_inverse_simpson_effective_count,
     compute_latent_recovery,
+    compute_leinster_cobbold_effective_count,
     compute_permutation_invariant_component_recovery,
     compute_parameter_recovery,
     compute_predictive_metrics,
+    compute_rao_quadratic_entropy_equivalent_count,
+    compute_shannon_effective_count,
+    compute_similarity_adjusted_effective_count,
+    compute_soft_component_count,
+    compute_total_variation_distance,
+    summarize_true_components,
     summarize_component_posterior,
 )
 from .models import (
@@ -50,14 +68,17 @@ __version__ = "0.1.0"
 
 __all__ = [
     "DGPConfig",
+    "ControlledKSpacingConfig",
     "DGP_CONFIGS",
     "generate_data",
+    "generate_controlled_k_spacing_data",
     "compute_prior_config",
     "BenchmarkCaseResult",
     "BenchmarkRunConfig",
     "BenchmarkThresholds",
     "ComparisonThresholds",
     "run_synthetic_benchmark_case",
+    "run_prepared_synthetic_benchmark_case",
     "run_real_benchmark_case",
     "assert_case_passes",
     "assert_comparison_passes",
@@ -80,11 +101,21 @@ __all__ = [
     "compute_waic",
     "compute_delta_loo",
     "compute_effective_k",
+    "compute_total_variation_distance",
     "compute_latent_recovery",
+    "compute_component_curve_tv_separation",
+    "compute_component_distance_matrix",
+    "compute_shannon_effective_count",
+    "compute_inverse_simpson_effective_count",
+    "compute_rao_quadratic_entropy_equivalent_count",
+    "compute_leinster_cobbold_effective_count",
+    "compute_similarity_adjusted_effective_count",
+    "compute_soft_component_count",
     "compute_component_set_alignment",
     "compute_permutation_invariant_component_recovery",
     "compute_across_seed_component_stability",
     "compute_parameter_recovery",
+    "summarize_true_components",
     "summarize_component_posterior",
     "model_single_hill",
     "model_hill_mixture_hierarchical_reparam",
