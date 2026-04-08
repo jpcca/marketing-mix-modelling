@@ -29,15 +29,19 @@ from .inference import (
     run_inference,
 )
 from .metrics import (
+    compute_component_curve_tv_separation,
     compute_delta_loo,
     compute_effective_k,
     compute_latent_recovery,
     compute_parameter_recovery,
     compute_permutation_invariant_component_recovery,
     compute_predictive_metrics,
+    compute_similarity_adjusted_effective_count,
+    summarize_true_components,
     summarize_component_posterior,
 )
 from .models import model_hill_mixture_hierarchical_reparam, model_single_hill
+from .transforms import hill
 
 
 @dataclass(frozen=True)
@@ -84,6 +88,7 @@ class BenchmarkRunConfig:
     dense_mass: bool = False
     init_strategy: str = "uniform"
     progress_bar: bool = False
+    prior_config_override: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -655,6 +660,8 @@ def _run_case_from_series(
     dates_test = None if dates is None else np.asarray(dates[T_train:])
 
     prior_config = compute_prior_config(x_train, y_train)
+    if config.prior_config_override:
+        prior_config.update(config.prior_config_override)
     t_std_train = np.asarray(standardized_time_index(T)[:T_train], dtype=np.float32)
 
     fit = _fit_case(model_spec, x_train, y_train, t_std_train, prior_config, config)
@@ -752,11 +759,37 @@ def run_synthetic_benchmark_case(
 ) -> BenchmarkCaseResult:
     """Run one synthetic benchmark case."""
     x, y, meta = generate_data(dgp_config)
-    case_label = label or f"synthetic_{dgp_config.dgp_type}_{model_name}"
+    dataset_label = dgp_config.dataset_label
+    case_label = label or f"synthetic_{dataset_label}_{model_name}"
     return _run_case_from_series(
         label=case_label,
         domain="synthetic",
-        dataset_name=dgp_config.dgp_type,
+        dataset_name=dataset_label,
+        x=x,
+        y=y,
+        dates=None,
+        model_spec=get_model_spec(model_name),
+        config=config,
+        meta=meta,
+    )
+
+
+def run_prepared_synthetic_benchmark_case(
+    *,
+    dataset_name: str,
+    x: np.ndarray,
+    y: np.ndarray,
+    meta: dict[str, Any],
+    model_name: str,
+    config: BenchmarkRunConfig,
+    label: str | None = None,
+) -> BenchmarkCaseResult:
+    """Run one synthetic benchmark case from pre-generated arrays and metadata."""
+    case_label = label or f"synthetic_{dataset_name}_{model_name}"
+    return _run_case_from_series(
+        label=case_label,
+        domain="synthetic",
+        dataset_name=dataset_name,
         x=x,
         y=y,
         dates=None,
@@ -793,6 +826,16 @@ def run_real_benchmark_case(
 def case_summary(result: BenchmarkCaseResult) -> dict[str, Any]:
     """Return a compact JSON-serializable summary."""
     diagnostic_status = evaluate_case_diagnostic_status(result)
+    component_effective_count = None
+    if result.component_summary is not None:
+        component_effective_count = compute_similarity_adjusted_effective_count(
+            result.component_summary
+        )
+    true_component_summary = None
+    true_component_separation = None
+    if result.meta is not None and {"A_true", "k_true", "n_true", "pi_true"}.issubset(result.meta):
+        true_component_summary = summarize_true_components(result.meta)
+        true_component_separation = compute_component_curve_tv_separation(true_component_summary)
     summary = {
         "label": result.label,
         "domain": result.domain,
@@ -846,6 +889,23 @@ def case_summary(result: BenchmarkCaseResult) -> dict[str, Any]:
         "diagnostic_status": diagnostic_status,
         "fit_summary": dict(result.fit_summary),
     }
+    if component_effective_count is not None or true_component_separation is not None:
+        summary["component_count_plot"] = {
+            "curve_basis": "l1_normalized_hill_curve_increments",
+            "curve_grid_max": 4.0,
+            "grid_size": 128,
+            "gamma": float(component_effective_count["gamma"]) if component_effective_count else 0.5,
+            "true_separation": (
+                float(true_component_separation["mean_pairwise_tv"])
+                if true_component_separation is not None
+                else None
+            ),
+            "estimated_effective_count": (
+                float(component_effective_count["effective_count"])
+                if component_effective_count is not None
+                else None
+            ),
+        }
     if result.label_invariant is not None:
         summary["label_invariant"] = {
             "rhat_log_lik": float(result.label_invariant["rhat_log_lik"]),
@@ -904,6 +964,30 @@ def case_summary(result: BenchmarkCaseResult) -> dict[str, Any]:
                     "active": bool(component["active"]),
                 }
                 for component in result.component_summary["components"]
+            ],
+        }
+    if true_component_summary is not None:
+        summary["true_component_summary"] = {
+            "K_total": int(true_component_summary["K_total"]),
+            "K_active": int(true_component_summary["K_active"]),
+            "weight_threshold": float(true_component_summary["weight_threshold"]),
+            "scale_reference": float(true_component_summary["scale_reference"]),
+            "components": [
+                {
+                    "index": int(component["index"]),
+                    "A_mean": float(component["A_mean"]),
+                    "A_std": float(component["A_std"]),
+                    "k_mean": float(component["k_mean"]),
+                    "k_std": float(component["k_std"]),
+                    "k_ratio_mean": float(component["k_ratio_mean"]),
+                    "k_ratio_std": float(component["k_ratio_std"]),
+                    "n_mean": float(component["n_mean"]),
+                    "n_std": float(component["n_std"]),
+                    "pi_mean": float(component["pi_mean"]),
+                    "pi_std": float(component["pi_std"]),
+                    "active": bool(component["active"]),
+                }
+                for component in true_component_summary["components"]
             ],
         }
     if result.component_recovery is not None:

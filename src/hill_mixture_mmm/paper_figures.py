@@ -11,9 +11,17 @@ from typing import Any
 import matplotlib
 import numpy as np
 import pandas as pd
+from matplotlib.lines import Line2D
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+from .data import DGPConfig, generate_data
+from .metrics import (
+    compute_component_curve_tv_separation,
+    compute_similarity_adjusted_effective_count,
+    summarize_true_components,
+)
 
 
 DGP_ORDER = ["single", "mixture_k2", "mixture_k3"]
@@ -34,13 +42,14 @@ COLORS = {
     "mixture_k2": "#9467bd",
     "mixture_k3": "#ff7f0e",
 }
-DEFAULT_FIGURE_IDS = ("fig0", "fig1", "fig2", "fig3", "fig4")
+DEFAULT_FIGURE_IDS = ("fig0", "fig1", "fig2", "fig3", "fig4", "fig5")
 FIGURE_FILENAMES = {
     "fig0": "fig0_graphical_model.png",
     "fig1": "fig1_elpd_comparison.png",
     "fig2": "fig2_crps_comparison.png",
     "fig3": "fig3_latent_nrmse_comparison.png",
     "fig4": "fig4_convergence_heatmap.png",
+    "fig5": "fig5_component_separation_vs_effective_count.png",
 }
 RHAT_TEST_PASS_MAX = 1.05
 
@@ -119,6 +128,7 @@ def _compute_rhat_test_pass(df: pd.DataFrame) -> pd.Series:
 def _summary_to_record(summary: dict[str, Any]) -> dict[str, Any]:
     """Project a seed-level synthetic summary JSON into one raw-results record."""
     dgp_name = str(summary["dataset_name"])
+    plot_metrics = _component_count_plot_metrics(summary)
     label_invariant = summary.get("label_invariant") or {}
     relabeled = summary.get("relabeled") or {}
     publication_status = summary.get("publication_status")
@@ -166,6 +176,53 @@ def _summary_to_record(summary: dict[str, Any]) -> dict[str, Any]:
         "latent_test_coverage_95": _nested_metric(summary, "latent_test", "coverage_95"),
         "effective_k_mean": _nested_metric(summary, "effective_k", "mean"),
         "effective_k_std": _nested_metric(summary, "effective_k", "std"),
+        "true_component_separation": plot_metrics["true_separation"],
+        "estimated_effective_component_count": plot_metrics["estimated_effective_count"],
+        "component_count_gamma": plot_metrics["gamma"],
+    }
+
+
+def _component_count_plot_metrics(summary: dict[str, Any]) -> dict[str, float | None]:
+    """Return the component-separation plot metrics, backfilling old summaries when needed."""
+    payload = summary.get("component_count_plot")
+    if isinstance(payload, dict):
+        return {
+            "true_separation": _safe_float(payload.get("true_separation")),
+            "estimated_effective_count": _safe_float(payload.get("estimated_effective_count")),
+            "gamma": _safe_float(payload.get("gamma")),
+        }
+
+    estimated_effective_count = None
+    if isinstance(summary.get("component_summary"), dict):
+        estimated_effective_count = compute_similarity_adjusted_effective_count(
+            summary["component_summary"]
+        )["effective_count"]
+
+    true_separation = None
+    if isinstance(summary.get("true_component_summary"), dict):
+        true_separation = compute_component_curve_tv_separation(
+            summary["true_component_summary"]
+        )["mean_pairwise_tv"]
+    elif summary.get("domain") == "synthetic":
+        dgp_name = str(summary["dataset_name"])
+        total_size = int(summary.get("train_size", 0)) + int(summary.get("test_size", 0))
+        if dgp_name in DGP_ORDER and total_size > 0 and "seed" in summary:
+            _, _, meta = generate_data(
+                DGPConfig(
+                    dgp_type=dgp_name,
+                    T=total_size,
+                    seed=int(summary["seed"]),
+                )
+            )
+            true_summary = summarize_true_components(meta)
+            true_separation = compute_component_curve_tv_separation(true_summary)[
+                "mean_pairwise_tv"
+            ]
+
+    return {
+        "true_separation": _safe_float(true_separation),
+        "estimated_effective_count": _safe_float(estimated_effective_count),
+        "gamma": 0.5,
     }
 
 
@@ -590,6 +647,119 @@ def generate_latent_recovery_comparison_figure(df: pd.DataFrame, output_dir: str
     return output_path
 
 
+def generate_component_separation_effective_count_figure(
+    df: pd.DataFrame, output_dir: str | Path
+) -> Path:
+    """Render Figure 5: one combined scatter over all seeds, models, and DGPs."""
+    output_dir = Path(output_dir)
+    metric_df = df.copy()
+    metric_df["true_component_separation"] = _numeric_series(df, "true_component_separation")
+    metric_df["estimated_effective_component_count"] = _numeric_series(
+        df, "estimated_effective_component_count"
+    )
+    metric_df = metric_df.dropna(
+        subset=["true_component_separation", "estimated_effective_component_count"]
+    )
+    marker_map = {"single": "o", "mixture_k2": "s", "mixture_k3": "^"}
+    y_max = max(3.2, float(metric_df["estimated_effective_component_count"].max()) + 0.2)
+    sorted_seeds = sorted(pd.unique(metric_df["seed"]))
+    model_offsets = {
+        model_name: (idx - (len(MODEL_ORDER) - 1) / 2) * 0.014
+        for idx, model_name in enumerate(MODEL_ORDER)
+    }
+    seed_offsets = {
+        int(seed): (idx - (len(sorted_seeds) - 1) / 2) * 0.003
+        for idx, seed in enumerate(sorted_seeds)
+    }
+
+    def _plot_metric_frame(ax, panel_df: pd.DataFrame, *, title: str) -> None:
+        for target in sorted(set(DGP_K_TRUE.values())):
+            ax.axhline(target, color="0.88", linestyle="--", linewidth=0.9, zorder=0)
+
+        for dgp_name in DGP_ORDER:
+            dgp_panel = panel_df[panel_df["dgp"] == dgp_name]
+            if dgp_panel.empty:
+                continue
+            for model_name in MODEL_ORDER:
+                model_panel = dgp_panel[dgp_panel["model"] == model_name].copy()
+                if model_panel.empty:
+                    continue
+                x_values = (
+                    model_panel["true_component_separation"].to_numpy(dtype=float)
+                    + model_offsets[model_name]
+                    + model_panel["seed"].map(seed_offsets).to_numpy(dtype=float)
+                )
+                ax.scatter(
+                    x_values,
+                    model_panel["estimated_effective_component_count"],
+                    color=COLORS[model_name],
+                    marker=marker_map[dgp_name],
+                    s=54,
+                    alpha=0.78,
+                    edgecolors="white",
+                    linewidths=0.45,
+                    zorder=3,
+                )
+
+        ax.set_xlim(-0.03, 1.03)
+        ax.set_ylim(0.8, y_max)
+        ax.set_xlabel("True Component Separation")
+        ax.set_ylabel("Estimated Effective Component Count")
+        ax.set_title(title)
+        ax.grid(True, alpha=0.25)
+
+    fig, ax = plt.subplots(figsize=(8.6, 5.8))
+    _plot_metric_frame(ax, metric_df, title="True Separation vs Estimated Effective Component Count")
+    ax.annotate(
+        "All seeds are overlaid in one panel",
+        xy=(0.98, 0.04),
+        xycoords="axes fraction",
+        ha="right",
+        va="bottom",
+        fontsize=8.5,
+        color="0.35",
+    )
+
+    model_handles = [
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="none",
+            markerfacecolor=COLORS[model_name],
+            markeredgecolor="white",
+            markeredgewidth=0.6,
+            markersize=8,
+            label=MODEL_LABELS[model_name],
+        )
+        for model_name in MODEL_ORDER
+    ]
+    dgp_handles = [
+        Line2D(
+            [0],
+            [0],
+            marker=marker_map[dgp_name],
+            color="0.25",
+            markerfacecolor="0.8",
+            markeredgecolor="0.25",
+            linestyle="None",
+            markersize=8,
+            label=DGP_LABELS[dgp_name],
+        )
+        for dgp_name in DGP_ORDER
+    ]
+    legend_models = ax.legend(handles=model_handles, loc="upper left", title="Model", frameon=False)
+    ax.add_artist(legend_models)
+    ax.legend(handles=dgp_handles, loc="upper right", title="DGP", frameon=False)
+
+    fig.tight_layout()
+    output_path = output_dir / FIGURE_FILENAMES["fig5"]
+    fig.savefig(output_path)
+    plt.close(fig)
+
+    return output_path
+
+
 def generate_publication_figures(
     *,
     output_dir: str | Path,
@@ -626,6 +796,7 @@ def generate_publication_figures(
         "fig2": generate_predictive_score_comparison_figure,
         "fig3": generate_latent_recovery_comparison_figure,
         "fig4": generate_convergence_heatmap_figure,
+        "fig5": generate_component_separation_effective_count_figure,
     }
     for figure_id in data_figures:
         generated[figure_id] = generators[figure_id](df, output_dir)
@@ -640,7 +811,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output-dir",
         type=Path,
         default=Path("paper/figures"),
-        help="Directory to receive fig0/1/2/3/4 outputs.",
+        help="Directory to receive fig0/1/2/3/4/5 outputs.",
     )
     parser.add_argument(
         "--results-csv",
