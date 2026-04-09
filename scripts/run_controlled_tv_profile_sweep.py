@@ -16,120 +16,19 @@ import pandas as pd
 matplotlib.use("Agg")
 
 from hill_mixture_mmm.benchmark import run_prepared_synthetic_benchmark_case
-from hill_mixture_mmm.data import ControlledKSpacingConfig, generate_controlled_k_spacing_data
+from hill_mixture_mmm.controlled_tv_profile import (
+    TV_PROFILE_LIBRARY,
+    build_controlled_tv_profile_config,
+    build_controlled_tv_profile_run_config,
+)
+from hill_mixture_mmm.data import generate_controlled_k_spacing_data
 from run_controlled_k_spacing_sweep import (
     K_TRUE_MARKERS,
     MODEL_COLORS,
     MODEL_LABELS,
     MODEL_ORDER,
-    _build_run_config,
     _record_result,
 )
-
-
-TV_PROFILE_LIBRARY: dict[int, list[dict[str, object]]] = {
-    1: [
-        {
-            "profile_id": "tv00_anchor",
-            "spacing_delta": 0.0,
-            "center_k_ratio": 0.9,
-            "raw_spend_lognormal_sigma": 0.6,
-            "pi_true": (1.0, 1.0, 1.0),
-            "A_true": (50.0, 50.0, 50.0),
-            "n_true": (2.5, 2.5, 2.5),
-        }
-    ],
-    2: [
-        {
-            "profile_id": "tv07_low",
-            "spacing_delta": 0.05,
-            "center_k_ratio": 0.9,
-            "raw_spend_lognormal_sigma": 0.8,
-            "pi_true": (0.55, 0.45, 1.0),
-            "A_true": (38.0, 78.0, 50.0),
-            "n_true": (2.5, 2.5, 2.5),
-        },
-        {
-            "profile_id": "tv27_mid",
-            "spacing_delta": 0.20,
-            "center_k_ratio": 0.9,
-            "raw_spend_lognormal_sigma": 0.4,
-            "pi_true": (0.65, 0.35, 1.0),
-            "A_true": (38.0, 78.0, 50.0),
-            "n_true": (2.5, 2.5, 2.5),
-        },
-        {
-            "profile_id": "tv59_high",
-            "spacing_delta": 0.45,
-            "center_k_ratio": 0.9,
-            "raw_spend_lognormal_sigma": 0.8,
-            "pi_true": (0.70, 0.30, 1.0),
-            "A_true": (35.0, 85.0, 50.0),
-            "n_true": (2.5, 2.5, 2.5),
-        },
-        {
-            "profile_id": "tv94_extreme",
-            "spacing_delta": 0.80,
-            "center_k_ratio": 0.9,
-            "raw_spend_lognormal_sigma": 0.4,
-            "pi_true": (0.65, 0.35, 1.0),
-            "A_true": (38.0, 78.0, 50.0),
-            "n_true": (2.5, 2.5, 2.5),
-        },
-    ],
-    3: [
-        {
-            "profile_id": "tv05_low",
-            "spacing_delta": 0.05,
-            "center_k_ratio": 0.9,
-            "raw_spend_lognormal_sigma": 0.8,
-            "pi_true": (0.50, 0.30, 0.20),
-            "A_true": (25.0, 55.0, 95.0),
-            "n_true": (2.5, 2.5, 2.5),
-        },
-        {
-            "profile_id": "tv18_mid",
-            "spacing_delta": 0.20,
-            "center_k_ratio": 0.9,
-            "raw_spend_lognormal_sigma": 0.4,
-            "pi_true": (0.55, 0.30, 0.15),
-            "A_true": (25.0, 55.0, 95.0),
-            "n_true": (2.5, 2.5, 2.5),
-        },
-        {
-            "profile_id": "tv41_high",
-            "spacing_delta": 0.45,
-            "center_k_ratio": 0.9,
-            "raw_spend_lognormal_sigma": 0.8,
-            "pi_true": (0.55, 0.30, 0.15),
-            "A_true": (30.0, 55.0, 85.0),
-            "n_true": (2.5, 2.5, 2.5),
-        },
-        {
-            "profile_id": "tv73_extreme",
-            "spacing_delta": 0.80,
-            "center_k_ratio": 0.9,
-            "raw_spend_lognormal_sigma": 1.6,
-            "pi_true": (0.60, 0.25, 0.15),
-            "A_true": (25.0, 55.0, 95.0),
-            "n_true": (2.5, 2.5, 2.5),
-        },
-    ],
-}
-
-
-def _build_profile_config(*, k_true: int, seed: int, profile: dict[str, object], T: int) -> ControlledKSpacingConfig:
-    return ControlledKSpacingConfig(
-        K_true=int(k_true),
-        T=int(T),
-        seed=int(seed),
-        spacing_delta=float(profile["spacing_delta"]),
-        center_k_ratio=float(profile["center_k_ratio"]),
-        raw_spend_lognormal_sigma=float(profile["raw_spend_lognormal_sigma"]),
-        pi_true=tuple(profile["pi_true"]),
-        A_true=tuple(profile["A_true"]),
-        n_true=tuple(profile["n_true"]),
-    )
 
 
 def _plot_tv_profile_sweep(df: pd.DataFrame, *, output_path: Path) -> None:
@@ -228,7 +127,7 @@ def main() -> None:
             profiles = [profile for profile in profiles if str(profile["profile_id"]) in set(args.profile_ids)]
         for profile in profiles:
             for seed in seeds:
-                data_config = _build_profile_config(
+                data_config = build_controlled_tv_profile_config(
                     k_true=int(k_true),
                     seed=int(seed),
                     profile=profile,
@@ -243,7 +142,11 @@ def main() -> None:
                         y=y,
                         meta=meta,
                         model_name=model_name,
-                        config=_build_run_config(model_name, int(seed), quick=bool(args.quick)),
+                        config=build_controlled_tv_profile_run_config(
+                            model_name,
+                            int(seed),
+                            quick=bool(args.quick),
+                        ),
                         label=f"{profile['profile_id']}_{dataset_name}_{model_name}_seed{seed}",
                     )
                     row = _record_result(result, spacing_delta=float(data_config.spacing_delta), config=data_config)

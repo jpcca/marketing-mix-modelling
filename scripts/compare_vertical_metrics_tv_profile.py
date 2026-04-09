@@ -17,6 +17,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from hill_mixture_mmm.benchmark import run_prepared_synthetic_benchmark_case
+from hill_mixture_mmm.controlled_tv_profile import (
+    TV_PROFILE_LIBRARY,
+    build_controlled_tv_profile_config,
+    build_controlled_tv_profile_run_config,
+)
 from hill_mixture_mmm.data import generate_controlled_k_spacing_data
 from hill_mixture_mmm.metrics import (
     compute_component_curve_tv_separation,
@@ -24,15 +29,17 @@ from hill_mixture_mmm.metrics import (
     compute_leinster_cobbold_effective_count,
     compute_rao_quadratic_entropy_equivalent_count,
     compute_shannon_effective_count,
+    compute_similarity_adjusted_effective_count,
     summarize_true_components,
 )
-from run_controlled_k_spacing_sweep import K_TRUE_MARKERS, MODEL_COLORS, MODEL_LABELS, MODEL_ORDER, _build_run_config
-from run_controlled_tv_profile_sweep import TV_PROFILE_LIBRARY, _build_profile_config
+from run_controlled_k_spacing_sweep import K_TRUE_MARKERS, MODEL_COLORS, MODEL_LABELS, MODEL_ORDER
 
 
 def _metric_bundle(result) -> dict[str, float]:
     if result.component_summary is None:
         return {
+            "active_component_count": 1.0,
+            "similarity_adjusted_count": 1.0,
             "shannon_count": 1.0,
             "simpson_count": 1.0,
             "rao_count": 1.0,
@@ -41,6 +48,10 @@ def _metric_bundle(result) -> dict[str, float]:
         }
     component_summary = result.component_summary
     return {
+        "active_component_count": float(component_summary["K_active"]),
+        "similarity_adjusted_count": float(
+            compute_similarity_adjusted_effective_count(component_summary)["effective_count"]
+        ),
         "shannon_count": float(compute_shannon_effective_count(component_summary)["effective_count"]),
         "simpson_count": float(compute_inverse_simpson_effective_count(component_summary)["effective_count"]),
         "rao_count": float(compute_rao_quadratic_entropy_equivalent_count(component_summary)["effective_count"]),
@@ -54,13 +65,14 @@ def _metric_bundle(result) -> dict[str, float]:
 
 
 METRIC_SPECS = [
-    ("shannon_count", "Hill q=1 (Shannon)"),
-    ("leinster_q1_count", "Leinster-Cobbold q=1"),
+    ("active_component_count", "Active K (pi > 0.05)"),
+    ("similarity_adjusted_count", "Similarity-Adjusted Count"),
+    ("shannon_count", "Hill q=1 (weights only)"),
 ]
 
 
 def _plot(df: pd.DataFrame, *, output_path: Path) -> None:
-    fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.6), sharex=True)
+    fig, axes = plt.subplots(1, len(METRIC_SPECS) + 1, figsize=(16.5, 4.8), sharex=True)
     axes_flat = np.atleast_1d(axes).flatten()
     seed_values = sorted(pd.unique(df["seed"]))
     seed_offsets = {
@@ -148,7 +160,9 @@ def main() -> None:
     for k_true in k_trues:
         for profile in TV_PROFILE_LIBRARY[int(k_true)]:
             for seed in seeds:
-                config = _build_profile_config(k_true=int(k_true), seed=int(seed), profile=profile, T=int(args.T))
+                config = build_controlled_tv_profile_config(
+                    k_true=int(k_true), seed=int(seed), profile=profile, T=int(args.T)
+                )
                 x, y, meta = generate_controlled_k_spacing_data(config)
                 true_separation = float(
                     compute_component_curve_tv_separation(summarize_true_components(meta))["mean_pairwise_tv"]
@@ -161,7 +175,11 @@ def main() -> None:
                         y=y,
                         meta=meta,
                         model_name=model_name,
-                        config=_build_run_config(model_name, int(seed), quick=bool(args.quick)),
+                        config=build_controlled_tv_profile_run_config(
+                            model_name,
+                            int(seed),
+                            quick=bool(args.quick),
+                        ),
                         label=f"{profile['profile_id']}_{dataset_name}_{model_name}_seed{seed}",
                     )
                     bundle = _metric_bundle(result)
