@@ -314,15 +314,14 @@ def _plot_selected_metrics(df: pd.DataFrame, *, output_path: Path) -> None:
     plt.close(fig)
 
 
-def _write_selected_metric_artifacts(
-    *,
+def _collect_summary_paths(
     benchmark_output_root: Path,
+    *,
     cases: list[tuple[int, dict[str, object]]],
-    seeds: list[int],
     models: list[str],
-    artifact_name: str,
-) -> None:
-    summary_paths = [
+    seeds: list[int],
+) -> list[Path]:
+    paths = [
         _case_summary_path(
             benchmark_output_root,
             k_true=k_true,
@@ -334,11 +333,13 @@ def _write_selected_metric_artifacts(
         for model_name in models
         for seed in seeds
     ]
-    for summary_path in summary_paths:
-        assert summary_path.exists(), f"Expected controlled benchmark summary at {summary_path}"
+    for path in paths:
+        assert path.exists(), f"Expected controlled benchmark summary at {path}"
+    return paths
 
-    df = _load_selected_metric_rows(summary_paths)
-    summary = (
+
+def _summarize_metric_rows(df: pd.DataFrame) -> pd.DataFrame:
+    return (
         df.groupby(["K_true", "profile_id", "model"], as_index=False)
         .agg(
             true_separation=("true_separation", "mean"),
@@ -356,6 +357,21 @@ def _write_selected_metric_artifacts(
         .sort_values(["K_true", "true_cosine_separation", "model"])
         .reset_index(drop=True)
     )
+
+
+def _write_selected_metric_artifacts(
+    *,
+    benchmark_output_root: Path,
+    cases: list[tuple[int, dict[str, object]]],
+    seeds: list[int],
+    models: list[str],
+    artifact_name: str,
+) -> None:
+    summary_paths = _collect_summary_paths(
+        benchmark_output_root, cases=cases, models=models, seeds=seeds,
+    )
+    df = _load_selected_metric_rows(summary_paths)
+    summary = _summarize_metric_rows(df)
 
     artifact_dir = benchmark_output_root / "controlled_tv_profile" / artifact_name
     artifact_dir.mkdir(parents=True, exist_ok=True)
