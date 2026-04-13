@@ -145,7 +145,9 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "slow: marks tests as slow (deselect with '-m not slow')")
     config.addinivalue_line("markers", "benchmark_smoke: quick benchmark smoke tests")
     config.addinivalue_line("markers", "benchmark_full: full multi-seed benchmark tests")
-    config.pluginmanager.register(BenchmarkSessionReporter(BENCHMARK_LOG_DIR), "benchmark-session-reporter")
+    config.pluginmanager.register(
+        BenchmarkSessionReporter(BENCHMARK_LOG_DIR), "benchmark-session-reporter"
+    )
 
 
 @pytest.fixture

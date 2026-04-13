@@ -37,8 +37,8 @@ from .metrics import (
     compute_permutation_invariant_component_recovery,
     compute_predictive_metrics,
     compute_similarity_adjusted_effective_count,
-    summarize_true_components,
     summarize_component_posterior,
+    summarize_true_components,
 )
 from .models import model_hill_mixture_hierarchical_reparam, model_single_hill
 from .transforms import hill
@@ -894,7 +894,9 @@ def case_summary(result: BenchmarkCaseResult) -> dict[str, Any]:
             "curve_basis": "l1_normalized_hill_curve_increments",
             "curve_grid_max": 4.0,
             "grid_size": 128,
-            "gamma": float(component_effective_count["gamma"]) if component_effective_count else 0.5,
+            "gamma": float(component_effective_count["gamma"])
+            if component_effective_count
+            else 0.5,
             "true_separation": (
                 float(true_component_separation["mean_pairwise_tv"])
                 if true_component_separation is not None

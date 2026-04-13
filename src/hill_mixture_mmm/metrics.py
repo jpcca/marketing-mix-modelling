@@ -358,14 +358,14 @@ def _active_components(component_summary: dict[str, Any]) -> list[dict[str, Any]
     return _select_components(component_summary, active_only=True)
 
 
-def _component_weights(
-    component_summary: dict[str, Any], *, active_only: bool
-) -> np.ndarray:
+def _component_weights(component_summary: dict[str, Any], *, active_only: bool) -> np.ndarray:
     """Return normalized component weights."""
     components = _select_components(component_summary, active_only=active_only)
     if not components:
         return np.asarray([1.0], dtype=np.float64)
-    weights = np.asarray([float(component["pi_mean"]) for component in components], dtype=np.float64)
+    weights = np.asarray(
+        [float(component["pi_mean"]) for component in components], dtype=np.float64
+    )
     return _normalize_probability_mass(weights)
 
 
@@ -404,7 +404,9 @@ def compute_component_distance_matrix(
         }
 
     u_grid = np.linspace(0.0, curve_grid_max, grid_size, dtype=np.float64)
-    masses = np.stack([_component_curve_mass(component, u_grid) for component in components], axis=0)
+    masses = np.stack(
+        [_component_curve_mass(component, u_grid) for component in components], axis=0
+    )
     weights = _normalize_probability_mass(
         np.asarray([float(component["pi_mean"]) for component in components], dtype=np.float64)
     )
@@ -494,9 +496,7 @@ def compute_component_curve_tv_separation(
         "num_components": len(components),
         "pair_count": len(pairwise_tv),
         "pairwise_tv": pairwise_tv,
-        "mean_pairwise_tv": float(
-            np.mean([item["tv"] for item in pairwise_tv], dtype=np.float64)
-        ),
+        "mean_pairwise_tv": float(np.mean([item["tv"] for item in pairwise_tv], dtype=np.float64)),
     }
 
 
@@ -780,12 +780,18 @@ def compute_leinster_cobbold_effective_count(
             "similarity_matrix": [],
         }
 
-    similarity = _exp_similarity_matrix(np.asarray(matrix["distance_matrix"], dtype=np.float64), lambda_)
+    similarity = _exp_similarity_matrix(
+        np.asarray(matrix["distance_matrix"], dtype=np.float64), lambda_
+    )
     zp = similarity @ weights
     if np.isclose(q, 1.0):
         effective_count = float(np.exp(-np.sum(weights * np.log(np.clip(zp, 1e-12, None)))))
     else:
-        effective_count = float(np.power(np.sum(weights * np.power(np.clip(zp, 1e-12, None), q - 1.0)), -1.0 / (q - 1.0)))
+        effective_count = float(
+            np.power(
+                np.sum(weights * np.power(np.clip(zp, 1e-12, None), q - 1.0)), -1.0 / (q - 1.0)
+            )
+        )
     return {
         "q": float(q),
         "lambda": float(lambda_),
@@ -823,8 +829,10 @@ def compute_soft_component_count(
 
     total = 1.0
     for left_idx, right_idx in combinations(range(len(weights)), 2):
-        total += 2.0 * min(float(weights[left_idx]), float(weights[right_idx])) * (
-            1.0 - float(np.exp(-lambda_ * distance_matrix[left_idx, right_idx]))
+        total += (
+            2.0
+            * min(float(weights[left_idx]), float(weights[right_idx]))
+            * (1.0 - float(np.exp(-lambda_ * distance_matrix[left_idx, right_idx])))
         )
     return {
         "lambda": float(lambda_),

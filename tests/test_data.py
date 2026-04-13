@@ -10,7 +10,10 @@ from hill_mixture_mmm.data import (
     generate_controlled_k_spacing_data,
     generate_data,
 )
-from hill_mixture_mmm.metrics import compute_component_curve_tv_separation, summarize_true_components
+from hill_mixture_mmm.metrics import (
+    compute_component_curve_tv_separation,
+    summarize_true_components,
+)
 
 
 class TestComputePriorConfig:
@@ -56,7 +59,9 @@ class TestSyntheticLatentTargets:
         labels = ["default", "separated", "high_separation"]
         separations = []
         for profile in labels:
-            _, _, meta = generate_data(DGPConfig(dgp_type="mixture_k3", T=200, seed=0, profile=profile))
+            _, _, meta = generate_data(
+                DGPConfig(dgp_type="mixture_k3", T=200, seed=0, profile=profile)
+            )
             separation = compute_component_curve_tv_separation(summarize_true_components(meta))
             separations.append(float(separation["mean_pairwise_tv"]))
 

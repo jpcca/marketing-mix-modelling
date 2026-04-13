@@ -1,13 +1,5 @@
 """Hill Mixture MMM - Bayesian Marketing Mix Modeling with Mixture of Hill Curves."""
 
-from .data import (
-    ControlledKSpacingConfig,
-    DGP_CONFIGS,
-    DGPConfig,
-    compute_prior_config,
-    generate_controlled_k_spacing_data,
-    generate_data,
-)
 from .benchmark import (
     BenchmarkCaseResult,
     BenchmarkRunConfig,
@@ -24,10 +16,18 @@ from .benchmark import (
     plot_response_curves,
     resolve_case_artifact_dir,
     resolve_comparison_artifact_dir,
-    run_real_benchmark_case,
     run_prepared_synthetic_benchmark_case,
+    run_real_benchmark_case,
     run_synthetic_benchmark_case,
     save_case_artifacts,
+)
+from .data import (
+    DGP_CONFIGS,
+    ControlledKSpacingConfig,
+    DGPConfig,
+    compute_prior_config,
+    generate_controlled_k_spacing_data,
+    generate_data,
 )
 from .inference import (
     compute_convergence_diagnostics,
@@ -47,16 +47,16 @@ from .metrics import (
     compute_inverse_simpson_effective_count,
     compute_latent_recovery,
     compute_leinster_cobbold_effective_count,
-    compute_permutation_invariant_component_recovery,
     compute_parameter_recovery,
+    compute_permutation_invariant_component_recovery,
     compute_predictive_metrics,
     compute_rao_quadratic_entropy_equivalent_count,
     compute_shannon_effective_count,
     compute_similarity_adjusted_effective_count,
     compute_soft_component_count,
     compute_total_variation_distance,
-    summarize_true_components,
     summarize_component_posterior,
+    summarize_true_components,
 )
 from .models import (
     model_hill_mixture_hierarchical_reparam,

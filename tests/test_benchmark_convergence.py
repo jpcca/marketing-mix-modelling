@@ -5,10 +5,10 @@ import pytest
 
 from hill_mixture_mmm.benchmark import (
     BenchmarkCaseResult,
-    ComparisonThresholds,
     BenchmarkThresholds,
-    assert_comparison_passes,
+    ComparisonThresholds,
     assert_case_passes,
+    assert_comparison_passes,
     compare_case_results,
     evaluate_case_diagnostic_status,
 )
@@ -98,9 +98,15 @@ def _make_mixture_result(
             "threshold": 1.01,
         },
         relabeled={
-            "component_rhats": {"A": {"per_component": [relabeled_max_rhat], "max": relabeled_max_rhat}},
-            "component_ess_bulk": {"A": {"per_component": [relabeled_min_ess], "min": relabeled_min_ess}},
-            "component_ess_tail": {"A": {"per_component": [relabeled_min_ess], "min": relabeled_min_ess}},
+            "component_rhats": {
+                "A": {"per_component": [relabeled_max_rhat], "max": relabeled_max_rhat}
+            },
+            "component_ess_bulk": {
+                "A": {"per_component": [relabeled_min_ess], "min": relabeled_min_ess}
+            },
+            "component_ess_tail": {
+                "A": {"per_component": [relabeled_min_ess], "min": relabeled_min_ess}
+            },
             "max_rhat": relabeled_max_rhat,
             "min_ess_bulk": relabeled_min_ess,
             "min_ess_tail": relabeled_min_ess,

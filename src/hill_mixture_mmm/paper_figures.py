@@ -23,7 +23,6 @@ from .metrics import (
     summarize_true_components,
 )
 
-
 DGP_ORDER = ["single", "mixture_k2", "mixture_k3"]
 DGP_K_TRUE = {"single": 1, "mixture_k2": 2, "mixture_k3": 3}
 DGP_LABELS = {
@@ -145,7 +144,9 @@ def _summary_to_record(summary: dict[str, Any]) -> dict[str, Any]:
         "converged": bool(summary["converged"]),
         "publication_status": publication_status,
         "interpretation_status": interpretation_status,
-        "benchmark_pass": bool(benchmark_pass) if benchmark_pass is not None else bool(summary["converged"]),
+        "benchmark_pass": bool(benchmark_pass)
+        if benchmark_pass is not None
+        else bool(summary["converged"]),
         "max_rhat": _nested_metric(summary, "convergence", "max_rhat"),
         "min_ess_bulk": _nested_metric(summary, "convergence", "min_ess_bulk"),
         "min_ess_tail": _nested_metric(summary, "convergence", "min_ess_tail"),
@@ -200,9 +201,9 @@ def _component_count_plot_metrics(summary: dict[str, Any]) -> dict[str, float | 
 
     true_separation = None
     if isinstance(summary.get("true_component_summary"), dict):
-        true_separation = compute_component_curve_tv_separation(
-            summary["true_component_summary"]
-        )["mean_pairwise_tv"]
+        true_separation = compute_component_curve_tv_separation(summary["true_component_summary"])[
+            "mean_pairwise_tv"
+        ]
     elif summary.get("domain") == "synthetic":
         dgp_name = str(summary["dataset_name"])
         total_size = int(summary.get("train_size", 0)) + int(summary.get("test_size", 0))
@@ -289,11 +290,11 @@ def _metric_frame(df: pd.DataFrame, metric: str) -> pd.DataFrame:
     return metric_frame
 
 
-def _lookup_metric(metric_frame: pd.DataFrame, dgp_name: str, model_name: str) -> tuple[float, float]:
+def _lookup_metric(
+    metric_frame: pd.DataFrame, dgp_name: str, model_name: str
+) -> tuple[float, float]:
     """Return mean/std for one DGP-model cell."""
-    row = metric_frame[
-        (metric_frame["dgp"] == dgp_name) & (metric_frame["model"] == model_name)
-    ]
+    row = metric_frame[(metric_frame["dgp"] == dgp_name) & (metric_frame["model"] == model_name)]
     if row.empty:
         return np.nan, np.nan
     return float(row["mean"].iloc[0]), float(row["std"].iloc[0])
@@ -328,8 +329,19 @@ def generate_graphical_model_figure(output_dir: str | Path) -> Path:
             facecolor=panel_fill,
         )
         ax.add_patch(patch)
-        ax.text(x + 0.2, y + h - 0.25, title, ha="left", va="top", fontsize=12, color=text, weight="bold")
-        ax.text(x + w - 0.2, y + h - 0.58, subtitle, ha="right", va="top", fontsize=9, color="#4b5563")
+        ax.text(
+            x + 0.2,
+            y + h - 0.25,
+            title,
+            ha="left",
+            va="top",
+            fontsize=12,
+            color=text,
+            weight="bold",
+        )
+        ax.text(
+            x + w - 0.2, y + h - 0.58, subtitle, ha="right", va="top", fontsize=9, color="#4b5563"
+        )
 
     def add_node(
         x: float,
@@ -351,7 +363,9 @@ def generate_graphical_model_figure(output_dir: str | Path) -> Path:
             facecolor=observed_fill if observed else latent_fill,
         )
         ax.add_patch(patch)
-        ax.text(x + w / 2, y + h / 2, label, ha="center", va="center", fontsize=fontsize, color=text)
+        ax.text(
+            x + w / 2, y + h / 2, label, ha="center", va="center", fontsize=fontsize, color=text
+        )
 
     def add_arrow(
         start: tuple[float, float],
@@ -402,11 +416,33 @@ def generate_graphical_model_figure(output_dir: str | Path) -> Path:
     ax.text(1.45, 2.55, "spend", ha="center", fontsize=10, color="#374151")
     ax.text(2.95, 2.55, "geometric adstock", ha="center", fontsize=10, color="#374151")
     ax.text(4.4, 2.1, "linear baseline", ha="center", fontsize=10, color="#374151")
-    ax.text(6.6, 2.48, r"segment parameters $(A_k, k_k, n_k)$", ha="center", fontsize=10, color="#374151")
+    ax.text(
+        6.6,
+        2.48,
+        r"segment parameters $(A_k, k_k, n_k)$",
+        ha="center",
+        fontsize=10,
+        color="#374151",
+    )
     ax.text(6.6, 2.16, "Hill response for segment k", ha="center", fontsize=10, color="#374151")
-    ax.text(10.2, 2.66, "stick-breaking\nweights", ha="center", va="center", fontsize=9.5, color="#374151")
+    ax.text(
+        10.2,
+        2.66,
+        "stick-breaking\nweights",
+        ha="center",
+        va="center",
+        fontsize=9.5,
+        color="#374151",
+    )
     ax.text(11.95, 2.66, "Gaussian\nnoise", ha="center", va="center", fontsize=9.5, color="#374151")
-    ax.text(11.1, 2.04, r"$y_t \sim \sum_k \pi_k \,\mathcal{N}(b_t + h_{t,k}, \sigma^2)$", ha="center", fontsize=10, color=text)
+    ax.text(
+        11.1,
+        2.04,
+        r"$y_t \sim \sum_k \pi_k \,\mathcal{N}(b_t + h_{t,k}, \sigma^2)$",
+        ha="center",
+        fontsize=10,
+        color=text,
+    )
 
     fig.tight_layout()
     output_path = output_dir / "fig0_graphical_model.png"
@@ -709,7 +745,9 @@ def generate_component_separation_effective_count_figure(
         ax.grid(True, alpha=0.25)
 
     fig, ax = plt.subplots(figsize=(8.6, 5.8))
-    _plot_metric_frame(ax, metric_df, title="True Separation vs Estimated Effective Component Count")
+    _plot_metric_frame(
+        ax, metric_df, title="True Separation vs Estimated Effective Component Count"
+    )
     ax.annotate(
         "All seeds are overlaid in one panel",
         xy=(0.98, 0.04),

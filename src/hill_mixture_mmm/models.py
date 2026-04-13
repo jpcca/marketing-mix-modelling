@@ -53,9 +53,7 @@ def _resolve_mixture_prior_config(
             resolved["stick_beta"] = float(resolved["stick_beta"])
         resolved["k_scale"] = min(float(resolved["k_scale"]), 0.55)
         resolved["k_anchor_scale"] = min(float(resolved.get("k_anchor_scale", 0.12)), 0.12)
-        resolved["k_increment_scale"] = min(
-            float(resolved.get("k_increment_scale", 0.08)), 0.08
-        )
+        resolved["k_increment_scale"] = min(float(resolved.get("k_increment_scale", 0.08)), 0.08)
         resolved["k_anchor_quantiles"] = tuple(
             float(q) for q in resolved.get("k_anchor_quantiles", (0.25, 0.85))
         )
@@ -74,9 +72,7 @@ def _resolve_mixture_prior_config(
             resolved["stick_beta"] = float(resolved["stick_beta"])
         resolved["k_scale"] = min(float(resolved["k_scale"]), 0.45)
         resolved["k_anchor_scale"] = min(float(resolved.get("k_anchor_scale", 0.12)), 0.12)
-        resolved["k_increment_scale"] = min(
-            float(resolved.get("k_increment_scale", 0.10)), 0.10
-        )
+        resolved["k_increment_scale"] = min(float(resolved.get("k_increment_scale", 0.10)), 0.10)
         resolved["k_anchor_quantiles"] = tuple(
             float(q) for q in resolved.get("k_anchor_quantiles", (0.20, 0.55, 0.90))
         )
@@ -234,9 +230,7 @@ def _model_hill_mixture_hierarchical_reparam_inner(
             )
         else:
             log_k_increments = jnp.maximum(
-                anchor_gaps + (
-                    log_k_increments_raw * prior_config["k_increment_scale"]
-                ),
+                anchor_gaps + (log_k_increments_raw * prior_config["k_increment_scale"]),
                 1e-3,
             )
     else:
