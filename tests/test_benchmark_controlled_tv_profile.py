@@ -54,16 +54,19 @@ FULL_MODELS = ["mixture_k2", "mixture_k3"]
 SMOKE_SEEDS = [0]
 FULL_SEEDS = [0, 1, 2, 3, 4]
 
-MODEL_LABELS = {
-    "mixture_k2": "Mixture (K=2)",
-    "mixture_k3": "Mixture (K=3)",
+_PLOT_STYLE = {
+    "model_labels": {"mixture_k2": "Mixture (K=2)", "mixture_k3": "Mixture (K=3)"},
+    "model_colors": {"mixture_k2": "#9467bd", "mixture_k3": "#ff7f0e"},
+    "k_true_markers": {1: "o", 2: "s", 3: "^"},
+    "k_true_linestyles": {2: "--", 3: "-"},
+    "figsize": (15, 5.2),
+    "scatter_size": 48,
+    "scatter_alpha": 0.75,
+    "line_width": 2.0,
+    "line_alpha": 0.9,
+    "seed_jitter": 0.008,
+    "dpi": 200,
 }
-MODEL_COLORS = {
-    "mixture_k2": "#9467bd",
-    "mixture_k3": "#ff7f0e",
-}
-K_TRUE_MARKERS = {1: "o", 2: "s", 3: "^"}
-K_TRUE_LINESTYLES = {2: "--", 3: "-"}
 
 _RELAXED_BASE = BenchmarkThresholds(
     max_rhat=None,
@@ -230,16 +233,46 @@ def _load_selected_metric_rows(summary_paths: list[Path]) -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values(["K_true", "true_cosine_separation", "seed", "model"]).reset_index(drop=True)
 
 
+def _build_legend_handles(df: pd.DataFrame, models: list[str]) -> list[object]:
+    style = _PLOT_STYLE
+    model_handles = [
+        plt.Line2D([], [], color=style["model_colors"][m], linewidth=1.8, label=style["model_labels"][m])
+        for m in models
+    ]
+    marker_handles = [
+        plt.Line2D(
+            [], [], linestyle="None", marker=style["k_true_markers"][k],
+            markersize=7, markerfacecolor="0.35", markeredgecolor="white", label=f"Data K={k}",
+        )
+        for k in sorted(pd.unique(df["K_true"]))
+    ]
+    linestyles = style["k_true_linestyles"]
+    line_handles = [
+        plt.Line2D([], [], color="0.35", linewidth=1.8, linestyle=linestyles[k], label=f"Mean: Data K={k}")
+        for k in sorted(k for k in pd.unique(df["K_true"]) if int(k) in linestyles)
+    ]
+    convergence_handle = [
+        plt.Line2D(
+            [], [], linestyle="None", marker="o", markersize=7,
+            markerfacecolor="0.7", markeredgecolor="red", markeredgewidth=1.5,
+            label="Convergence issue",
+        )
+    ]
+    return model_handles + marker_handles + line_handles + convergence_handle
+
+
 def _plot_selected_metrics(df: pd.DataFrame, *, output_path: Path) -> None:
+    style = _PLOT_STYLE
     metric_specs = [
         ("nabc_effective_count", "NABC Effective Count"),
         ("shannon_count", "Shannon Count (Hill q=1)"),
     ]
-    fig, axes = plt.subplots(1, len(metric_specs) + 1, figsize=(15, 5.2), sharex=True, sharey=True)
+    fig, axes = plt.subplots(1, len(metric_specs) + 1, figsize=style["figsize"], sharex=True, sharey=True)
     axes_flat = np.atleast_1d(axes).flatten()
     seed_values = sorted(pd.unique(df["seed"]))
     seed_offsets = {
-        int(seed): (idx - (len(seed_values) - 1) / 2) * 0.008 for idx, seed in enumerate(seed_values)
+        int(seed): (idx - (len(seed_values) - 1) / 2) * style["seed_jitter"]
+        for idx, seed in enumerate(seed_values)
     }
     has_converged_col = "converged" in df.columns
 
@@ -259,10 +292,10 @@ def _plot_selected_metrics(df: pd.DataFrame, *, output_path: Path) -> None:
                     ax.scatter(
                         x_val,
                         row[metric_key],
-                        color=MODEL_COLORS[model_name],
-                        marker=K_TRUE_MARKERS[int(k_true)],
-                        s=48,
-                        alpha=0.75,
+                        color=style["model_colors"][model_name],
+                        marker=style["k_true_markers"][int(k_true)],
+                        s=style["scatter_size"],
+                        alpha=style["scatter_alpha"],
                         edgecolors="red" if failed else "white",
                         linewidths=1.2 if failed else 0.5,
                         zorder=3,
@@ -275,10 +308,10 @@ def _plot_selected_metrics(df: pd.DataFrame, *, output_path: Path) -> None:
                 ax.plot(
                     means["true_cosine_separation"],
                     means["y"],
-                    color=MODEL_COLORS[model_name],
-                    linewidth=2.0,
-                    alpha=0.9,
-                    linestyle=K_TRUE_LINESTYLES.get(int(k_true), "-"),
+                    color=style["model_colors"][model_name],
+                    linewidth=style["line_width"],
+                    alpha=style["line_alpha"],
+                    linestyle=style["k_true_linestyles"].get(int(k_true), "-"),
                 )
         ax.set_title(title, fontsize=11, fontweight="bold")
         ax.set_xlim(-0.03, 1.03)
@@ -290,27 +323,12 @@ def _plot_selected_metrics(df: pd.DataFrame, *, output_path: Path) -> None:
 
     legend_ax = axes_flat[-1]
     legend_ax.axis("off")
-    model_handles = [
-        plt.Line2D([], [], color=MODEL_COLORS[m], linewidth=1.8, label=MODEL_LABELS[m])
-        for m in FULL_MODELS
-    ]
-    marker_handles = [
-        plt.Line2D([], [], linestyle="None", marker=K_TRUE_MARKERS[k], markersize=7, markerfacecolor="0.35", markeredgecolor="white", label=f"Data K={k}")
-        for k in sorted(pd.unique(df["K_true"]))
-    ]
-    line_handles = [
-        plt.Line2D([], [], color="0.35", linewidth=1.8, linestyle=K_TRUE_LINESTYLES[k], label=f"Mean: Data K={k}")
-        for k in sorted(k for k in pd.unique(df["K_true"]) if int(k) in K_TRUE_LINESTYLES)
-    ]
-    convergence_handle = [
-        plt.Line2D([], [], linestyle="None", marker="o", markersize=7, markerfacecolor="0.7", markeredgecolor="red", markeredgewidth=1.5, label="Convergence issue")
-    ]
-    legend_ax.legend(handles=model_handles + marker_handles + line_handles + convergence_handle, loc="center", frameon=False)
+    legend_ax.legend(handles=_build_legend_handles(df, FULL_MODELS), loc="center", frameon=False)
 
     fig.suptitle("Controlled TV-Profile Benchmark", y=0.99)
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    fig.savefig(output_path, dpi=style["dpi"], bbox_inches="tight")
     plt.close(fig)
 
 
