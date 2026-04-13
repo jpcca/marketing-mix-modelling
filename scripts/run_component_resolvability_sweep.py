@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Run a controlled synthetic benchmark across K-specific true-TV profile grids."""
+"""Run a component-resolvability benchmark across K-specific profile grids."""
 
 from __future__ import annotations
 
@@ -16,10 +16,10 @@ import pandas as pd
 matplotlib.use("Agg")
 
 from hill_mixture_mmm.benchmark import run_prepared_synthetic_benchmark_case
-from hill_mixture_mmm.controlled_tv_profile import (
-    TV_PROFILE_LIBRARY,
-    build_controlled_tv_profile_config,
-    build_controlled_tv_profile_run_config,
+from hill_mixture_mmm.component_resolvability import (
+    RESOLVABILITY_PROFILE_LIBRARY,
+    build_resolvability_config,
+    build_resolvability_run_config,
 )
 from hill_mixture_mmm.data import generate_controlled_k_spacing_data
 from run_controlled_k_spacing_sweep import (
@@ -31,7 +31,7 @@ from run_controlled_k_spacing_sweep import (
 )
 
 
-def _plot_tv_profile_sweep(df: pd.DataFrame, *, output_path: Path) -> None:
+def _plot_resolvability_sweep(df: pd.DataFrame, *, output_path: Path) -> None:
     import matplotlib.pyplot as plt
 
     fig, ax = plt.subplots(figsize=(9.2, 5.8))
@@ -75,7 +75,7 @@ def _plot_tv_profile_sweep(df: pd.DataFrame, *, output_path: Path) -> None:
                 label=MODEL_LABELS[model_name] if int(k_true) == 3 else None,
             )
 
-    ax.set_title("Controlled TV-Profile Sweep")
+    ax.set_title("Component Resolvability Sweep")
     ax.set_xlabel("True Component Separation (TV)")
     ax.set_ylabel("Estimated Effective K")
     ax.set_ylim(0.8, 3.2)
@@ -107,7 +107,7 @@ def _plot_tv_profile_sweep(df: pd.DataFrame, *, output_path: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-dir", type=Path, default=Path("results/controlled_tv_profile_sweep"))
+    parser.add_argument("--output-dir", type=Path, default=Path("results/component_resolvability_sweep"))
     parser.add_argument("--seed", type=int, action="append", dest="seeds")
     parser.add_argument("--model", action="append", choices=MODEL_ORDER, dest="models")
     parser.add_argument("--k-true", type=int, action="append", choices=[1, 2, 3], dest="k_trues")
@@ -122,12 +122,12 @@ def main() -> None:
 
     rows: list[dict[str, object]] = []
     for k_true in k_trues:
-        profiles = TV_PROFILE_LIBRARY[int(k_true)]
+        profiles = RESOLVABILITY_PROFILE_LIBRARY[int(k_true)]
         if args.profile_ids:
             profiles = [profile for profile in profiles if str(profile["profile_id"]) in set(args.profile_ids)]
         for profile in profiles:
             for seed in seeds:
-                data_config = build_controlled_tv_profile_config(
+                data_config = build_resolvability_config(
                     k_true=int(k_true),
                     seed=int(seed),
                     profile=profile,
@@ -142,7 +142,7 @@ def main() -> None:
                         y=y,
                         meta=meta,
                         model_name=model_name,
-                        config=build_controlled_tv_profile_run_config(
+                        config=build_resolvability_run_config(
                             model_name,
                             int(seed),
                             quick=bool(args.quick),
@@ -171,14 +171,14 @@ def main() -> None:
 
     out_dir = args.output_dir
     out_dir.mkdir(parents=True, exist_ok=True)
-    results_csv = out_dir / "controlled_tv_profile_results.csv"
-    summary_csv = out_dir / "controlled_tv_profile_summary.csv"
-    plot_path = out_dir / "controlled_tv_profile_effective_k.png"
-    metadata_json = out_dir / "controlled_tv_profile_metadata.json"
+    results_csv = out_dir / "component_resolvability_results.csv"
+    summary_csv = out_dir / "component_resolvability_summary.csv"
+    plot_path = out_dir / "component_resolvability_effective_k.png"
+    metadata_json = out_dir / "component_resolvability_metadata.json"
 
     df.to_csv(results_csv, index=False)
     summary.to_csv(summary_csv, index=False)
-    _plot_tv_profile_sweep(df, output_path=plot_path)
+    _plot_resolvability_sweep(df, output_path=plot_path)
     metadata_json.write_text(
         json.dumps(
             {
@@ -186,7 +186,7 @@ def main() -> None:
                 "models": models,
                 "k_trues": k_trues,
                 "profile_ids": {
-                    str(k_true): [profile["profile_id"] for profile in TV_PROFILE_LIBRARY[int(k_true)]]
+                    str(k_true): [profile["profile_id"] for profile in RESOLVABILITY_PROFILE_LIBRARY[int(k_true)]]
                     for k_true in k_trues
                 },
                 "T": int(args.T),

@@ -32,11 +32,11 @@ from hill_mixture_mmm.benchmark import (  # noqa: E402
     run_prepared_synthetic_benchmark_case,
     save_case_artifacts,
 )
-from hill_mixture_mmm.controlled_tv_profile import (  # noqa: E402
+from hill_mixture_mmm.component_resolvability import (  # noqa: E402
     SMOKE_PROFILE_IDS,
-    TV_PROFILE_LIBRARY,
-    build_controlled_tv_profile_config,
-    build_controlled_tv_profile_run_config,
+    RESOLVABILITY_PROFILE_LIBRARY,
+    build_resolvability_config,
+    build_resolvability_run_config,
 )
 from hill_mixture_mmm.data import generate_controlled_k_spacing_data  # noqa: E402
 from hill_mixture_mmm.metrics import (  # noqa: E402
@@ -77,22 +77,22 @@ _RELAXED_BASE = BenchmarkThresholds(
     require_finite_predictive_metrics=True,
 )
 
-_DATASET_RE = re.compile(r"^controlled_tvprofile_k(?P<k_true>\d+)_(?P<profile_id>.+)$")
+_DATASET_RE = re.compile(r"^resolvability_k(?P<k_true>\d+)_(?P<profile_id>.+)$")
 
 
-def _require_full_controlled_tv_profile_benchmark() -> None:
-    enabled = os.getenv("HILL_MMM_RUN_FULL_CONTROLLED_TV_PROFILE_BENCHMARK", "").strip().lower()
+def _require_full_component_resolvability_benchmark() -> None:
+    enabled = os.getenv("HILL_MMM_RUN_FULL_COMPONENT_RESOLVABILITY_BENCHMARK", "").strip().lower()
     if enabled not in {"1", "true", "yes"}:
         pytest.skip(
-            "full controlled TV-profile benchmark is opt-in; set "
-            "HILL_MMM_RUN_FULL_CONTROLLED_TV_PROFILE_BENCHMARK=1 to run it"
+            "full component-resolvability benchmark is opt-in; set "
+            "HILL_MMM_RUN_FULL_COMPONENT_RESOLVABILITY_BENCHMARK=1 to run it"
         )
 
 
 def _smoke_profile_cases() -> list[tuple[int, dict[str, object]]]:
     cases: list[tuple[int, dict[str, object]]] = []
     for k_true, profile_ids in SMOKE_PROFILE_IDS.items():
-        profiles = {str(profile["profile_id"]): profile for profile in TV_PROFILE_LIBRARY[k_true]}
+        profiles = {str(profile["profile_id"]): profile for profile in RESOLVABILITY_PROFILE_LIBRARY[k_true]}
         for profile_id in profile_ids:
             cases.append((k_true, profiles[profile_id]))
     return cases
@@ -100,7 +100,7 @@ def _smoke_profile_cases() -> list[tuple[int, dict[str, object]]]:
 
 def _full_profile_cases() -> list[tuple[int, dict[str, object]]]:
     return [
-        (k_true, profile) for k_true, profiles in TV_PROFILE_LIBRARY.items() for profile in profiles
+        (k_true, profile) for k_true, profiles in RESOLVABILITY_PROFILE_LIBRARY.items() for profile in profiles
     ]
 
 
@@ -113,7 +113,7 @@ def _controlled_thresholds() -> BenchmarkThresholds:
 
 
 def _dataset_name(k_true: int, profile_id: str) -> str:
-    return f"controlled_tvprofile_k{k_true}_{profile_id}"
+    return f"resolvability_k{k_true}_{profile_id}"
 
 
 def _label(k_true: int, profile_id: str, model_name: str, seed: int) -> str:
@@ -146,7 +146,7 @@ def _run_and_assert_controlled_case(
     quick: bool,
 ) -> None:
     profile_id = str(profile["profile_id"])
-    config = build_controlled_tv_profile_config(k_true=k_true, seed=seed, profile=profile)
+    config = build_resolvability_config(k_true=k_true, seed=seed, profile=profile)
     x, y, meta = generate_controlled_k_spacing_data(config)
     result = run_prepared_synthetic_benchmark_case(
         dataset_name=_dataset_name(k_true, profile_id),
@@ -154,7 +154,7 @@ def _run_and_assert_controlled_case(
         y=y,
         meta=meta,
         model_name=model_name,
-        config=build_controlled_tv_profile_run_config(
+        config=build_resolvability_run_config(
             model_name,
             seed,
             quick=quick,
@@ -165,7 +165,7 @@ def _run_and_assert_controlled_case(
     artifacts = save_case_artifacts(result, benchmark_output_root)
     assert_case_passes(result, _controlled_thresholds())
     for path in artifacts.values():
-        assert path.exists(), f"Expected controlled TV-profile artifact at {path}"
+        assert path.exists(), f"Expected component-resolvability artifact at {path}"
 
 
 _TRUE_SEPARATION_METRICS: list[tuple[str, object, str]] = [
@@ -183,7 +183,7 @@ _EFFECTIVE_COUNT_METRICS: list[tuple[str, object]] = [
 
 def _parse_summary_row(summary: dict[str, object]) -> dict[str, object]:
     match = _DATASET_RE.match(str(summary["dataset_name"]))
-    assert match, f"Unexpected controlled dataset_name: {summary['dataset_name']}"
+    assert match, f"Unexpected resolvability dataset_name: {summary['dataset_name']}"
     k_true = int(match.group("k_true"))
     profile_id = match.group("profile_id")
 
@@ -348,7 +348,7 @@ def _plot_selected_metrics(df: pd.DataFrame, *, models: list[str], output_path: 
     legend_ax.axis("off")
     legend_ax.legend(handles=_build_legend_handles(df, models), loc="center", frameon=False)
 
-    fig.suptitle("Controlled TV-Profile Benchmark", y=0.99)
+    fig.suptitle("Component Resolvability Benchmark", y=0.99)
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=style["dpi"], bbox_inches="tight")
@@ -418,7 +418,7 @@ def _write_selected_metric_artifacts(
     df = _load_selected_metric_rows(summary_paths)
     summary = _summarize_metric_rows(df)
 
-    artifact_dir = benchmark_output_root / "controlled_tv_profile" / artifact_name
+    artifact_dir = benchmark_output_root / "component_resolvability" / artifact_name
     artifact_dir.mkdir(parents=True, exist_ok=True)
     raw_csv = artifact_dir / "selected_metric_results.csv"
     summary_csv = artifact_dir / "selected_metric_summary.csv"
@@ -465,7 +465,7 @@ _TIERS: dict[str, dict[str, object]] = {
         "seeds": FULL_SEEDS,
         "models": MODELS,
         "mark": pytest.mark.benchmark_full,
-        "guard": _require_full_controlled_tv_profile_benchmark,
+        "guard": _require_full_component_resolvability_benchmark,
     },
 }
 
@@ -496,7 +496,7 @@ def _matrix_test_params() -> list[object]:
     ("tier", "k_true", "profile", "model_name", "seed"),
     _matrix_test_params(),
 )
-def test_controlled_tv_profile_matrix(
+def test_component_resolvability_matrix(
     tier: str,
     k_true: int,
     profile: dict[str, object],
@@ -523,7 +523,7 @@ def test_controlled_tv_profile_matrix(
         pytest.param("full", marks=pytest.mark.benchmark_full),
     ],
 )
-def test_controlled_tv_profile_selected_metric_artifacts(
+def test_component_resolvability_selected_metric_artifacts(
     tier: str,
     benchmark_output_root: Path,
 ) -> None:

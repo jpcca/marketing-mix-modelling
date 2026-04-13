@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Compare alternative vertical-axis metrics on the controlled TV-profile sweep."""
+"""Compare alternative vertical-axis metrics on the component-resolvability sweep."""
 
 from __future__ import annotations
 
@@ -17,10 +17,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from hill_mixture_mmm.benchmark import run_prepared_synthetic_benchmark_case
-from hill_mixture_mmm.controlled_tv_profile import (
-    TV_PROFILE_LIBRARY,
-    build_controlled_tv_profile_config,
-    build_controlled_tv_profile_run_config,
+from hill_mixture_mmm.component_resolvability import (
+    RESOLVABILITY_PROFILE_LIBRARY,
+    build_resolvability_config,
+    build_resolvability_run_config,
 )
 from hill_mixture_mmm.data import generate_controlled_k_spacing_data
 from hill_mixture_mmm.metrics import (
@@ -135,7 +135,7 @@ def _plot(df: pd.DataFrame, *, output_path: Path) -> None:
     for ax in axes_flat[: len(METRIC_SPECS)]:
         ax.set_xlabel("True Component Separation (TV)")
     axes_flat[0].set_ylabel("Estimated Count")
-    fig.suptitle("Selected Vertical-Axis Metrics on TV-Profile Sweep", y=0.99)
+    fig.suptitle("Selected Vertical-Axis Metrics on Resolvability Sweep", y=0.99)
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=180, bbox_inches="tight")
@@ -144,7 +144,7 @@ def _plot(df: pd.DataFrame, *, output_path: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-dir", type=Path, default=Path("results/tv_profile_vertical_metric_comparison"))
+    parser.add_argument("--output-dir", type=Path, default=Path("results/resolvability_vertical_metric_comparison"))
     parser.add_argument("--seed", type=int, action="append", dest="seeds")
     parser.add_argument("--model", action="append", choices=MODEL_ORDER, dest="models")
     parser.add_argument("--k-true", type=int, action="append", choices=[1, 2, 3], dest="k_trues")
@@ -158,9 +158,9 @@ def main() -> None:
 
     rows: list[dict[str, object]] = []
     for k_true in k_trues:
-        for profile in TV_PROFILE_LIBRARY[int(k_true)]:
+        for profile in RESOLVABILITY_PROFILE_LIBRARY[int(k_true)]:
             for seed in seeds:
-                config = build_controlled_tv_profile_config(
+                config = build_resolvability_config(
                     k_true=int(k_true), seed=int(seed), profile=profile, T=int(args.T)
                 )
                 x, y, meta = generate_controlled_k_spacing_data(config)
@@ -175,7 +175,7 @@ def main() -> None:
                         y=y,
                         meta=meta,
                         model_name=model_name,
-                        config=build_controlled_tv_profile_run_config(
+                        config=build_resolvability_run_config(
                             model_name,
                             int(seed),
                             quick=bool(args.quick),

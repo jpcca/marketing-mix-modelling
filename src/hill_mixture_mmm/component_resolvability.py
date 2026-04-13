@@ -1,11 +1,11 @@
-"""Shared controlled TV-profile benchmark definitions and run configs."""
+"""Shared component-resolvability benchmark definitions and run configs."""
 
 from __future__ import annotations
 
 from hill_mixture_mmm.benchmark import BenchmarkRunConfig
 from hill_mixture_mmm.data import ControlledKSpacingConfig
 
-TV_PROFILE_LIBRARY: dict[int, list[dict[str, object]]] = {
+RESOLVABILITY_PROFILE_LIBRARY: dict[int, list[dict[str, object]]] = {
     1: [
         {
             "profile_id": "tv00_anchor",
@@ -102,14 +102,14 @@ SMOKE_PROFILE_IDS: dict[int, list[str]] = {
 }
 
 
-def build_controlled_tv_profile_config(
+def build_resolvability_config(
     *,
     k_true: int,
     seed: int,
     profile: dict[str, object],
     T: int = 200,
 ) -> ControlledKSpacingConfig:
-    """Build a synthetic controlled-TV-profile config from the shared library."""
+    """Build a synthetic component-resolvability config from the shared library."""
     return ControlledKSpacingConfig(
         K_true=int(k_true),
         T=int(T),
@@ -123,13 +123,13 @@ def build_controlled_tv_profile_config(
     )
 
 
-def build_controlled_tv_profile_run_config(
+def build_resolvability_run_config(
     model_name: str,
     seed: int,
     *,
     quick: bool,
 ) -> BenchmarkRunConfig:
-    """Return the shared benchmark run config for the controlled TV-profile suite.
+    """Return the shared benchmark run config for the component-resolvability suite.
 
     The priors and sampler settings are model-specific but must remain generic:
     they do not depend on the true K/profile being evaluated.
