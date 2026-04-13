@@ -50,6 +50,45 @@ def compute_total_variation_distance(p: np.ndarray, q: np.ndarray) -> float:
     return float(0.5 * np.abs(p_mass - q_mass).sum())
 
 
+def compute_cosine_distance(p: np.ndarray, q: np.ndarray) -> float:
+    """Return the cosine distance between two mass (or density) vectors.
+
+    cosine_distance = 1 - (p·q) / (‖p‖·‖q‖)
+
+    Bounded in [0, 1] for non-negative vectors.  Scale-invariant: the ratio
+    cancels any common factor such as bin width, so the result is the same
+    whether *p* and *q* are probability masses or densities.
+    """
+    p = np.asarray(p, dtype=np.float64)
+    q = np.asarray(q, dtype=np.float64)
+    if p.shape != q.shape:
+        raise ValueError("p and q must have matching shapes")
+    dot = float(np.sum(p * q))
+    norm = float(np.sqrt(np.sum(p**2) * np.sum(q**2)))
+    if norm <= 0.0:
+        return 0.0
+    return float(1.0 - dot / norm)
+
+
+def compute_nabc_distance(f: np.ndarray, g: np.ndarray) -> float:
+    """Return the Normalized Area Between Curves (NABC) distance.
+
+    NABC = sum|f(x_i) - g(x_i)| / sum max(f(x_i), g(x_i))
+
+    Works on raw (unnormalized) curve arrays.  Bounded in [0, 1].
+    Captures both shape *and* amplitude differences.
+    """
+    f = np.asarray(f, dtype=np.float64)
+    g = np.asarray(g, dtype=np.float64)
+    if f.shape != g.shape:
+        raise ValueError("f and g must have matching shapes")
+    envelope = np.maximum(f, g)
+    denom = float(envelope.sum())
+    if denom <= 0.0:
+        return 0.0
+    return float(np.abs(f - g).sum() / denom)
+
+
 def _scalar_ci(samples_arr: np.ndarray, true_val: float, tail: float) -> dict:
     ci_low = np.percentile(samples_arr, 100 * tail)
     ci_high = np.percentile(samples_arr, 100 * (1 - tail))
@@ -383,6 +422,42 @@ def compute_component_distance_matrix(
     }
 
 
+def compute_component_nabc_distance_matrix(
+    component_summary: dict[str, Any],
+    *,
+    curve_grid_max: float = 4.0,
+    grid_size: int = 128,
+    active_only: bool = True,
+) -> dict[str, Any]:
+    """Return active-component raw curves, weights, and pairwise NABC distances."""
+    components = _select_components(component_summary, active_only=active_only)
+    if not components:
+        return {
+            "components": [],
+            "weights": np.zeros((0,), dtype=np.float64),
+            "curves": np.zeros((0, 0), dtype=np.float64),
+            "distance_matrix": np.zeros((0, 0), dtype=np.float64),
+        }
+
+    u_grid = np.linspace(0.0, curve_grid_max, grid_size, dtype=np.float64)
+    curves = np.stack([_component_curve(component, u_grid) for component in components], axis=0)
+    weights = _normalize_probability_mass(
+        np.asarray([float(component["pi_mean"]) for component in components], dtype=np.float64)
+    )
+    k = len(components)
+    distance_matrix = np.zeros((k, k), dtype=np.float64)
+    for left_idx, right_idx in combinations(range(k), 2):
+        d = compute_nabc_distance(curves[left_idx], curves[right_idx])
+        distance_matrix[left_idx, right_idx] = d
+        distance_matrix[right_idx, left_idx] = d
+    return {
+        "components": components,
+        "weights": weights,
+        "curves": curves,
+        "distance_matrix": distance_matrix,
+    }
+
+
 def compute_component_curve_tv_separation(
     component_summary: dict[str, Any],
     *,
@@ -421,6 +496,86 @@ def compute_component_curve_tv_separation(
         "pairwise_tv": pairwise_tv,
         "mean_pairwise_tv": float(
             np.mean([item["tv"] for item in pairwise_tv], dtype=np.float64)
+        ),
+    }
+
+
+def compute_component_curve_cosine_separation(
+    component_summary: dict[str, Any],
+    *,
+    curve_grid_max: float = 4.0,
+    grid_size: int = 128,
+) -> dict[str, Any]:
+    """Average pairwise cosine distance for active components as normalized curve masses."""
+    components = _active_components(component_summary)
+    if len(components) < 2:
+        return {
+            "num_components": len(components),
+            "pair_count": 0,
+            "pairwise_cosine": [],
+            "mean_pairwise_cosine": 0.0,
+        }
+
+    u_grid = np.linspace(0.0, curve_grid_max, grid_size, dtype=np.float64)
+    masses = [_component_curve_mass(component, u_grid) for component in components]
+    pairwise_cosine = [
+        {
+            "left_index": int(left_component["index"]),
+            "right_index": int(right_component["index"]),
+            "cosine_distance": compute_cosine_distance(left_mass, right_mass),
+        }
+        for (left_component, left_mass), (right_component, right_mass) in combinations(
+            list(zip(components, masses, strict=True)), 2
+        )
+    ]
+    return {
+        "num_components": len(components),
+        "pair_count": len(pairwise_cosine),
+        "pairwise_cosine": pairwise_cosine,
+        "mean_pairwise_cosine": float(
+            np.mean([item["cosine_distance"] for item in pairwise_cosine], dtype=np.float64)
+        ),
+    }
+
+
+def compute_component_curve_nabc_separation(
+    component_summary: dict[str, Any],
+    *,
+    curve_grid_max: float = 4.0,
+    grid_size: int = 128,
+) -> dict[str, Any]:
+    """Average pairwise NABC separation for active components using raw Hill curves."""
+    components = _active_components(component_summary)
+    if len(components) < 2:
+        return {
+            "num_components": len(components),
+            "pair_count": 0,
+            "pairwise_nabc": [],
+            "mean_pairwise_nabc": 0.0,
+        }
+
+    matrix = compute_component_nabc_distance_matrix(
+        component_summary,
+        curve_grid_max=curve_grid_max,
+        grid_size=grid_size,
+    )
+    curves = list(matrix["curves"])
+    pairwise_nabc = [
+        {
+            "left_index": int(left_component["index"]),
+            "right_index": int(right_component["index"]),
+            "nabc": compute_nabc_distance(left_curve, right_curve),
+        }
+        for (left_component, left_curve), (right_component, right_curve) in combinations(
+            list(zip(components, curves, strict=True)), 2
+        )
+    ]
+    return {
+        "num_components": len(components),
+        "pair_count": len(pairwise_nabc),
+        "pairwise_nabc": pairwise_nabc,
+        "mean_pairwise_nabc": float(
+            np.mean([item["nabc"] for item in pairwise_nabc], dtype=np.float64)
         ),
     }
 
@@ -466,6 +621,61 @@ def compute_similarity_adjusted_effective_count(
     for left_idx, right_idx in combinations(range(k), 2):
         tv = compute_total_variation_distance(curve_masses[left_idx], curve_masses[right_idx])
         similarity_value = float(1.0 - tv)
+        similarity[left_idx, right_idx] = similarity_value
+        similarity[right_idx, left_idx] = similarity_value
+
+    denominator = float(flattened @ similarity @ flattened)
+    effective_count = float(1.0 / max(denominator, 1e-12))
+    return {
+        "gamma": float(gamma),
+        "num_components": k,
+        "effective_count": effective_count,
+        "weights": weights.tolist(),
+        "flattened_weights": flattened.tolist(),
+        "similarity_matrix": similarity.tolist(),
+    }
+
+
+def compute_nabc_effective_count(
+    component_summary: dict[str, Any],
+    *,
+    gamma: float = 0.5,
+    curve_grid_max: float = 4.0,
+    grid_size: int = 128,
+) -> dict[str, Any]:
+    """Leinster-Cobbold D2^Z effective count using NABC-based similarity on raw Hill curves."""
+    if not 0.0 < float(gamma) <= 1.0:
+        raise ValueError("gamma must lie in (0, 1]")
+
+    components = _active_components(component_summary)
+    if not components:
+        return {
+            "gamma": float(gamma),
+            "num_components": 0,
+            "effective_count": 0.0,
+            "weights": [],
+            "flattened_weights": [],
+            "similarity_matrix": [],
+        }
+
+    matrix = compute_component_nabc_distance_matrix(
+        component_summary,
+        curve_grid_max=curve_grid_max,
+        grid_size=grid_size,
+    )
+    weights = np.asarray(matrix["weights"], dtype=np.float64)
+    flattened = np.power(weights, gamma)
+    flattened_total = float(flattened.sum())
+    if flattened_total <= 0.0:
+        flattened = np.full(weights.shape, 1.0 / len(weights), dtype=np.float64)
+    else:
+        flattened = flattened / flattened_total
+
+    k = len(components)
+    nabc_distances = np.asarray(matrix["distance_matrix"], dtype=np.float64)
+    similarity = np.eye(k, dtype=np.float64)
+    for left_idx, right_idx in combinations(range(k), 2):
+        similarity_value = float(1.0 - nabc_distances[left_idx, right_idx])
         similarity[left_idx, right_idx] = similarity_value
         similarity[right_idx, left_idx] = similarity_value
 

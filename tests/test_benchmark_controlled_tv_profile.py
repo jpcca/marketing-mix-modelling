@@ -41,23 +41,24 @@ from hill_mixture_mmm.controlled_tv_profile import (
 from hill_mixture_mmm.data import generate_controlled_k_spacing_data
 from hill_mixture_mmm.metrics import (
     compute_component_curve_tv_separation,
+    compute_component_curve_cosine_separation,
+    compute_component_curve_nabc_separation,
     compute_similarity_adjusted_effective_count,
+    compute_nabc_effective_count,
     compute_shannon_effective_count,
 )
 
 
-SMOKE_MODELS = ["single_hill", "mixture_k2", "mixture_k3"]
-FULL_MODELS = ["single_hill", "mixture_k2", "mixture_k3"]
+SMOKE_MODELS = ["mixture_k2", "mixture_k3"]
+FULL_MODELS = ["mixture_k2", "mixture_k3"]
 SMOKE_SEEDS = [0]
 FULL_SEEDS = [0, 1, 2, 3, 4]
 
 MODEL_LABELS = {
-    "single_hill": "Single Hill",
     "mixture_k2": "Mixture (K=2)",
     "mixture_k3": "Mixture (K=3)",
 }
 MODEL_COLORS = {
-    "single_hill": "#1f77b4",
     "mixture_k2": "#9467bd",
     "mixture_k3": "#ff7f0e",
 }
@@ -184,14 +185,28 @@ def _load_selected_metric_rows(summary_paths: list[Path]) -> pd.DataFrame:
             if true_component_summary is not None
             else 0.0
         )
+        true_nabc_separation = (
+            float(compute_component_curve_nabc_separation(true_component_summary)["mean_pairwise_nabc"])
+            if true_component_summary is not None
+            else 0.0
+        )
+        true_cosine_separation = (
+            float(compute_component_curve_cosine_separation(true_component_summary)["mean_pairwise_cosine"])
+            if true_component_summary is not None
+            else 0.0
+        )
         if component_summary is None:
             active_component_count = 1.0
             similarity_adjusted_count = 1.0
+            nabc_effective_count = 1.0
             shannon_count = 1.0
         else:
             active_component_count = float(component_summary["K_active"])
             similarity_adjusted_count = float(
                 compute_similarity_adjusted_effective_count(component_summary)["effective_count"]
+            )
+            nabc_effective_count = float(
+                compute_nabc_effective_count(component_summary)["effective_count"]
             )
             shannon_count = float(compute_shannon_effective_count(component_summary)["effective_count"])
         rows.append(
@@ -201,6 +216,8 @@ def _load_selected_metric_rows(summary_paths: list[Path]) -> pd.DataFrame:
                 "profile_id": profile_id,
                 "model": str(summary["model_name"]),
                 "true_separation": true_separation,
+                "true_nabc_separation": true_nabc_separation,
+                "true_cosine_separation": true_cosine_separation,
                 "strict_converged": bool(summary["converged"]),
                 "converged": bool(summary["benchmark_pass"]),
                 "publication_status": str(summary["publication_status"]),
@@ -209,65 +226,70 @@ def _load_selected_metric_rows(summary_paths: list[Path]) -> pd.DataFrame:
                 "interpretation_status": str(summary["diagnostic_status"]["interpretation_status"]),
                 "active_component_count": active_component_count,
                 "similarity_adjusted_count": similarity_adjusted_count,
+                "nabc_effective_count": nabc_effective_count,
                 "shannon_count": shannon_count,
             }
         )
-    return pd.DataFrame(rows).sort_values(["K_true", "true_separation", "seed", "model"]).reset_index(drop=True)
+    return pd.DataFrame(rows).sort_values(["K_true", "true_cosine_separation", "seed", "model"]).reset_index(drop=True)
 
 
 def _plot_selected_metrics(df: pd.DataFrame, *, output_path: Path) -> None:
     metric_specs = [
-        ("active_component_count", "Active K (pi > 0.05)"),
-        ("similarity_adjusted_count", "Similarity-Adjusted Count"),
-        ("shannon_count", "Hill q=1 (weights only)"),
+        ("nabc_effective_count", "NABC Effective Count"),
+        ("shannon_count", "Shannon Count (Hill q=1)"),
     ]
-    fig, axes = plt.subplots(1, len(metric_specs) + 1, figsize=(16.5, 4.8), sharex=True)
+    fig, axes = plt.subplots(1, len(metric_specs) + 1, figsize=(15, 5.2), sharex=True, sharey=True)
     axes_flat = np.atleast_1d(axes).flatten()
     seed_values = sorted(pd.unique(df["seed"]))
     seed_offsets = {
-        int(seed): (idx - (len(seed_values) - 1) / 2) * 0.006 for idx, seed in enumerate(seed_values)
+        int(seed): (idx - (len(seed_values) - 1) / 2) * 0.008 for idx, seed in enumerate(seed_values)
     }
+    has_converged_col = "converged" in df.columns
 
     for axis_idx, (metric_key, title) in enumerate(metric_specs):
         ax = axes_flat[axis_idx]
         for target in [1, 2, 3]:
-            ax.axhline(target, color="0.9", linestyle="--", linewidth=0.8, zorder=0)
+            ax.axhline(target, color="0.88", linestyle="--", linewidth=0.8, zorder=0)
         for model_name in FULL_MODELS:
             model_panel = df[df["model"] == model_name]
             for k_true in sorted(pd.unique(model_panel["K_true"])):
                 panel = model_panel[model_panel["K_true"] == k_true]
                 if panel.empty:
                     continue
-                x = panel["true_separation"].to_numpy(dtype=float) + panel["seed"].map(seed_offsets).to_numpy(dtype=float)
-                ax.scatter(
-                    x,
-                    panel[metric_key],
-                    color=MODEL_COLORS[model_name],
-                    marker=K_TRUE_MARKERS[int(k_true)],
-                    s=42,
-                    alpha=0.82,
-                    edgecolors="white",
-                    linewidths=0.45,
-                    zorder=3,
-                )
+                for _, row in panel.iterrows():
+                    x_val = row["true_cosine_separation"] + seed_offsets[int(row["seed"])]
+                    failed = has_converged_col and not row["converged"]
+                    ax.scatter(
+                        x_val,
+                        row[metric_key],
+                        color=MODEL_COLORS[model_name],
+                        marker=K_TRUE_MARKERS[int(k_true)],
+                        s=48,
+                        alpha=0.75,
+                        edgecolors="red" if failed else "white",
+                        linewidths=1.2 if failed else 0.5,
+                        zorder=3,
+                    )
                 means = (
                     panel.groupby("profile_id", as_index=False)
-                    .agg(true_separation=("true_separation", "mean"), y=(metric_key, "mean"))
-                    .sort_values("true_separation")
+                    .agg(true_cosine_separation=("true_cosine_separation", "mean"), y=(metric_key, "mean"))
+                    .sort_values("true_cosine_separation")
                 )
                 ax.plot(
-                    means["true_separation"],
+                    means["true_cosine_separation"],
                     means["y"],
                     color=MODEL_COLORS[model_name],
-                    linewidth=1.6,
-                    alpha=0.95,
+                    linewidth=2.0,
+                    alpha=0.9,
                     linestyle=K_TRUE_LINESTYLES.get(int(k_true), "-"),
                 )
-        ax.set_title(title)
+        ax.set_title(title, fontsize=11, fontweight="bold")
         ax.set_xlim(-0.03, 1.03)
-        ax.set_ylim(0.8, 3.2)
-        ax.set_xlabel("True Component Separation (TV)")
+        ax.set_ylim(0.7, 3.3)
+        ax.set_xlabel("True Component Cosine Distance")
         ax.grid(True, alpha=0.22)
+
+    axes_flat[0].set_ylabel("Estimated Component Count")
 
     legend_ax = axes_flat[-1]
     legend_ax.axis("off")
@@ -280,16 +302,18 @@ def _plot_selected_metrics(df: pd.DataFrame, *, output_path: Path) -> None:
         for k in sorted(pd.unique(df["K_true"]))
     ]
     line_handles = [
-        plt.Line2D([], [], color="0.35", linewidth=1.8, linestyle=K_TRUE_LINESTYLES[k], label=f"Line: Data K={k}")
+        plt.Line2D([], [], color="0.35", linewidth=1.8, linestyle=K_TRUE_LINESTYLES[k], label=f"Mean: Data K={k}")
         for k in sorted(k for k in pd.unique(df["K_true"]) if int(k) in K_TRUE_LINESTYLES)
     ]
-    legend_ax.legend(handles=model_handles + marker_handles + line_handles, loc="center", frameon=False)
-    axes_flat[0].set_ylabel("Estimated Count")
+    convergence_handle = [
+        plt.Line2D([], [], linestyle="None", marker="o", markersize=7, markerfacecolor="0.7", markeredgecolor="red", markeredgewidth=1.5, label="Convergence issue")
+    ]
+    legend_ax.legend(handles=model_handles + marker_handles + line_handles + convergence_handle, loc="center", frameon=False)
 
     fig.suptitle("Controlled TV-Profile Benchmark", y=0.99)
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    fig.savefig(output_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -321,15 +345,18 @@ def _write_selected_metric_artifacts(
         df.groupby(["K_true", "profile_id", "model"], as_index=False)
         .agg(
             true_separation=("true_separation", "mean"),
+            true_nabc_separation=("true_nabc_separation", "mean"),
+            true_cosine_separation=("true_cosine_separation", "mean"),
             active_component_count=("active_component_count", "mean"),
             similarity_adjusted_count=("similarity_adjusted_count", "mean"),
+            nabc_effective_count=("nabc_effective_count", "mean"),
             shannon_count=("shannon_count", "mean"),
             converged_rate=("converged", "mean"),
             strict_converged_rate=("strict_converged", "mean"),
             publication_pass_rate=("publication_status", lambda s: float((s == "Pass").mean())),
             publication_fail_rate=("publication_status", lambda s: float((s == "Fail").mean())),
         )
-        .sort_values(["K_true", "true_separation", "model"])
+        .sort_values(["K_true", "true_cosine_separation", "model"])
         .reset_index(drop=True)
     )
 
@@ -348,9 +375,13 @@ def _write_selected_metric_artifacts(
             {
                 "seeds": seeds,
                 "models": models,
-                "metrics": [
-                    "active_component_count",
-                    "similarity_adjusted_count",
+                "separation_metrics": [
+                    "true_cosine_separation",
+                    "true_separation",
+                    "true_nabc_separation",
+                ],
+                "effective_count_metrics": [
+                    "nabc_effective_count",
                     "shannon_count",
                 ],
                 "cases": [{"K_true": int(k_true), "profile_id": str(profile["profile_id"])} for k_true, profile in cases],
@@ -422,7 +453,7 @@ def test_controlled_tv_profile_full_matrix(
         model_name=model_name,
         seed=seed,
         benchmark_output_root=benchmark_output_root,
-        quick=False,
+        quick=True,
     )
 
 
