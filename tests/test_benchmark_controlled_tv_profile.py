@@ -395,18 +395,53 @@ def _write_selected_metric_artifacts(
     assert len(df) == len(cases) * len(models) * len(seeds)
 
 
+_TIERS: dict[str, dict[str, object]] = {
+    "smoke": {
+        "cases_fn": _smoke_profile_cases,
+        "seeds": SMOKE_SEEDS,
+        "models": SMOKE_MODELS,
+        "mark": pytest.mark.benchmark_smoke,
+        "guard": lambda: None,
+    },
+    "full": {
+        "cases_fn": _full_profile_cases,
+        "seeds": FULL_SEEDS,
+        "models": FULL_MODELS,
+        "mark": pytest.mark.benchmark_full,
+        "guard": _require_full_controlled_tv_profile_benchmark,
+    },
+}
+
+
+def _matrix_test_params() -> list[object]:
+    params: list[object] = []
+    for tier_name, cfg in _TIERS.items():
+        for k_true, profile in cfg["cases_fn"]():
+            pid = str(profile["profile_id"])
+            for model_name in cfg["models"]:
+                for seed in cfg["seeds"]:
+                    params.append(pytest.param(
+                        tier_name, k_true, profile, model_name, seed,
+                        marks=[cfg["mark"]],
+                        id=f"{tier_name}-k{k_true}-{pid}-{model_name}-s{seed}",
+                    ))
+    return params
+
+
 @pytest.mark.slow
-@pytest.mark.benchmark_smoke
-@pytest.mark.parametrize("seed", SMOKE_SEEDS)
-@pytest.mark.parametrize("model_name", SMOKE_MODELS)
-@pytest.mark.parametrize(("k_true", "profile"), _smoke_profile_cases())
-def test_controlled_tv_profile_smoke_matrix(
+@pytest.mark.parametrize(
+    ("tier", "k_true", "profile", "model_name", "seed"),
+    _matrix_test_params(),
+)
+def test_controlled_tv_profile_matrix(
+    tier: str,
     k_true: int,
     profile: dict[str, object],
     model_name: str,
     seed: int,
     benchmark_output_root: Path,
 ) -> None:
+    _TIERS[tier]["guard"]()
     _run_and_assert_controlled_case(
         k_true=k_true,
         profile=profile,
@@ -418,52 +453,20 @@ def test_controlled_tv_profile_smoke_matrix(
 
 
 @pytest.mark.slow
-@pytest.mark.benchmark_smoke
-def test_controlled_tv_profile_smoke_selected_metric_artifacts(
+@pytest.mark.parametrize("tier", [
+    pytest.param("smoke", marks=pytest.mark.benchmark_smoke),
+    pytest.param("full", marks=pytest.mark.benchmark_full),
+])
+def test_controlled_tv_profile_selected_metric_artifacts(
+    tier: str,
     benchmark_output_root: Path,
 ) -> None:
+    cfg = _TIERS[tier]
+    cfg["guard"]()
     _write_selected_metric_artifacts(
         benchmark_output_root=benchmark_output_root,
-        cases=_smoke_profile_cases(),
-        seeds=SMOKE_SEEDS,
-        models=SMOKE_MODELS,
-        artifact_name="smoke",
-    )
-
-
-@pytest.mark.slow
-@pytest.mark.benchmark_full
-@pytest.mark.parametrize("seed", FULL_SEEDS)
-@pytest.mark.parametrize("model_name", FULL_MODELS)
-@pytest.mark.parametrize(("k_true", "profile"), _full_profile_cases())
-def test_controlled_tv_profile_full_matrix(
-    k_true: int,
-    profile: dict[str, object],
-    model_name: str,
-    seed: int,
-    benchmark_output_root: Path,
-) -> None:
-    _require_full_controlled_tv_profile_benchmark()
-    _run_and_assert_controlled_case(
-        k_true=k_true,
-        profile=profile,
-        model_name=model_name,
-        seed=seed,
-        benchmark_output_root=benchmark_output_root,
-        quick=True,
-    )
-
-
-@pytest.mark.slow
-@pytest.mark.benchmark_full
-def test_controlled_tv_profile_full_selected_metric_artifacts(
-    benchmark_output_root: Path,
-) -> None:
-    _require_full_controlled_tv_profile_benchmark()
-    _write_selected_metric_artifacts(
-        benchmark_output_root=benchmark_output_root,
-        cases=_full_profile_cases(),
-        seeds=FULL_SEEDS,
-        models=FULL_MODELS,
-        artifact_name="full",
+        cases=cfg["cases_fn"](),
+        seeds=cfg["seeds"],
+        models=cfg["models"],
+        artifact_name=tier,
     )
