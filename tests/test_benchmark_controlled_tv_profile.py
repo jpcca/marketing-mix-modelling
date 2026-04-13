@@ -169,67 +169,64 @@ def _run_and_assert_controlled_case(
         assert path.exists(), f"Expected controlled TV-profile artifact at {path}"
 
 
+_TRUE_SEPARATION_METRICS: list[tuple[str, object, str]] = [
+    ("true_separation", compute_component_curve_tv_separation, "mean_pairwise_tv"),
+    ("true_nabc_separation", compute_component_curve_nabc_separation, "mean_pairwise_nabc"),
+    ("true_cosine_separation", compute_component_curve_cosine_separation, "mean_pairwise_cosine"),
+]
+
+_EFFECTIVE_COUNT_METRICS: list[tuple[str, object]] = [
+    ("similarity_adjusted_count", compute_similarity_adjusted_effective_count),
+    ("nabc_effective_count", compute_nabc_effective_count),
+    ("shannon_count", compute_shannon_effective_count),
+]
+
+
+def _parse_summary_row(summary: dict[str, object]) -> dict[str, object]:
+    match = _DATASET_RE.match(str(summary["dataset_name"]))
+    assert match, f"Unexpected controlled dataset_name: {summary['dataset_name']}"
+    k_true = int(match.group("k_true"))
+    profile_id = match.group("profile_id")
+
+    true_component_summary = summary.get("true_component_summary")
+    separation_values = {
+        col: float(func(true_component_summary)[key]) if true_component_summary is not None else 0.0
+        for col, func, key in _TRUE_SEPARATION_METRICS
+    }
+
+    component_summary = summary.get("component_summary")
+    if component_summary is None:
+        count_values = {"active_component_count": 1.0}
+        count_values.update({col: 1.0 for col, _ in _EFFECTIVE_COUNT_METRICS})
+    else:
+        count_values = {"active_component_count": float(component_summary["K_active"])}
+        count_values.update({
+            col: float(func(component_summary)["effective_count"])
+            for col, func in _EFFECTIVE_COUNT_METRICS
+        })
+
+    return {
+        "seed": int(summary["seed"]),
+        "K_true": k_true,
+        "profile_id": profile_id,
+        "model": str(summary["model_name"]),
+        **separation_values,
+        "strict_converged": bool(summary["converged"]),
+        "converged": bool(summary["benchmark_pass"]),
+        "publication_status": str(summary["publication_status"]),
+        "sampler_status": str(summary["diagnostic_status"]["sampler_status"]),
+        "mixing_status": str(summary["diagnostic_status"]["mixing_status"]),
+        "interpretation_status": str(summary["diagnostic_status"]["interpretation_status"]),
+        **count_values,
+    }
+
+
 def _load_selected_metric_rows(summary_paths: list[Path]) -> pd.DataFrame:
     rows: list[dict[str, object]] = []
     for summary_path in summary_paths:
         with summary_path.open("r", encoding="utf-8") as fh:
             summary = json.load(fh)
-        match = _DATASET_RE.match(str(summary["dataset_name"]))
-        assert match, f"Unexpected controlled dataset_name: {summary['dataset_name']}"
-        k_true = int(match.group("k_true"))
-        profile_id = match.group("profile_id")
-        component_summary = summary.get("component_summary")
-        true_component_summary = summary.get("true_component_summary")
-        true_separation = (
-            float(compute_component_curve_tv_separation(true_component_summary)["mean_pairwise_tv"])
-            if true_component_summary is not None
-            else 0.0
-        )
-        true_nabc_separation = (
-            float(compute_component_curve_nabc_separation(true_component_summary)["mean_pairwise_nabc"])
-            if true_component_summary is not None
-            else 0.0
-        )
-        true_cosine_separation = (
-            float(compute_component_curve_cosine_separation(true_component_summary)["mean_pairwise_cosine"])
-            if true_component_summary is not None
-            else 0.0
-        )
-        if component_summary is None:
-            active_component_count = 1.0
-            similarity_adjusted_count = 1.0
-            nabc_effective_count = 1.0
-            shannon_count = 1.0
-        else:
-            active_component_count = float(component_summary["K_active"])
-            similarity_adjusted_count = float(
-                compute_similarity_adjusted_effective_count(component_summary)["effective_count"]
-            )
-            nabc_effective_count = float(
-                compute_nabc_effective_count(component_summary)["effective_count"]
-            )
-            shannon_count = float(compute_shannon_effective_count(component_summary)["effective_count"])
-        rows.append(
-            {
-                "seed": int(summary["seed"]),
-                "K_true": k_true,
-                "profile_id": profile_id,
-                "model": str(summary["model_name"]),
-                "true_separation": true_separation,
-                "true_nabc_separation": true_nabc_separation,
-                "true_cosine_separation": true_cosine_separation,
-                "strict_converged": bool(summary["converged"]),
-                "converged": bool(summary["benchmark_pass"]),
-                "publication_status": str(summary["publication_status"]),
-                "sampler_status": str(summary["diagnostic_status"]["sampler_status"]),
-                "mixing_status": str(summary["diagnostic_status"]["mixing_status"]),
-                "interpretation_status": str(summary["diagnostic_status"]["interpretation_status"]),
-                "active_component_count": active_component_count,
-                "similarity_adjusted_count": similarity_adjusted_count,
-                "nabc_effective_count": nabc_effective_count,
-                "shannon_count": shannon_count,
-            }
-        )
+        rows.append(_parse_summary_row(summary))
     return pd.DataFrame(rows).sort_values(["K_true", "true_cosine_separation", "seed", "model"]).reset_index(drop=True)
 
 
