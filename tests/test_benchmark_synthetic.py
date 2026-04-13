@@ -8,11 +8,6 @@ from time import time
 
 import pytest
 
-from hill_mixture_mmm.paper_figures import (
-    DEFAULT_FIGURE_IDS,
-    generate_publication_figures,
-    load_synthetic_results_from_artifacts,
-)
 from hill_mixture_mmm.benchmark import (
     BenchmarkRunConfig,
     BenchmarkThresholds,
@@ -22,7 +17,11 @@ from hill_mixture_mmm.benchmark import (
 )
 from hill_mixture_mmm.data import DGPConfig
 from hill_mixture_mmm.metrics import compute_across_seed_component_stability
-
+from hill_mixture_mmm.paper_figures import (
+    DEFAULT_FIGURE_IDS,
+    generate_publication_figures,
+    load_synthetic_results_from_artifacts,
+)
 
 SMOKE_DGP_NAMES = ["single", "mixture_k2"]
 SMOKE_MODEL_NAMES = ["single_hill", "mixture_k2"]
@@ -263,5 +262,8 @@ def test_synthetic_benchmark_full_across_seed_stability(
         json.dump(stability, fh, indent=2)
 
     assert stability["num_seeds"] == len(FULL_SYNTHETIC_SEEDS)
-    assert stability["pair_count"] == (len(FULL_SYNTHETIC_SEEDS) * (len(FULL_SYNTHETIC_SEEDS) - 1)) // 2
+    assert (
+        stability["pair_count"]
+        == (len(FULL_SYNTHETIC_SEEDS) * (len(FULL_SYNTHETIC_SEEDS) - 1)) // 2
+    )
     assert stability_path.exists(), f"Expected across-seed stability summary at {stability_path}"

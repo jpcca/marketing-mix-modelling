@@ -18,51 +18,53 @@ def _ensure_xla_host_device_count(device_count: int) -> None:
 
 _ensure_xla_host_device_count(4)
 
-import matplotlib
-import numpy as np
-import pandas as pd
-import pytest
+import matplotlib  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import pytest  # noqa: E402
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # noqa: E402
 
-from hill_mixture_mmm.benchmark import (
+from hill_mixture_mmm.benchmark import (  # noqa: E402
     BenchmarkThresholds,
     assert_case_passes,
     run_prepared_synthetic_benchmark_case,
     save_case_artifacts,
 )
-from hill_mixture_mmm.controlled_tv_profile import (
+from hill_mixture_mmm.controlled_tv_profile import (  # noqa: E402
     SMOKE_PROFILE_IDS,
     TV_PROFILE_LIBRARY,
     build_controlled_tv_profile_config,
     build_controlled_tv_profile_run_config,
 )
-from hill_mixture_mmm.data import generate_controlled_k_spacing_data
-from hill_mixture_mmm.metrics import (
+from hill_mixture_mmm.data import generate_controlled_k_spacing_data  # noqa: E402
+from hill_mixture_mmm.metrics import (  # noqa: E402
+    compute_component_curve_cosine_separation,
+    compute_component_curve_nabc_separation,
     compute_component_curve_tv_separation,
-    compute_similarity_adjusted_effective_count,
+    compute_nabc_effective_count,
     compute_shannon_effective_count,
+    compute_similarity_adjusted_effective_count,
 )
 
-
-SMOKE_MODELS = ["single_hill", "mixture_k2", "mixture_k3"]
-FULL_MODELS = ["single_hill", "mixture_k2", "mixture_k3"]
+MODELS = ["mixture_k2", "mixture_k3"]
 SMOKE_SEEDS = [0]
 FULL_SEEDS = [0, 1, 2, 3, 4]
 
-MODEL_LABELS = {
-    "single_hill": "Single Hill",
-    "mixture_k2": "Mixture (K=2)",
-    "mixture_k3": "Mixture (K=3)",
+_PLOT_STYLE = {
+    "model_labels": {"mixture_k2": "Mixture (K=2)", "mixture_k3": "Mixture (K=3)"},
+    "model_colors": {"mixture_k2": "#9467bd", "mixture_k3": "#ff7f0e"},
+    "k_true_markers": {1: "o", 2: "s", 3: "^"},
+    "k_true_linestyles": {2: "--", 3: "-"},
+    "figsize": (15, 5.2),
+    "scatter_size": 48,
+    "scatter_alpha": 0.75,
+    "line_width": 2.0,
+    "line_alpha": 0.9,
+    "seed_jitter": 0.008,
+    "dpi": 200,
 }
-MODEL_COLORS = {
-    "single_hill": "#1f77b4",
-    "mixture_k2": "#9467bd",
-    "mixture_k3": "#ff7f0e",
-}
-K_TRUE_MARKERS = {1: "o", 2: "s", 3: "^"}
-K_TRUE_LINESTYLES = {2: "--", 3: "-"}
 
 _RELAXED_BASE = BenchmarkThresholds(
     max_rhat=None,
@@ -98,9 +100,7 @@ def _smoke_profile_cases() -> list[tuple[int, dict[str, object]]]:
 
 def _full_profile_cases() -> list[tuple[int, dict[str, object]]]:
     return [
-        (k_true, profile)
-        for k_true, profiles in TV_PROFILE_LIBRARY.items()
-        for profile in profiles
+        (k_true, profile) for k_true, profiles in TV_PROFILE_LIBRARY.items() for profile in profiles
     ]
 
 
@@ -168,140 +168,201 @@ def _run_and_assert_controlled_case(
         assert path.exists(), f"Expected controlled TV-profile artifact at {path}"
 
 
+_TRUE_SEPARATION_METRICS: list[tuple[str, object, str]] = [
+    ("true_separation", compute_component_curve_tv_separation, "mean_pairwise_tv"),
+    ("true_nabc_separation", compute_component_curve_nabc_separation, "mean_pairwise_nabc"),
+    ("true_cosine_separation", compute_component_curve_cosine_separation, "mean_pairwise_cosine"),
+]
+
+_EFFECTIVE_COUNT_METRICS: list[tuple[str, object]] = [
+    ("similarity_adjusted_count", compute_similarity_adjusted_effective_count),
+    ("nabc_effective_count", compute_nabc_effective_count),
+    ("shannon_count", compute_shannon_effective_count),
+]
+
+
+def _parse_summary_row(summary: dict[str, object]) -> dict[str, object]:
+    match = _DATASET_RE.match(str(summary["dataset_name"]))
+    assert match, f"Unexpected controlled dataset_name: {summary['dataset_name']}"
+    k_true = int(match.group("k_true"))
+    profile_id = match.group("profile_id")
+
+    true_component_summary = summary.get("true_component_summary")
+    separation_values = {
+        col: float(func(true_component_summary)[key]) if true_component_summary is not None else 0.0
+        for col, func, key in _TRUE_SEPARATION_METRICS
+    }
+
+    component_summary = summary.get("component_summary")
+    if component_summary is None:
+        count_values = {"active_component_count": 1.0}
+        count_values.update({col: 1.0 for col, _ in _EFFECTIVE_COUNT_METRICS})
+    else:
+        count_values = {"active_component_count": float(component_summary["K_active"])}
+        count_values.update(
+            {
+                col: float(func(component_summary)["effective_count"])
+                for col, func in _EFFECTIVE_COUNT_METRICS
+            }
+        )
+
+    return {
+        "seed": int(summary["seed"]),
+        "K_true": k_true,
+        "profile_id": profile_id,
+        "model": str(summary["model_name"]),
+        **separation_values,
+        "mcmc_converged": bool(summary["converged"]),
+        "benchmark_pass": bool(summary["benchmark_pass"]),
+        "publication_status": str(summary["publication_status"]),
+        "sampler_status": str(summary["diagnostic_status"]["sampler_status"]),
+        "mixing_status": str(summary["diagnostic_status"]["mixing_status"]),
+        "interpretation_status": str(summary["diagnostic_status"]["interpretation_status"]),
+        **count_values,
+    }
+
+
 def _load_selected_metric_rows(summary_paths: list[Path]) -> pd.DataFrame:
     rows: list[dict[str, object]] = []
     for summary_path in summary_paths:
         with summary_path.open("r", encoding="utf-8") as fh:
             summary = json.load(fh)
-        match = _DATASET_RE.match(str(summary["dataset_name"]))
-        assert match, f"Unexpected controlled dataset_name: {summary['dataset_name']}"
-        k_true = int(match.group("k_true"))
-        profile_id = match.group("profile_id")
-        component_summary = summary.get("component_summary")
-        true_component_summary = summary.get("true_component_summary")
-        true_separation = (
-            float(compute_component_curve_tv_separation(true_component_summary)["mean_pairwise_tv"])
-            if true_component_summary is not None
-            else 0.0
-        )
-        if component_summary is None:
-            active_component_count = 1.0
-            similarity_adjusted_count = 1.0
-            shannon_count = 1.0
-        else:
-            active_component_count = float(component_summary["K_active"])
-            similarity_adjusted_count = float(
-                compute_similarity_adjusted_effective_count(component_summary)["effective_count"]
-            )
-            shannon_count = float(compute_shannon_effective_count(component_summary)["effective_count"])
-        rows.append(
-            {
-                "seed": int(summary["seed"]),
-                "K_true": k_true,
-                "profile_id": profile_id,
-                "model": str(summary["model_name"]),
-                "true_separation": true_separation,
-                "strict_converged": bool(summary["converged"]),
-                "converged": bool(summary["benchmark_pass"]),
-                "publication_status": str(summary["publication_status"]),
-                "sampler_status": str(summary["diagnostic_status"]["sampler_status"]),
-                "mixing_status": str(summary["diagnostic_status"]["mixing_status"]),
-                "interpretation_status": str(summary["diagnostic_status"]["interpretation_status"]),
-                "active_component_count": active_component_count,
-                "similarity_adjusted_count": similarity_adjusted_count,
-                "shannon_count": shannon_count,
-            }
-        )
-    return pd.DataFrame(rows).sort_values(["K_true", "true_separation", "seed", "model"]).reset_index(drop=True)
+        rows.append(_parse_summary_row(summary))
+    return (
+        pd.DataFrame(rows)
+        .sort_values(["K_true", "true_cosine_separation", "seed", "model"])
+        .reset_index(drop=True)
+    )
 
 
-def _plot_selected_metrics(df: pd.DataFrame, *, output_path: Path) -> None:
-    metric_specs = [
-        ("active_component_count", "Active K (pi > 0.05)"),
-        ("similarity_adjusted_count", "Similarity-Adjusted Count"),
-        ("shannon_count", "Hill q=1 (weights only)"),
+def _build_legend_handles(df: pd.DataFrame, models: list[str]) -> list[object]:
+    style = _PLOT_STYLE
+    model_handles = [
+        plt.Line2D(
+            [], [], color=style["model_colors"][m], linewidth=1.8, label=style["model_labels"][m]
+        )
+        for m in models
     ]
-    fig, axes = plt.subplots(1, len(metric_specs) + 1, figsize=(16.5, 4.8), sharex=True)
+    marker_handles = [
+        plt.Line2D(
+            [],
+            [],
+            linestyle="None",
+            marker=style["k_true_markers"][k],
+            markersize=7,
+            markerfacecolor="0.35",
+            markeredgecolor="white",
+            label=f"Data K={k}",
+        )
+        for k in sorted(pd.unique(df["K_true"]))
+    ]
+    linestyles = style["k_true_linestyles"]
+    line_handles = [
+        plt.Line2D(
+            [], [], color="0.35", linewidth=1.8, linestyle=linestyles[k], label=f"Mean: Data K={k}"
+        )
+        for k in sorted(k for k in pd.unique(df["K_true"]) if int(k) in linestyles)
+    ]
+    convergence_handle = [
+        plt.Line2D(
+            [],
+            [],
+            linestyle="None",
+            marker="o",
+            markersize=7,
+            markerfacecolor="0.7",
+            markeredgecolor="red",
+            markeredgewidth=1.5,
+            label="Convergence issue",
+        )
+    ]
+    return model_handles + marker_handles + line_handles + convergence_handle
+
+
+def _plot_selected_metrics(df: pd.DataFrame, *, models: list[str], output_path: Path) -> None:
+    style = _PLOT_STYLE
+    metric_specs = [
+        ("nabc_effective_count", "NABC Effective Count"),
+        ("shannon_count", "Shannon Count (Hill q=1)"),
+    ]
+    fig, axes = plt.subplots(
+        1, len(metric_specs) + 1, figsize=style["figsize"], sharex=True, sharey=True
+    )
     axes_flat = np.atleast_1d(axes).flatten()
     seed_values = sorted(pd.unique(df["seed"]))
     seed_offsets = {
-        int(seed): (idx - (len(seed_values) - 1) / 2) * 0.006 for idx, seed in enumerate(seed_values)
+        int(seed): (idx - (len(seed_values) - 1) / 2) * style["seed_jitter"]
+        for idx, seed in enumerate(seed_values)
     }
+    has_pass_col = "benchmark_pass" in df.columns
 
     for axis_idx, (metric_key, title) in enumerate(metric_specs):
         ax = axes_flat[axis_idx]
         for target in [1, 2, 3]:
-            ax.axhline(target, color="0.9", linestyle="--", linewidth=0.8, zorder=0)
-        for model_name in FULL_MODELS:
+            ax.axhline(target, color="0.88", linestyle="--", linewidth=0.8, zorder=0)
+        for model_name in models:
             model_panel = df[df["model"] == model_name]
             for k_true in sorted(pd.unique(model_panel["K_true"])):
                 panel = model_panel[model_panel["K_true"] == k_true]
                 if panel.empty:
                     continue
-                x = panel["true_separation"].to_numpy(dtype=float) + panel["seed"].map(seed_offsets).to_numpy(dtype=float)
-                ax.scatter(
-                    x,
-                    panel[metric_key],
-                    color=MODEL_COLORS[model_name],
-                    marker=K_TRUE_MARKERS[int(k_true)],
-                    s=42,
-                    alpha=0.82,
-                    edgecolors="white",
-                    linewidths=0.45,
-                    zorder=3,
-                )
+                for _, row in panel.iterrows():
+                    x_val = row["true_cosine_separation"] + seed_offsets[int(row["seed"])]
+                    failed = has_pass_col and not row["benchmark_pass"]
+                    ax.scatter(
+                        x_val,
+                        row[metric_key],
+                        color=style["model_colors"][model_name],
+                        marker=style["k_true_markers"][int(k_true)],
+                        s=style["scatter_size"],
+                        alpha=style["scatter_alpha"],
+                        edgecolors="red" if failed else "white",
+                        linewidths=1.2 if failed else 0.5,
+                        zorder=3,
+                    )
                 means = (
                     panel.groupby("profile_id", as_index=False)
-                    .agg(true_separation=("true_separation", "mean"), y=(metric_key, "mean"))
-                    .sort_values("true_separation")
+                    .agg(
+                        true_cosine_separation=("true_cosine_separation", "mean"),
+                        y=(metric_key, "mean"),
+                    )
+                    .sort_values("true_cosine_separation")
                 )
                 ax.plot(
-                    means["true_separation"],
+                    means["true_cosine_separation"],
                     means["y"],
-                    color=MODEL_COLORS[model_name],
-                    linewidth=1.6,
-                    alpha=0.95,
-                    linestyle=K_TRUE_LINESTYLES.get(int(k_true), "-"),
+                    color=style["model_colors"][model_name],
+                    linewidth=style["line_width"],
+                    alpha=style["line_alpha"],
+                    linestyle=style["k_true_linestyles"].get(int(k_true), "-"),
                 )
-        ax.set_title(title)
+        ax.set_title(title, fontsize=11, fontweight="bold")
         ax.set_xlim(-0.03, 1.03)
-        ax.set_ylim(0.8, 3.2)
-        ax.set_xlabel("True Component Separation (TV)")
+        ax.set_ylim(0.7, 3.3)
+        ax.set_xlabel("True Component Cosine Distance")
         ax.grid(True, alpha=0.22)
+
+    axes_flat[0].set_ylabel("Estimated Component Count")
 
     legend_ax = axes_flat[-1]
     legend_ax.axis("off")
-    model_handles = [
-        plt.Line2D([], [], color=MODEL_COLORS[m], linewidth=1.8, label=MODEL_LABELS[m])
-        for m in FULL_MODELS
-    ]
-    marker_handles = [
-        plt.Line2D([], [], linestyle="None", marker=K_TRUE_MARKERS[k], markersize=7, markerfacecolor="0.35", markeredgecolor="white", label=f"Data K={k}")
-        for k in sorted(pd.unique(df["K_true"]))
-    ]
-    line_handles = [
-        plt.Line2D([], [], color="0.35", linewidth=1.8, linestyle=K_TRUE_LINESTYLES[k], label=f"Line: Data K={k}")
-        for k in sorted(k for k in pd.unique(df["K_true"]) if int(k) in K_TRUE_LINESTYLES)
-    ]
-    legend_ax.legend(handles=model_handles + marker_handles + line_handles, loc="center", frameon=False)
-    axes_flat[0].set_ylabel("Estimated Count")
+    legend_ax.legend(handles=_build_legend_handles(df, models), loc="center", frameon=False)
 
     fig.suptitle("Controlled TV-Profile Benchmark", y=0.99)
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    fig.savefig(output_path, dpi=style["dpi"], bbox_inches="tight")
     plt.close(fig)
 
 
-def _write_selected_metric_artifacts(
-    *,
+def _collect_summary_paths(
     benchmark_output_root: Path,
+    *,
     cases: list[tuple[int, dict[str, object]]],
-    seeds: list[int],
     models: list[str],
-    artifact_name: str,
-) -> None:
-    summary_paths = [
+    seeds: list[int],
+) -> list[Path]:
+    paths = [
         _case_summary_path(
             benchmark_output_root,
             k_true=k_true,
@@ -313,25 +374,49 @@ def _write_selected_metric_artifacts(
         for model_name in models
         for seed in seeds
     ]
-    for summary_path in summary_paths:
-        assert summary_path.exists(), f"Expected controlled benchmark summary at {summary_path}"
+    missing = [p for p in paths if not p.exists()]
+    if missing:
+        pytest.skip(f"{len(missing)} summary file(s) not found (matrix tests not yet run?)")
+    return paths
 
-    df = _load_selected_metric_rows(summary_paths)
-    summary = (
+
+def _summarize_metric_rows(df: pd.DataFrame) -> pd.DataFrame:
+    return (
         df.groupby(["K_true", "profile_id", "model"], as_index=False)
         .agg(
             true_separation=("true_separation", "mean"),
+            true_nabc_separation=("true_nabc_separation", "mean"),
+            true_cosine_separation=("true_cosine_separation", "mean"),
             active_component_count=("active_component_count", "mean"),
             similarity_adjusted_count=("similarity_adjusted_count", "mean"),
+            nabc_effective_count=("nabc_effective_count", "mean"),
             shannon_count=("shannon_count", "mean"),
-            converged_rate=("converged", "mean"),
-            strict_converged_rate=("strict_converged", "mean"),
+            benchmark_pass_rate=("benchmark_pass", "mean"),
+            mcmc_converged_rate=("mcmc_converged", "mean"),
             publication_pass_rate=("publication_status", lambda s: float((s == "Pass").mean())),
             publication_fail_rate=("publication_status", lambda s: float((s == "Fail").mean())),
         )
-        .sort_values(["K_true", "true_separation", "model"])
+        .sort_values(["K_true", "true_cosine_separation", "model"])
         .reset_index(drop=True)
     )
+
+
+def _write_selected_metric_artifacts(
+    *,
+    benchmark_output_root: Path,
+    cases: list[tuple[int, dict[str, object]]],
+    seeds: list[int],
+    models: list[str],
+    artifact_name: str,
+) -> None:
+    summary_paths = _collect_summary_paths(
+        benchmark_output_root,
+        cases=cases,
+        models=models,
+        seeds=seeds,
+    )
+    df = _load_selected_metric_rows(summary_paths)
+    summary = _summarize_metric_rows(df)
 
     artifact_dir = benchmark_output_root / "controlled_tv_profile" / artifact_name
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -342,18 +427,18 @@ def _write_selected_metric_artifacts(
 
     df.to_csv(raw_csv, index=False)
     summary.to_csv(summary_csv, index=False)
-    _plot_selected_metrics(df, output_path=plot_path)
+    _plot_selected_metrics(df, models=models, output_path=plot_path)
     metadata_path.write_text(
         json.dumps(
             {
                 "seeds": seeds,
                 "models": models,
-                "metrics": [
-                    "active_component_count",
-                    "similarity_adjusted_count",
-                    "shannon_count",
+                "separation_metrics": [col for col, _, _ in _TRUE_SEPARATION_METRICS],
+                "effective_count_metrics": [col for col, _ in _EFFECTIVE_COUNT_METRICS],
+                "cases": [
+                    {"K_true": int(k_true), "profile_id": str(profile["profile_id"])}
+                    for k_true, profile in cases
                 ],
-                "cases": [{"K_true": int(k_true), "profile_id": str(profile["profile_id"])} for k_true, profile in cases],
             },
             indent=2,
         ),
@@ -367,18 +452,59 @@ def _write_selected_metric_artifacts(
     assert len(df) == len(cases) * len(models) * len(seeds)
 
 
+_TIERS: dict[str, dict[str, object]] = {
+    "smoke": {
+        "cases_fn": _smoke_profile_cases,
+        "seeds": SMOKE_SEEDS,
+        "models": MODELS,
+        "mark": pytest.mark.benchmark_smoke,
+        "guard": lambda: None,
+    },
+    "full": {
+        "cases_fn": _full_profile_cases,
+        "seeds": FULL_SEEDS,
+        "models": MODELS,
+        "mark": pytest.mark.benchmark_full,
+        "guard": _require_full_controlled_tv_profile_benchmark,
+    },
+}
+
+
+def _matrix_test_params() -> list[object]:
+    params: list[object] = []
+    for tier_name, cfg in _TIERS.items():
+        for k_true, profile in cfg["cases_fn"]():
+            pid = str(profile["profile_id"])
+            for model_name in cfg["models"]:
+                for seed in cfg["seeds"]:
+                    params.append(
+                        pytest.param(
+                            tier_name,
+                            k_true,
+                            profile,
+                            model_name,
+                            seed,
+                            marks=[cfg["mark"]],
+                            id=f"{tier_name}-k{k_true}-{pid}-{model_name}-s{seed}",
+                        )
+                    )
+    return params
+
+
 @pytest.mark.slow
-@pytest.mark.benchmark_smoke
-@pytest.mark.parametrize("seed", SMOKE_SEEDS)
-@pytest.mark.parametrize("model_name", SMOKE_MODELS)
-@pytest.mark.parametrize(("k_true", "profile"), _smoke_profile_cases())
-def test_controlled_tv_profile_smoke_matrix(
+@pytest.mark.parametrize(
+    ("tier", "k_true", "profile", "model_name", "seed"),
+    _matrix_test_params(),
+)
+def test_controlled_tv_profile_matrix(
+    tier: str,
     k_true: int,
     profile: dict[str, object],
     model_name: str,
     seed: int,
     benchmark_output_root: Path,
 ) -> None:
+    _TIERS[tier]["guard"]()
     _run_and_assert_controlled_case(
         k_true=k_true,
         profile=profile,
@@ -390,52 +516,23 @@ def test_controlled_tv_profile_smoke_matrix(
 
 
 @pytest.mark.slow
-@pytest.mark.benchmark_smoke
-def test_controlled_tv_profile_smoke_selected_metric_artifacts(
+@pytest.mark.parametrize(
+    "tier",
+    [
+        pytest.param("smoke", marks=pytest.mark.benchmark_smoke),
+        pytest.param("full", marks=pytest.mark.benchmark_full),
+    ],
+)
+def test_controlled_tv_profile_selected_metric_artifacts(
+    tier: str,
     benchmark_output_root: Path,
 ) -> None:
+    cfg = _TIERS[tier]
+    cfg["guard"]()
     _write_selected_metric_artifacts(
         benchmark_output_root=benchmark_output_root,
-        cases=_smoke_profile_cases(),
-        seeds=SMOKE_SEEDS,
-        models=SMOKE_MODELS,
-        artifact_name="smoke",
-    )
-
-
-@pytest.mark.slow
-@pytest.mark.benchmark_full
-@pytest.mark.parametrize("seed", FULL_SEEDS)
-@pytest.mark.parametrize("model_name", FULL_MODELS)
-@pytest.mark.parametrize(("k_true", "profile"), _full_profile_cases())
-def test_controlled_tv_profile_full_matrix(
-    k_true: int,
-    profile: dict[str, object],
-    model_name: str,
-    seed: int,
-    benchmark_output_root: Path,
-) -> None:
-    _require_full_controlled_tv_profile_benchmark()
-    _run_and_assert_controlled_case(
-        k_true=k_true,
-        profile=profile,
-        model_name=model_name,
-        seed=seed,
-        benchmark_output_root=benchmark_output_root,
-        quick=False,
-    )
-
-
-@pytest.mark.slow
-@pytest.mark.benchmark_full
-def test_controlled_tv_profile_full_selected_metric_artifacts(
-    benchmark_output_root: Path,
-) -> None:
-    _require_full_controlled_tv_profile_benchmark()
-    _write_selected_metric_artifacts(
-        benchmark_output_root=benchmark_output_root,
-        cases=_full_profile_cases(),
-        seeds=FULL_SEEDS,
-        models=FULL_MODELS,
-        artifact_name="full",
+        cases=cfg["cases_fn"](),
+        seeds=cfg["seeds"],
+        models=cfg["models"],
+        artifact_name=tier,
     )

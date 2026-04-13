@@ -29,7 +29,6 @@ from hill_mixture_mmm.benchmark import (
 from hill_mixture_mmm.data_loader import TimeSeriesConfig
 from hill_mixture_mmm.metrics import compute_across_seed_component_stability
 
-
 # ---------------------------------------------------------------------------
 # Data configuration — fill in when dataset selection is finalised.
 #
@@ -75,6 +74,7 @@ _DATASET_LABELS: list[str] = sorted(REAL_DATA_CONFIGS) or ["__no_data_configured
 # Skip guards
 # ---------------------------------------------------------------------------
 
+
 def _skip_if_no_configs() -> None:
     if not REAL_DATA_CONFIGS:
         pytest.skip(
@@ -86,14 +86,14 @@ def _require_full_real_benchmark() -> None:
     enabled = os.getenv("HILL_MMM_RUN_FULL_REAL_BENCHMARK", "").strip().lower()
     if enabled not in {"1", "true", "yes"}:
         pytest.skip(
-            "full real-data benchmark is opt-in; set "
-            "HILL_MMM_RUN_FULL_REAL_BENCHMARK=1 to run it"
+            "full real-data benchmark is opt-in; set HILL_MMM_RUN_FULL_REAL_BENCHMARK=1 to run it"
         )
 
 
 # ---------------------------------------------------------------------------
 # Run configuration (per-model tuning, same pattern as synthetic)
 # ---------------------------------------------------------------------------
+
 
 def _real_run_config(model_name: str, seed: int) -> BenchmarkRunConfig:
     num_chains = int(os.getenv("HILL_MMM_REAL_CHAINS", "2"))
@@ -164,6 +164,7 @@ def _real_smoke_thresholds(model_name: str) -> BenchmarkThresholds:
 # Core runner
 # ---------------------------------------------------------------------------
 
+
 def _run_and_assert_real_case(
     dataset_label: str,
     model_name: str,
@@ -206,6 +207,7 @@ def _case_summary_path(
 # Smoke tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.slow
 @pytest.mark.benchmark_smoke
 @pytest.mark.parametrize("seed", SMOKE_SEEDS)
@@ -230,6 +232,7 @@ def test_real_benchmark_smoke_matrix(
 # ---------------------------------------------------------------------------
 # Full tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.slow
 @pytest.mark.benchmark_full
@@ -257,6 +260,7 @@ def test_real_benchmark_full_matrix(
 # Across-seed stability (full only)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.slow
 @pytest.mark.benchmark_full
 @pytest.mark.parametrize("dataset_label", _DATASET_LABELS)
@@ -272,7 +276,10 @@ def test_real_benchmark_full_across_seed_stability(
     summaries = []
     for seed in FULL_SEEDS:
         summary_path = _case_summary_path(
-            benchmark_output_root, dataset_label, model_name, seed,
+            benchmark_output_root,
+            dataset_label,
+            model_name,
+            seed,
         )
         assert summary_path.exists(), f"Expected benchmark summary at {summary_path}"
         with summary_path.open("r", encoding="utf-8") as fh:

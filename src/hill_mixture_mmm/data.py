@@ -307,10 +307,10 @@ def _generate_mixture(config: DGPConfig, K: int) -> tuple[np.ndarray, np.ndarray
             preset = MIXTURE_K3_PROFILE_PRESETS[profile]
         except KeyError as exc:
             known = ", ".join(sorted(MIXTURE_K3_PROFILE_PRESETS))
-            raise ValueError(f"Unknown mixture_k3 profile '{profile}'. Expected one of: {known}") from exc
-        spend_lognormal_mean = float(
-            preset.get("spend_lognormal_mean", RAW_SPEND_LOGNORMAL_MEAN)
-        )
+            raise ValueError(
+                f"Unknown mixture_k3 profile '{profile}'. Expected one of: {known}"
+            ) from exc
+        spend_lognormal_mean = float(preset.get("spend_lognormal_mean", RAW_SPEND_LOGNORMAL_MEAN))
         spend_lognormal_sigma = float(
             preset.get("spend_lognormal_sigma", RAW_SPEND_LOGNORMAL_SIGMA)
         )
