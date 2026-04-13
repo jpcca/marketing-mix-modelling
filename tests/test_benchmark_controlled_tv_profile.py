@@ -18,36 +18,35 @@ def _ensure_xla_host_device_count(device_count: int) -> None:
 
 _ensure_xla_host_device_count(4)
 
-import matplotlib
-import numpy as np
-import pandas as pd
-import pytest
+import matplotlib  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import pytest  # noqa: E402
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # noqa: E402
 
-from hill_mixture_mmm.benchmark import (
+from hill_mixture_mmm.benchmark import (  # noqa: E402
     BenchmarkThresholds,
     assert_case_passes,
     run_prepared_synthetic_benchmark_case,
     save_case_artifacts,
 )
-from hill_mixture_mmm.controlled_tv_profile import (
+from hill_mixture_mmm.controlled_tv_profile import (  # noqa: E402
     SMOKE_PROFILE_IDS,
     TV_PROFILE_LIBRARY,
     build_controlled_tv_profile_config,
     build_controlled_tv_profile_run_config,
 )
-from hill_mixture_mmm.data import generate_controlled_k_spacing_data
-from hill_mixture_mmm.metrics import (
-    compute_component_curve_tv_separation,
+from hill_mixture_mmm.data import generate_controlled_k_spacing_data  # noqa: E402
+from hill_mixture_mmm.metrics import (  # noqa: E402
     compute_component_curve_cosine_separation,
     compute_component_curve_nabc_separation,
-    compute_similarity_adjusted_effective_count,
+    compute_component_curve_tv_separation,
     compute_nabc_effective_count,
     compute_shannon_effective_count,
+    compute_similarity_adjusted_effective_count,
 )
-
 
 SMOKE_MODELS = ["mixture_k2", "mixture_k3"]
 FULL_MODELS = ["mixture_k2", "mixture_k3"]
@@ -102,9 +101,7 @@ def _smoke_profile_cases() -> list[tuple[int, dict[str, object]]]:
 
 def _full_profile_cases() -> list[tuple[int, dict[str, object]]]:
     return [
-        (k_true, profile)
-        for k_true, profiles in TV_PROFILE_LIBRARY.items()
-        for profile in profiles
+        (k_true, profile) for k_true, profiles in TV_PROFILE_LIBRARY.items() for profile in profiles
     ]
 
 
@@ -203,10 +200,12 @@ def _parse_summary_row(summary: dict[str, object]) -> dict[str, object]:
         count_values.update({col: 1.0 for col, _ in _EFFECTIVE_COUNT_METRICS})
     else:
         count_values = {"active_component_count": float(component_summary["K_active"])}
-        count_values.update({
-            col: float(func(component_summary)["effective_count"])
-            for col, func in _EFFECTIVE_COUNT_METRICS
-        })
+        count_values.update(
+            {
+                col: float(func(component_summary)["effective_count"])
+                for col, func in _EFFECTIVE_COUNT_METRICS
+            }
+        )
 
     return {
         "seed": int(summary["seed"]),
@@ -230,31 +229,51 @@ def _load_selected_metric_rows(summary_paths: list[Path]) -> pd.DataFrame:
         with summary_path.open("r", encoding="utf-8") as fh:
             summary = json.load(fh)
         rows.append(_parse_summary_row(summary))
-    return pd.DataFrame(rows).sort_values(["K_true", "true_cosine_separation", "seed", "model"]).reset_index(drop=True)
+    return (
+        pd.DataFrame(rows)
+        .sort_values(["K_true", "true_cosine_separation", "seed", "model"])
+        .reset_index(drop=True)
+    )
 
 
 def _build_legend_handles(df: pd.DataFrame, models: list[str]) -> list[object]:
     style = _PLOT_STYLE
     model_handles = [
-        plt.Line2D([], [], color=style["model_colors"][m], linewidth=1.8, label=style["model_labels"][m])
+        plt.Line2D(
+            [], [], color=style["model_colors"][m], linewidth=1.8, label=style["model_labels"][m]
+        )
         for m in models
     ]
     marker_handles = [
         plt.Line2D(
-            [], [], linestyle="None", marker=style["k_true_markers"][k],
-            markersize=7, markerfacecolor="0.35", markeredgecolor="white", label=f"Data K={k}",
+            [],
+            [],
+            linestyle="None",
+            marker=style["k_true_markers"][k],
+            markersize=7,
+            markerfacecolor="0.35",
+            markeredgecolor="white",
+            label=f"Data K={k}",
         )
         for k in sorted(pd.unique(df["K_true"]))
     ]
     linestyles = style["k_true_linestyles"]
     line_handles = [
-        plt.Line2D([], [], color="0.35", linewidth=1.8, linestyle=linestyles[k], label=f"Mean: Data K={k}")
+        plt.Line2D(
+            [], [], color="0.35", linewidth=1.8, linestyle=linestyles[k], label=f"Mean: Data K={k}"
+        )
         for k in sorted(k for k in pd.unique(df["K_true"]) if int(k) in linestyles)
     ]
     convergence_handle = [
         plt.Line2D(
-            [], [], linestyle="None", marker="o", markersize=7,
-            markerfacecolor="0.7", markeredgecolor="red", markeredgewidth=1.5,
+            [],
+            [],
+            linestyle="None",
+            marker="o",
+            markersize=7,
+            markerfacecolor="0.7",
+            markeredgecolor="red",
+            markeredgewidth=1.5,
             label="Convergence issue",
         )
     ]
@@ -267,7 +286,9 @@ def _plot_selected_metrics(df: pd.DataFrame, *, output_path: Path) -> None:
         ("nabc_effective_count", "NABC Effective Count"),
         ("shannon_count", "Shannon Count (Hill q=1)"),
     ]
-    fig, axes = plt.subplots(1, len(metric_specs) + 1, figsize=style["figsize"], sharex=True, sharey=True)
+    fig, axes = plt.subplots(
+        1, len(metric_specs) + 1, figsize=style["figsize"], sharex=True, sharey=True
+    )
     axes_flat = np.atleast_1d(axes).flatten()
     seed_values = sorted(pd.unique(df["seed"]))
     seed_offsets = {
@@ -302,7 +323,10 @@ def _plot_selected_metrics(df: pd.DataFrame, *, output_path: Path) -> None:
                     )
                 means = (
                     panel.groupby("profile_id", as_index=False)
-                    .agg(true_cosine_separation=("true_cosine_separation", "mean"), y=(metric_key, "mean"))
+                    .agg(
+                        true_cosine_separation=("true_cosine_separation", "mean"),
+                        y=(metric_key, "mean"),
+                    )
                     .sort_values("true_cosine_separation")
                 )
                 ax.plot(
@@ -386,7 +410,10 @@ def _write_selected_metric_artifacts(
     artifact_name: str,
 ) -> None:
     summary_paths = _collect_summary_paths(
-        benchmark_output_root, cases=cases, models=models, seeds=seeds,
+        benchmark_output_root,
+        cases=cases,
+        models=models,
+        seeds=seeds,
     )
     df = _load_selected_metric_rows(summary_paths)
     summary = _summarize_metric_rows(df)
@@ -415,7 +442,10 @@ def _write_selected_metric_artifacts(
                     "nabc_effective_count",
                     "shannon_count",
                 ],
-                "cases": [{"K_true": int(k_true), "profile_id": str(profile["profile_id"])} for k_true, profile in cases],
+                "cases": [
+                    {"K_true": int(k_true), "profile_id": str(profile["profile_id"])}
+                    for k_true, profile in cases
+                ],
             },
             indent=2,
         ),
@@ -454,11 +484,17 @@ def _matrix_test_params() -> list[object]:
             pid = str(profile["profile_id"])
             for model_name in cfg["models"]:
                 for seed in cfg["seeds"]:
-                    params.append(pytest.param(
-                        tier_name, k_true, profile, model_name, seed,
-                        marks=[cfg["mark"]],
-                        id=f"{tier_name}-k{k_true}-{pid}-{model_name}-s{seed}",
-                    ))
+                    params.append(
+                        pytest.param(
+                            tier_name,
+                            k_true,
+                            profile,
+                            model_name,
+                            seed,
+                            marks=[cfg["mark"]],
+                            id=f"{tier_name}-k{k_true}-{pid}-{model_name}-s{seed}",
+                        )
+                    )
     return params
 
 
@@ -487,10 +523,13 @@ def test_controlled_tv_profile_matrix(
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("tier", [
-    pytest.param("smoke", marks=pytest.mark.benchmark_smoke),
-    pytest.param("full", marks=pytest.mark.benchmark_full),
-])
+@pytest.mark.parametrize(
+    "tier",
+    [
+        pytest.param("smoke", marks=pytest.mark.benchmark_smoke),
+        pytest.param("full", marks=pytest.mark.benchmark_full),
+    ],
+)
 def test_controlled_tv_profile_selected_metric_artifacts(
     tier: str,
     benchmark_output_root: Path,
