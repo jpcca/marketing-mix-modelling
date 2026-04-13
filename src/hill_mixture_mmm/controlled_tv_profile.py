@@ -12,9 +12,9 @@ TV_PROFILE_LIBRARY: dict[int, list[dict[str, object]]] = {
             "spacing_delta": 0.0,
             "center_k_ratio": 0.9,
             "raw_spend_lognormal_sigma": 0.6,
-            "pi_true": (1.0, 1.0, 1.0),
-            "A_true": (50.0, 50.0, 50.0),
-            "n_true": (2.5, 2.5, 2.5),
+            "pi_true": (1.0, 0.0, 0.0),
+            "A_true": (50.0, 0.0, 0.0),
+            "n_true": (2.5, 0.0, 0.0),
         }
     ],
     2: [
@@ -23,7 +23,7 @@ TV_PROFILE_LIBRARY: dict[int, list[dict[str, object]]] = {
             "spacing_delta": 0.05,
             "center_k_ratio": 0.9,
             "raw_spend_lognormal_sigma": 0.6,
-            "pi_true": (0.60, 0.40, 1.0),
+            "pi_true": (0.60, 0.40, 0.0),
             "A_true": (50.0, 50.0, 50.0),
             "n_true": (2.5, 2.5, 2.5),
         },
@@ -32,7 +32,7 @@ TV_PROFILE_LIBRARY: dict[int, list[dict[str, object]]] = {
             "spacing_delta": 0.20,
             "center_k_ratio": 0.9,
             "raw_spend_lognormal_sigma": 0.6,
-            "pi_true": (0.60, 0.40, 1.0),
+            "pi_true": (0.60, 0.40, 0.0),
             "A_true": (50.0, 50.0, 50.0),
             "n_true": (2.5, 2.5, 2.5),
         },
@@ -41,7 +41,7 @@ TV_PROFILE_LIBRARY: dict[int, list[dict[str, object]]] = {
             "spacing_delta": 0.45,
             "center_k_ratio": 0.9,
             "raw_spend_lognormal_sigma": 0.6,
-            "pi_true": (0.60, 0.40, 1.0),
+            "pi_true": (0.60, 0.40, 0.0),
             "A_true": (50.0, 50.0, 50.0),
             "n_true": (2.5, 2.5, 2.5),
         },
@@ -50,7 +50,7 @@ TV_PROFILE_LIBRARY: dict[int, list[dict[str, object]]] = {
             "spacing_delta": 0.80,
             "center_k_ratio": 0.9,
             "raw_spend_lognormal_sigma": 0.6,
-            "pi_true": (0.60, 0.40, 1.0),
+            "pi_true": (0.60, 0.40, 0.0),
             "A_true": (50.0, 50.0, 50.0),
             "n_true": (2.5, 2.5, 2.5),
         },
@@ -165,15 +165,6 @@ def build_controlled_tv_profile_run_config(
         inference_seed = seed + (17 if quick else 97)
 
     if quick:
-        if model_name == "single_hill":
-            return BenchmarkRunConfig(
-                seed=inference_seed,
-                num_warmup=500,
-                num_samples=500,
-                num_chains=2,
-                target_accept_prob=0.95,
-                progress_bar=False,
-            )
         if model_name == "mixture_k2":
             return BenchmarkRunConfig(
                 seed=inference_seed,
@@ -200,15 +191,6 @@ def build_controlled_tv_profile_run_config(
             prior_config_override=prior_config_override,
         )
 
-    if model_name == "single_hill":
-        return BenchmarkRunConfig(
-            seed=inference_seed,
-            num_warmup=900,
-            num_samples=900,
-            num_chains=2,
-            target_accept_prob=0.95,
-            progress_bar=False,
-        )
     if model_name == "mixture_k2":
         return BenchmarkRunConfig(
             seed=inference_seed,
