@@ -48,8 +48,7 @@ from hill_mixture_mmm.metrics import (  # noqa: E402
     compute_similarity_adjusted_effective_count,
 )
 
-SMOKE_MODELS = ["mixture_k2", "mixture_k3"]
-FULL_MODELS = ["mixture_k2", "mixture_k3"]
+MODELS = ["mixture_k2", "mixture_k3"]
 SMOKE_SEEDS = [0]
 FULL_SEEDS = [0, 1, 2, 3, 4]
 
@@ -280,7 +279,7 @@ def _build_legend_handles(df: pd.DataFrame, models: list[str]) -> list[object]:
     return model_handles + marker_handles + line_handles + convergence_handle
 
 
-def _plot_selected_metrics(df: pd.DataFrame, *, output_path: Path) -> None:
+def _plot_selected_metrics(df: pd.DataFrame, *, models: list[str], output_path: Path) -> None:
     style = _PLOT_STYLE
     metric_specs = [
         ("nabc_effective_count", "NABC Effective Count"),
@@ -301,7 +300,7 @@ def _plot_selected_metrics(df: pd.DataFrame, *, output_path: Path) -> None:
         ax = axes_flat[axis_idx]
         for target in [1, 2, 3]:
             ax.axhline(target, color="0.88", linestyle="--", linewidth=0.8, zorder=0)
-        for model_name in FULL_MODELS:
+        for model_name in models:
             model_panel = df[df["model"] == model_name]
             for k_true in sorted(pd.unique(model_panel["K_true"])):
                 panel = model_panel[model_panel["K_true"] == k_true]
@@ -347,7 +346,7 @@ def _plot_selected_metrics(df: pd.DataFrame, *, output_path: Path) -> None:
 
     legend_ax = axes_flat[-1]
     legend_ax.axis("off")
-    legend_ax.legend(handles=_build_legend_handles(df, FULL_MODELS), loc="center", frameon=False)
+    legend_ax.legend(handles=_build_legend_handles(df, models), loc="center", frameon=False)
 
     fig.suptitle("Controlled TV-Profile Benchmark", y=0.99)
     fig.tight_layout()
@@ -427,21 +426,14 @@ def _write_selected_metric_artifacts(
 
     df.to_csv(raw_csv, index=False)
     summary.to_csv(summary_csv, index=False)
-    _plot_selected_metrics(df, output_path=plot_path)
+    _plot_selected_metrics(df, models=models, output_path=plot_path)
     metadata_path.write_text(
         json.dumps(
             {
                 "seeds": seeds,
                 "models": models,
-                "separation_metrics": [
-                    "true_cosine_separation",
-                    "true_separation",
-                    "true_nabc_separation",
-                ],
-                "effective_count_metrics": [
-                    "nabc_effective_count",
-                    "shannon_count",
-                ],
+                "separation_metrics": [col for col, _, _ in _TRUE_SEPARATION_METRICS],
+                "effective_count_metrics": [col for col, _ in _EFFECTIVE_COUNT_METRICS],
                 "cases": [
                     {"K_true": int(k_true), "profile_id": str(profile["profile_id"])}
                     for k_true, profile in cases
@@ -463,14 +455,14 @@ _TIERS: dict[str, dict[str, object]] = {
     "smoke": {
         "cases_fn": _smoke_profile_cases,
         "seeds": SMOKE_SEEDS,
-        "models": SMOKE_MODELS,
+        "models": MODELS,
         "mark": pytest.mark.benchmark_smoke,
         "guard": lambda: None,
     },
     "full": {
         "cases_fn": _full_profile_cases,
         "seeds": FULL_SEEDS,
-        "models": FULL_MODELS,
+        "models": MODELS,
         "mark": pytest.mark.benchmark_full,
         "guard": _require_full_controlled_tv_profile_benchmark,
     },
