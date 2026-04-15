@@ -292,7 +292,7 @@ $$
 m_k = \frac{\Delta f_k}{\|\Delta f_k\|_1}, \qquad (\Delta f_k)_j = f_k(u_{j+1}) - f_k(u_j)
 $$
 
-**Mean pairwise cosine distance** (used as the primary horizontal axis):
+The primary horizontal axis is the **mean pairwise cosine distance**:
 
 $$
 d_{\cos}(i, j) = 1 - \frac{m_i \cdot m_j}{\|m_i\| \, \|m_j\|}
@@ -302,57 +302,15 @@ $$
 \bar{d}_{\cos} = \binom{K}{2}^{-1} \sum_{i < j} d_{\cos}(i, j)
 $$
 
-**Mean pairwise total variation distance:**
-
-$$
-d_{\mathrm{TV}}(i, j) = \tfrac{1}{2} \sum_g |m_{i,g} - m_{j,g}|
-$$
-
-**Mean pairwise NABC distance** (applied to raw curves, not normalized):
-
-$$
-d_{\mathrm{NABC}}(i, j) = \frac{\sum_g |f_i(u_g) - f_j(u_g)|}{\sum_g \max(f_i(u_g),\, f_j(u_g))}
-$$
-
 ### 6.2 Effective component count (vertical axis)
 
-#### Shannon effective count (Hill number $q=1$)
+The vertical axis is the **Shannon effective count** (Hill number $q=1$):
 
 $$
 {}^1\!D = \exp\!\Bigl(-\sum_{k=1}^{K} w_k \log w_k\Bigr)
 $$
 
 where $w_k = \hat\pi_k$ are the posterior mean mixture weights (all $K$ components, including near-zero ones).
-
-#### NABC effective count
-
-$$
-Z_{ij} = 1 - d_{\mathrm{NABC}}(f_i, f_j)
-$$
-
-$$
-\tilde{w}_k = \frac{w_k^{\,\gamma}}{\sum_j w_j^{\,\gamma}}, \qquad \gamma = 0.5
-$$
-
-$$
-D_{\mathrm{NABC}} = \frac{1}{\tilde{\mathbf{w}}^\top Z \, \tilde{\mathbf{w}}}
-$$
-
-where only active components ($\hat\pi_k > 0.05$) are included.
-
-#### Similarity-adjusted effective count
-
-Same formula as NABC effective count but with the TV-based similarity matrix:
-
-$$
-Z_{ij} = 1 - d_{\mathrm{TV}}(m_i, m_j)
-$$
-
-### 6.3 Active component count
-
-$$
-K_{\mathrm{active}} = \bigl|\{k : \hat\pi_k > 0.05\}\bigr|
-$$
 
 ---
 
