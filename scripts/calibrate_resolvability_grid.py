@@ -111,7 +111,7 @@ def _candidate_rows(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-dir", type=Path, default=Path("results/controlled_tv_grid_calibration"))
+    parser.add_argument("--output-dir", type=Path, default=Path("results/resolvability_grid_calibration"))
     parser.add_argument("--T", type=int, default=200)
     parser.add_argument("--seed", type=int, action="append", dest="seeds")
     parser.add_argument("--k-true", type=int, action="append", choices=[1, 2, 3], dest="k_trues")
@@ -142,8 +142,8 @@ def main() -> None:
 
     out_dir = args.output_dir
     out_dir.mkdir(parents=True, exist_ok=True)
-    csv_path = out_dir / "controlled_tv_grid_candidates.csv"
-    json_path = out_dir / "controlled_tv_grid_summary.json"
+    csv_path = out_dir / "resolvability_grid_candidates.csv"
+    json_path = out_dir / "resolvability_grid_summary.json"
 
     with csv_path.open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))

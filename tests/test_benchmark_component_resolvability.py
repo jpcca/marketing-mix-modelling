@@ -57,7 +57,7 @@ _PLOT_STYLE = {
     "model_colors": {"mixture_k2": "#9467bd", "mixture_k3": "#ff7f0e"},
     "k_true_markers": {1: "o", 2: "s", 3: "^"},
     "k_true_linestyles": {2: "--", 3: "-"},
-    "figsize": (15, 5.2),
+    "figsize": (10, 5.2),
     "scatter_size": 48,
     "scatter_alpha": 0.75,
     "line_width": 2.0,
@@ -281,14 +281,11 @@ def _build_legend_handles(df: pd.DataFrame, models: list[str]) -> list[object]:
 
 def _plot_selected_metrics(df: pd.DataFrame, *, models: list[str], output_path: Path) -> None:
     style = _PLOT_STYLE
-    metric_specs = [
-        ("nabc_effective_count", "NABC Effective Count"),
-        ("shannon_count", "Shannon Count (Hill q=1)"),
-    ]
-    fig, axes = plt.subplots(
-        1, len(metric_specs) + 1, figsize=style["figsize"], sharex=True, sharey=True
-    )
-    axes_flat = np.atleast_1d(axes).flatten()
+    metric_key = "shannon_count"
+    metric_title = "Shannon Count (Hill q=1)"
+
+    fig, axes = plt.subplots(1, 2, figsize=style["figsize"], gridspec_kw={"width_ratios": [3, 1]})
+    ax = axes[0]
     seed_values = sorted(pd.unique(df["seed"]))
     seed_offsets = {
         int(seed): (idx - (len(seed_values) - 1) / 2) * style["seed_jitter"]
@@ -296,55 +293,52 @@ def _plot_selected_metrics(df: pd.DataFrame, *, models: list[str], output_path: 
     }
     has_pass_col = "benchmark_pass" in df.columns
 
-    for axis_idx, (metric_key, title) in enumerate(metric_specs):
-        ax = axes_flat[axis_idx]
-        for target in [1, 2, 3]:
-            ax.axhline(target, color="0.88", linestyle="--", linewidth=0.8, zorder=0)
-        for model_name in models:
-            model_panel = df[df["model"] == model_name]
-            for k_true in sorted(pd.unique(model_panel["K_true"])):
-                panel = model_panel[model_panel["K_true"] == k_true]
-                if panel.empty:
-                    continue
-                for _, row in panel.iterrows():
-                    x_val = row["true_cosine_separation"] + seed_offsets[int(row["seed"])]
-                    failed = has_pass_col and not row["benchmark_pass"]
-                    ax.scatter(
-                        x_val,
-                        row[metric_key],
-                        color=style["model_colors"][model_name],
-                        marker=style["k_true_markers"][int(k_true)],
-                        s=style["scatter_size"],
-                        alpha=style["scatter_alpha"],
-                        edgecolors="red" if failed else "white",
-                        linewidths=1.2 if failed else 0.5,
-                        zorder=3,
-                    )
-                means = (
-                    panel.groupby("profile_id", as_index=False)
-                    .agg(
-                        true_cosine_separation=("true_cosine_separation", "mean"),
-                        y=(metric_key, "mean"),
-                    )
-                    .sort_values("true_cosine_separation")
-                )
-                ax.plot(
-                    means["true_cosine_separation"],
-                    means["y"],
+    for target in [1, 2, 3]:
+        ax.axhline(target, color="0.88", linestyle="--", linewidth=0.8, zorder=0)
+    for model_name in models:
+        model_panel = df[df["model"] == model_name]
+        for k_true in sorted(pd.unique(model_panel["K_true"])):
+            panel = model_panel[model_panel["K_true"] == k_true]
+            if panel.empty:
+                continue
+            for _, row in panel.iterrows():
+                x_val = row["true_cosine_separation"] + seed_offsets[int(row["seed"])]
+                failed = has_pass_col and not row["benchmark_pass"]
+                ax.scatter(
+                    x_val,
+                    row[metric_key],
                     color=style["model_colors"][model_name],
-                    linewidth=style["line_width"],
-                    alpha=style["line_alpha"],
-                    linestyle=style["k_true_linestyles"].get(int(k_true), "-"),
+                    marker=style["k_true_markers"][int(k_true)],
+                    s=style["scatter_size"],
+                    alpha=style["scatter_alpha"],
+                    edgecolors="red" if failed else "white",
+                    linewidths=1.2 if failed else 0.5,
+                    zorder=3,
                 )
-        ax.set_title(title, fontsize=11, fontweight="bold")
-        ax.set_xlim(-0.03, 1.03)
-        ax.set_ylim(0.7, 3.3)
-        ax.set_xlabel("True Component Cosine Distance")
-        ax.grid(True, alpha=0.22)
+            means = (
+                panel.groupby("profile_id", as_index=False)
+                .agg(
+                    true_cosine_separation=("true_cosine_separation", "mean"),
+                    y=(metric_key, "mean"),
+                )
+                .sort_values("true_cosine_separation")
+            )
+            ax.plot(
+                means["true_cosine_separation"],
+                means["y"],
+                color=style["model_colors"][model_name],
+                linewidth=style["line_width"],
+                alpha=style["line_alpha"],
+                linestyle=style["k_true_linestyles"].get(int(k_true), "-"),
+            )
+    ax.set_title(metric_title, fontsize=11, fontweight="bold")
+    ax.set_xlim(-0.03, 1.03)
+    ax.set_ylim(0.7, 3.3)
+    ax.set_xlabel("True Component Cosine Distance")
+    ax.set_ylabel("Estimated Component Count")
+    ax.grid(True, alpha=0.22)
 
-    axes_flat[0].set_ylabel("Estimated Component Count")
-
-    legend_ax = axes_flat[-1]
+    legend_ax = axes[1]
     legend_ax.axis("off")
     legend_ax.legend(handles=_build_legend_handles(df, models), loc="center", frameon=False)
 
