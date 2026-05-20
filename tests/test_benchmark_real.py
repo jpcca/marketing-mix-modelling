@@ -52,7 +52,26 @@ from hill_mixture_mmm.metrics import compute_across_seed_component_stability
 #       ),
 #   }
 # ---------------------------------------------------------------------------
-REAL_DATA_CONFIGS: dict[str, TimeSeriesConfig] = {}
+REAL_DATA_CONFIGS: dict[str, TimeSeriesConfig] = {
+    "toys_hobbies": TimeSeriesConfig(
+        organisation_id="200b4005ea8477754ef37438e66b2f4c",
+        target_col="all_purchases",
+        aggregate_spend=True,
+        min_series_length=200,
+    ),
+    "beauty_fitness": TimeSeriesConfig(
+        organisation_id="8cfe3c2df337e1e53d19b8dc4b878cac",
+        target_col="all_purchases",
+        aggregate_spend=True,
+        min_series_length=200,
+    ),
+    "home_garden": TimeSeriesConfig(
+        organisation_id="7059e30b528ed5f14ee9921de13248e5",
+        target_col="all_purchases",
+        aggregate_spend=True,
+        min_series_length=200,
+    ),
+}
 
 CSV_PATH = Path(__file__).parent.parent / "data" / "conjura_mmm_data.csv"
 
