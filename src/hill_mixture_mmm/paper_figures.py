@@ -387,8 +387,8 @@ def generate_graphical_model_figure(output_dir: str | Path) -> Path:
         ax.add_patch(arrow)
 
     add_panel(0.7, 2.0, 4.2, 3.5, "Temporal structure", r"$t = 1, \ldots, T$")
-    add_panel(5.4, 2.0, 3.4, 3.5, "Segment structure", r"$k = 1, \ldots, K$")
-    add_panel(9.3, 2.0, 3.7, 3.5, "Observation model", "Mixture over segment responses")
+    add_panel(5.4, 2.0, 3.4, 3.5, "Mixture components", r"$k = 1, \ldots, K$")
+    add_panel(9.3, 2.0, 3.7, 3.5, "Observation model", "Predictive mixture over components")
 
     add_node(1.0, 4.0, 0.9, 0.6, r"$\alpha$")
     add_node(1.0, 3.2, 1.0, 0.65, r"$x_t$", observed=True)
@@ -419,12 +419,12 @@ def generate_graphical_model_figure(output_dir: str | Path) -> Path:
     ax.text(
         6.6,
         2.48,
-        r"segment parameters $(A_k, k_k, n_k)$",
+        r"component parameters $(A_k, \lambda_k, n_k)$",
         ha="center",
         fontsize=10,
         color="#374151",
     )
-    ax.text(6.6, 2.16, "Hill response for segment k", ha="center", fontsize=10, color="#374151")
+    ax.text(6.6, 2.16, "Hill response for component k", ha="center", fontsize=10, color="#374151")
     ax.text(
         10.2,
         2.66,
