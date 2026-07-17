@@ -186,27 +186,49 @@ def _attach_true_separation(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _render_overlay(real_df: pd.DataFrame, resolv_df: pd.DataFrame, out_path: Path) -> None:
-    fig, ax = plt.subplots(figsize=(8.5, 5.2))
+    """Render the resolvability-plane overlay.
 
-    # Synthetic resolvability cloud as background.
+    Design goals (vs. the earlier cluttered version):
+
+    * The *message* is that real organisations sit at different points on the
+      resolvability axis **and** differ in how trustworthy their diagnostics
+      are. So we foreground the three organisations and demote the synthetic
+      cloud to a faint backdrop that merely sketches the resolvable region.
+    * Reliability is encoded directly: a filled marker means at least one seed
+      reached publication-ready convergence; a hollow marker means none did.
+    * The two K settings of the same organisation are joined by a thin arrow so
+      the reader sees how adding a component moves the fit, and each
+      organisation is labelled in place instead of via a six-entry legend.
+    """
+    fig, ax = plt.subplots(figsize=(9.0, 5.6))
+
+    # Shade the resolvable region (right of the threshold) so the dashed line
+    # carries meaning on its own.
+    ax.axvspan(THRESHOLD_LINE, 1.0, color="#e8f3e8", zorder=0)
+    ax.axvspan(-0.05, THRESHOLD_LINE, color="#f4f4f4", zorder=0)
+
+    # Synthetic resolvability cloud as a faint backdrop only.
     converged = resolv_df["publication_pass"]
     ax.scatter(
         resolv_df.loc[converged, "posterior_cosine"],
         resolv_df.loc[converged, "shannon_count"],
-        s=22,
-        c="#bdbdbd",
-        alpha=0.65,
+        s=14,
+        c="#c7c7c7",
+        alpha=0.45,
         edgecolors="none",
-        label="Synthetic resolvability fits (pub-pass)",
+        zorder=1,
+        label="Synthetic fits (converged)",
     )
     ax.scatter(
         resolv_df.loc[~converged, "posterior_cosine"],
         resolv_df.loc[~converged, "shannon_count"],
-        s=22,
+        s=14,
         facecolors="none",
-        edgecolors="#d62728",
-        linewidths=0.9,
-        label="Synthetic resolvability fits (pub-fail)",
+        edgecolors="#e0a0a0",
+        linewidths=0.7,
+        alpha=0.7,
+        zorder=1,
+        label="Synthetic fits (non-converged)",
     )
 
     # Real data — averaged per (dataset, model) over seeds.
@@ -228,49 +250,108 @@ def _render_overlay(real_df: pd.DataFrame, resolv_df: pd.DataFrame, out_path: Pa
         "home_garden": "#2ca02c",
         "toys_hobbies": "#9467bd",
     }
+
+    # Join the two K settings of each organisation with a thin arrow.
+    for dataset, grp in agg.groupby("dataset"):
+        pts = {row["model"]: row for _, row in grp.iterrows()}
+        if "mixture_k2" in pts and "mixture_k3" in pts:
+            a, b = pts["mixture_k2"], pts["mixture_k3"]
+            ax.annotate(
+                "",
+                xy=(b["posterior_cosine_mean"], b["shannon_mean"]),
+                xytext=(a["posterior_cosine_mean"], a["shannon_mean"]),
+                arrowprops=dict(
+                    arrowstyle="->",
+                    color=color_for.get(dataset, "black"),
+                    alpha=0.55,
+                    linewidth=1.2,
+                    shrinkA=9,
+                    shrinkB=9,
+                ),
+                zorder=2,
+            )
+
     for _, row in agg.iterrows():
+        reliable = row["pub_pass_rate"] > 0.0
+        color = color_for.get(row["dataset"], "black")
         ax.errorbar(
             row["posterior_cosine_mean"],
             row["shannon_mean"],
             xerr=row["posterior_cosine_std"],
             yerr=row["shannon_std"],
             fmt=marker_for.get(row["model"], "o"),
-            color=color_for.get(row["dataset"], "black"),
-            markersize=12,
-            markeredgecolor="black",
-            markeredgewidth=0.8,
+            markerfacecolor=color if reliable else "white",
+            markeredgecolor=color,
+            color=color,
+            markersize=13,
+            markeredgewidth=1.6,
             elinewidth=1.0,
             capsize=3,
-            label=f"{DATASET_LABELS[row['dataset']]} · {MODEL_LABELS[row['model']]}",
+            zorder=3,
         )
 
-    ax.axvline(THRESHOLD_LINE, color="#444444", linestyle="--", linewidth=1.0)
+    # Label each organisation once, near its K=3 marker.
+    label_offsets = {
+        "beauty_fitness": (0.012, 0.10),
+        "home_garden": (0.012, -0.16),
+        "toys_hobbies": (0.012, 0.10),
+    }
+    for dataset, grp in agg.groupby("dataset"):
+        anchor = grp[grp["model"] == "mixture_k3"]
+        if anchor.empty:
+            anchor = grp
+        row = anchor.iloc[0]
+        dx, dy = label_offsets.get(dataset, (0.012, 0.1))
+        ax.text(
+            row["posterior_cosine_mean"] + dx,
+            row["shannon_mean"] + dy,
+            DATASET_LABELS[dataset],
+            fontsize=10,
+            fontweight="bold",
+            color=color_for.get(dataset, "black"),
+            va="center",
+        )
+
+    ax.axvline(THRESHOLD_LINE, color="#444444", linestyle="--", linewidth=1.0, zorder=2)
     ax.text(
-        THRESHOLD_LINE + 0.005,
-        ax.get_ylim()[1] * 0.96 if ax.get_ylim()[1] > 0 else 0.96,
-        "Resolvability\nthreshold (~0.1)",
+        THRESHOLD_LINE - 0.008,
+        ax.get_ylim()[1] if ax.get_ylim()[1] > 0 else 1.0,
+        "← unresolvable",
         fontsize=9,
-        color="#444444",
+        color="#777777",
+        ha="right",
+        va="top",
+    )
+    ax.text(
+        THRESHOLD_LINE + 0.008,
+        ax.get_ylim()[1] if ax.get_ylim()[1] > 0 else 1.0,
+        "resolvable →",
+        fontsize=9,
+        color="#4a7a4a",
+        ha="left",
         va="top",
     )
 
     ax.set_xlabel("Posterior mean pairwise cosine distance between active Hill components")
     ax.set_ylabel("Posterior Shannon effective component count $^1\\!D$")
-    ax.set_title("Real-data fits sit at low posterior separation, below the resolvability transition")
-    ax.set_xlim(left=-0.01)
-    ax.grid(True, linestyle=":", linewidth=0.6, alpha=0.7)
-
-    # Compact legend — collapse duplicates.
-    handles, labels = ax.get_legend_handles_labels()
-    seen = set()
-    cleaned = [(h, l) for h, l in zip(handles, labels) if (l not in seen and not seen.add(l))]
-    ax.legend(
-        [h for h, _ in cleaned],
-        [l for _, l in cleaned],
-        fontsize=8,
-        loc="lower right",
-        framealpha=0.92,
+    ax.set_title(
+        "Real organisations span the resolvability axis; only the filled markers\n"
+        "(at least one publication-ready seed) carry trustworthy diagnostics"
     )
+    ax.set_xlim(-0.02, max(0.8, float(agg["posterior_cosine_mean"].max()) + 0.12))
+    ax.grid(True, linestyle=":", linewidth=0.6, alpha=0.5, zorder=0)
+
+    # Two compact encoding legends: marker shape = K, fill = reliability.
+    from matplotlib.lines import Line2D
+
+    encoding_handles = [
+        Line2D([0], [0], marker="s", color="0.3", linestyle="none", markersize=10, label="Mixture K=2"),
+        Line2D([0], [0], marker="^", color="0.3", linestyle="none", markersize=10, label="Mixture K=3"),
+        Line2D([0], [0], marker="o", color="0.3", markerfacecolor="0.3", linestyle="none", markersize=10, label="≥1 publication-ready seed"),
+        Line2D([0], [0], marker="o", color="0.3", markerfacecolor="white", linestyle="none", markersize=10, label="No publication-ready seed"),
+    ]
+    ax.legend(handles=encoding_handles, fontsize=8, loc="lower right", framealpha=0.92, title="Marker encoding")
+
     fig.tight_layout()
     fig.savefig(out_path, dpi=200)
     plt.close(fig)

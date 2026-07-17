@@ -2,9 +2,10 @@
 
 Produces two figures referenced in the real-data section:
 
-  1. ``paper/figures/fig_real_response_panel.png``: 1x3 panel of
-     posterior response curves for one representative organisation
-     (home_garden, seed 0) across the three models.
+  1. ``paper/figures/fig_real_response_panel.png``: 2x3 panel for one
+     representative organisation (home_garden, seed 0) across the three
+     models — posterior response curves on top, observed vs posterior
+     predictive time series below.
 
   2. ``paper/figures/fig_real_elpd_bar.png``: grouped bar chart of
      mean test ELPD-LOO per (organisation, model) with seed-level
@@ -19,6 +20,11 @@ import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+
+# Importing paper_figures applies the shared rcParams (fonts, savefig dpi=300)
+# and exposes the canonical model palette/labels, so the real-data bar chart
+# matches the synthetic Figures 1-3 instead of drifting to its own style.
+from hill_mixture_mmm.paper_figures import COLORS, MODEL_LABELS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIGURES_ROOT = REPO_ROOT / "paper" / "figures"
@@ -37,11 +43,6 @@ PANEL_MODELS = [
 
 # Models ordered for the bar chart.
 BAR_MODEL_ORDER = ["single_hill", "mixture_k2", "mixture_k3"]
-BAR_MODEL_LABELS = {
-    "single_hill": "Single Hill",
-    "mixture_k2": "Mixture (K=2)",
-    "mixture_k3": "Mixture (K=3)",
-}
 BAR_DATASET_ORDER = ["beauty_fitness", "home_garden", "toys_hobbies"]
 BAR_DATASET_LABELS = {
     "beauty_fitness": "Beauty & Fitness",
@@ -57,26 +58,45 @@ def _crop_title(img: np.ndarray, frac: float = 0.07) -> np.ndarray:
     return img[top:, :, :]
 
 
+def _place_panel(ax, png: Path, *, crop_frac: float, title: str | None) -> None:
+    if not png.exists():
+        ax.text(0.5, 0.5, f"missing: {png.name}", ha="center", va="center")
+        ax.axis("off")
+        return
+    img = mpimg.imread(png)
+    img = _crop_title(img, frac=crop_frac)
+    ax.imshow(img)
+    if title is not None:
+        ax.set_title(title, fontsize=12)
+    ax.axis("off")
+
+
 def build_response_panel() -> Path:
     out = FIGURES_ROOT / "fig_real_response_panel.png"
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4.2))
-    for ax, (model, label) in zip(axes, PANEL_MODELS):
-        png = (
-            REAL_ROOT
-            / model
-            / f"real_{PANEL_ORG}_{model}_seed{PANEL_SEED}_response.png"
-        )
-        if not png.exists():
-            ax.text(0.5, 0.5, f"missing: {png.name}", ha="center", va="center")
-            ax.axis("off")
-            continue
-        img = mpimg.imread(png)
-        img = _crop_title(img)
-        ax.imshow(img)
-        ax.set_title(label, fontsize=12)
-        ax.axis("off")
+    # Two rows: the latent posterior response curves on top (a latent quantity
+    # with no directly-observable target), and the observed-vs-posterior-
+    # predictive time series below (black observed line) so the reader can see
+    # how well each model actually fits the data, not just the latent shape.
+    fig, axes = plt.subplots(2, 3, figsize=(15, 7.4))
+    for col, (model, label) in enumerate(PANEL_MODELS):
+        base = REAL_ROOT / model / f"real_{PANEL_ORG}_{model}_seed{PANEL_SEED}"
+        # Top row crops the per-model auto title (replaced by our column title);
+        # bottom row keeps the embedded test-metric annotation but crops its title.
+        _place_panel(axes[0, col], base.with_name(base.name + "_response.png"), crop_frac=0.07, title=label)
+        _place_panel(axes[1, col], base.with_name(base.name + "_predictive.png"), crop_frac=0.10, title=None)
+
+    # Row captions.
+    axes[0, 0].text(
+        -0.04, 0.5, "Latent response", transform=axes[0, 0].transAxes,
+        rotation=90, ha="center", va="center", fontsize=12, fontweight="bold",
+    )
+    axes[1, 0].text(
+        -0.04, 0.5, "Observed vs predictive", transform=axes[1, 0].transAxes,
+        rotation=90, ha="center", va="center", fontsize=12, fontweight="bold",
+    )
+
     fig.suptitle(
-        f"Posterior response curves — {BAR_DATASET_LABELS[PANEL_ORG]} (seed {PANEL_SEED})",
+        f"Posterior response curves and predictive fit — {BAR_DATASET_LABELS[PANEL_ORG]} (seed {PANEL_SEED})",
         fontsize=13,
     )
     fig.tight_layout()
@@ -94,11 +114,13 @@ def build_elpd_bar() -> Path:
         .reset_index()
     )
 
-    fig, ax = plt.subplots(figsize=(8.5, 4.5))
+    # Match the synthetic Figures 1-3 styling (paper_figures.py) exactly:
+    # shared palette, white bar edges, "Model"-titled legend, dashed zero
+    # line, and the same bar width / annotation placement.
+    fig, ax = plt.subplots(figsize=(10, 6))
     n_models = len(BAR_MODEL_ORDER)
-    width = 0.25
+    width = min(0.28, 0.8 / max(n_models, 1))
     x = np.arange(len(BAR_DATASET_ORDER))
-    colors = ["#4878D0", "#A66BB1", "#EE854A"]
 
     for i, model in enumerate(BAR_MODEL_ORDER):
         means = []
@@ -113,29 +135,32 @@ def build_elpd_bar() -> Path:
             means,
             width,
             yerr=stds,
-            label=BAR_MODEL_LABELS[model],
-            color=colors[i],
-            capsize=4,
-            edgecolor="black",
-            linewidth=0.6,
+            label=MODEL_LABELS[model],
+            color=COLORS[model],
+            capsize=3,
+            alpha=0.85,
+            edgecolor="white",
+            linewidth=0.5,
         )
 
     ax.set_xticks(x)
     ax.set_xticklabels([BAR_DATASET_LABELS[d] for d in BAR_DATASET_ORDER])
+    ax.set_xlabel("Organisation")
     ax.set_ylabel("ELPD-LOO")
     ax.set_title("Real-data predictive density across organisations and models")
-    ax.legend(loc="lower right", fontsize=10)
-    ax.grid(True, axis="y", alpha=0.3)
-    ax.text(
-        0.01,
-        -0.18,
-        "Higher is better; error bars: ±1 std across three seeds.",
-        transform=ax.transAxes,
-        fontsize=9,
+    ax.legend(title="Model")
+    ax.axhline(y=0, color="gray", linestyle="--", alpha=0.3)
+    ax.annotate(
+        "Higher is better; error bars: ±1 std across three seeds",
+        xy=(0.98, 0.02),
+        xycoords="axes fraction",
+        ha="right",
+        va="bottom",
+        fontsize=8,
         color="gray",
     )
-    fig.tight_layout()
-    fig.savefig(out, dpi=180, bbox_inches="tight")
+    plt.tight_layout()
+    fig.savefig(out)
     plt.close(fig)
     return out
 
