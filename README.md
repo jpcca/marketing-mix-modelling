@@ -2,7 +2,7 @@
 
 Code, data, and per-fit artifacts for the preprint:
 
-> **Bayesian Hill Mixture Models for Marketing Mix Modeling: Synthetic Benchmarks, Component Resolvability, and Real-Data Evaluation**
+> **When Can a Mixture-of-Hill MMM Recover Its Components? A Resolvability Diagnostic and a Synthetic-to-Real Transfer Study**
 > Shohei Yoshida, Grisha Szep, Mizuki Oka
 > (arXiv ID pending — manuscript source lives in the [`paper/`](https://github.com/jpcca/marketing-mix-modelling-paper) submodule)
 
